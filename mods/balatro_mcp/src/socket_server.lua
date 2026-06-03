@@ -181,12 +181,19 @@ local function accept_pending_client()
   log("Socket client connected")
 end
 
+local MAX_LINE_BUFFER_SIZE = 65536
+
 local function read_from_client()
   if not has_client or client_fd < 0 then return end
 
   local bytes_read = C.read(client_fd, read_buffer, READ_BUFFER_SIZE)
   if bytes_read > 0 then
     line_buffer = line_buffer .. ffi.string(read_buffer, bytes_read)
+    if #line_buffer > MAX_LINE_BUFFER_SIZE then
+      log("Client exceeded max frame size, disconnecting")
+      close_client("buffer overflow")
+      return
+    end
     process_line_buffer()
     return
   end

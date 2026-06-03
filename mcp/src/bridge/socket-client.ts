@@ -15,18 +15,6 @@ const DEFAULT_RESPONSE_TIMEOUT_MS = 10_000;
 const DEFAULT_STATE_TIMEOUT_MS = 5_000;
 const RECONNECT_DELAY_MS = 500;
 
-export interface BridgeConfig {
-  bridgeDir?: string;
-}
-
-export interface Heartbeat {
-  protocol_version: number;
-  seq: number;
-  phase: string;
-  wrote_at: number;
-  mod_version: string;
-}
-
 export interface StateEnvelope {
   protocol_version: number;
   seq: number;
@@ -50,11 +38,6 @@ export interface ResponseEnvelope {
   data?: unknown;
   seq: number;
   applied_state_seq?: number;
-}
-
-export interface ClientLock {
-  pid: number;
-  start_time: number;
 }
 
 interface PendingRequest {
@@ -121,7 +104,7 @@ export class BridgeClient {
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private readonly pendingRequests = new Map<number, PendingRequest>();
 
-  constructor(_config?: BridgeConfig) {
+  constructor() {
   }
 
   get dir(): string {

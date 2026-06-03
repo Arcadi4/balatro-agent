@@ -29,8 +29,13 @@ function love.update(dt)
   end
 end
 
+local _original_love_quit = love.quit
+
 function love.quit()
   bridge_commands.shutdown()
+  if _original_love_quit then
+    return _original_love_quit()
+  end
 end
 
 sendDebugMessage('Loaded Balatro MCP Dev Mod (socket bridge active)', mod.id)
