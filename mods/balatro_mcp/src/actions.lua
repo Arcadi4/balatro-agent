@@ -24,6 +24,142 @@ local function ok(data)
   return { ok = true, data = data or {} }
 end
 
+local function normalize_entity_id(id, entity_type)
+  if not id then return nil end
+  local value = tostring(id):gsub("%s+", "_"):lower()
+  local slash = value:find("/", 1, true)
+  if slash then
+    local prefix = value:sub(1, slash - 1)
+    local slug = value:sub(slash + 1)
+    if prefix == "joker" then return "j_" .. slug end
+    if prefix == "tarot" or prefix == "planet" or prefix == "spectral" then return "c_" .. slug end
+    if prefix == "voucher" then return "v_" .. slug end
+    if prefix == "booster" then return "p_" .. slug end
+    if prefix == "blind" then return "bl_" .. slug end
+    if prefix == "tag" then return "tag_" .. slug end
+    return slug
+  end
+
+  if value:match("^[jcvp]_") or value:match("^bl_") or value:match("^tag_") then
+    return value
+  end
+
+  if entity_type == "joker" then return "j_" .. value end
+  if entity_type == "tarot" or entity_type == "planet" or entity_type == "spectral" then return "c_" .. value end
+  if entity_type == "voucher" then return "v_" .. value end
+  if entity_type == "booster" then return "p_" .. value end
+  if entity_type == "blind" then return "bl_" .. value end
+  if entity_type == "tag" then return "tag_" .. value end
+  return value
+end
+
+local function entity_type_from_center(center)
+  if not center then return nil end
+  local set = center.set
+  if set == "Joker" then return "joker" end
+  if set == "Tarot" then return "tarot" end
+  if set == "Planet" then return "planet" end
+  if set == "Spectral" then return "spectral" end
+  if set == "Voucher" then return "voucher" end
+  if set == "Booster" then return "booster" end
+  if set == "Blind" then return "blind" end
+  return set and tostring(set):lower() or nil
+end
+
+local function compact_table(value, depth)
+  if type(value) ~= "table" then return value end
+  if depth <= 0 then return nil end
+  local out = {}
+  for k, v in pairs(value) do
+    if type(k) == "string" or type(k) == "number" then
+      local value_type = type(v)
+      if value_type == "string" or value_type == "number" or value_type == "boolean" then
+        out[k] = v
+      elseif value_type == "table" then
+        out[k] = compact_table(v, depth - 1)
+      end
+    end
+  end
+  return next(out) and out or nil
+end
+
+local function get_card_stickers(card)
+  if not card then return nil end
+  local stickers = {}
+  if card.ability and card.ability.eternal then stickers[#stickers + 1] = "eternal" end
+  if card.ability and card.ability.perishable then stickers[#stickers + 1] = "perishable" end
+  if card.ability and card.ability.rental then stickers[#stickers + 1] = "rental" end
+  if #stickers == 0 then return nil end
+  return stickers
+end
+
+local function get_card_edition(card)
+  if not card or not card.edition then return nil end
+  if card.edition.foil then return "foil" end
+  if card.edition.holo then return "holo" end
+  if card.edition.polychrome then return "polychrome" end
+  if card.edition.negative then return "negative" end
+  return nil
+end
+
+local function serialize_center(center)
+  if not center then return nil end
+  local loc_txt = center.loc_txt or {}
+  return {
+    id = center.key,
+    type = entity_type_from_center(center),
+    name = loc_txt.name or center.name or center.key,
+    game_name = center.name,
+    set = center.set,
+    description = loc_txt.text,
+    config = compact_table(center.config, 3),
+    rarity = center.rarity,
+    cost = center.cost,
+    blueprint_compat = center.blueprint_compat,
+    perishable_compat = center.perishable_compat,
+    eternal_compat = center.eternal_compat,
+    unlocked = center.unlocked,
+    discovered = center.discovered,
+  }
+end
+
+local function serialize_live_match(card, location)
+  if not card then return nil end
+  return {
+    card_id = card.sort_id or (card.config and card.config.card_id),
+    location = location,
+    name = card.ability and card.ability.name,
+    sell_value = card.sell_cost,
+    cost = card.cost,
+    edition = get_card_edition(card),
+    stickers = get_card_stickers(card),
+    debuffed = card.debuff or nil,
+    runtime_fields = card.ability and compact_table(card.ability.extra, 3) or nil,
+  }
+end
+
+local function append_matches(matches, area, location, key)
+  if not area or not area.cards then return end
+  for _, card in ipairs(area.cards) do
+    local center_key = card.config and card.config.center and card.config.center.key
+    if center_key == key then
+      matches[#matches + 1] = serialize_live_match(card, location)
+    end
+  end
+end
+
+local function live_matches_for_entity(key)
+  local matches = {}
+  append_matches(matches, G and G.jokers, "jokers", key)
+  append_matches(matches, G and G.consumeables, "consumables", key)
+  append_matches(matches, G and G.hand, "hand", key)
+  append_matches(matches, G and G.shop_jokers, "shop.jokers", key)
+  append_matches(matches, G and G.shop_vouchers, "shop.vouchers", key)
+  append_matches(matches, G and G.shop_booster, "shop.boosters", key)
+  append_matches(matches, G and G.pack_cards, "pack.options", key)
+  return #matches > 0 and matches or nil
+end
+
 ---------------------------------------------------------------------------
 -- Phase guard: check G.STATE against allowed states
 ---------------------------------------------------------------------------
@@ -121,6 +257,61 @@ local function is_pack_state()
     if G.STATE == ps then return true end
   end
   return false
+end
+
+---------------------------------------------------------------------------
+-- QUERY: list_game_entities
+---------------------------------------------------------------------------
+
+handlers.list_game_entities = function(args)
+  if not G or not G.P_CENTERS then
+    return err("GAME_NOT_RUNNING", "Game prototypes are not available")
+  end
+
+  local requested_type = args.type and tostring(args.type):lower() or nil
+  local requested_id = normalize_entity_id(args.id, requested_type)
+  local name_contains = args.name_contains and tostring(args.name_contains):lower() or nil
+  local limit = tonumber(args.limit) or 20
+  local offset = tonumber(args.offset) or 0
+  if limit < 1 then limit = 1 end
+  if limit > 100 then limit = 100 end
+  if offset < 0 then offset = 0 end
+
+  local records = {}
+  for key, center in pairs(G.P_CENTERS) do
+    local record_type = entity_type_from_center(center)
+    local record_name = (center.loc_txt and center.loc_txt.name) or center.name or key
+    local type_ok = not requested_type or requested_type == record_type
+    local id_ok = not requested_id or requested_id == key
+    local name_ok = not name_contains or tostring(record_name):lower():find(name_contains, 1, true) ~= nil
+    if type_ok and id_ok and name_ok then
+      local record = serialize_center(center)
+      if record then
+        record.live_instances = live_matches_for_entity(key)
+        records[#records + 1] = record
+      end
+    end
+  end
+
+  table.sort(records, function(a, b)
+    return tostring(a.id or "") < tostring(b.id or "")
+  end)
+
+  local total = #records
+  local items = {}
+  for i = offset + 1, math.min(offset + limit, total) do
+    items[#items + 1] = records[i]
+  end
+
+  return ok({
+    items = items,
+    total = total,
+    count = #items,
+    offset = offset,
+    has_more = offset + limit < total,
+    next_offset = (offset + limit < total) and (offset + limit) or nil,
+    source = "runtime:G.P_CENTERS",
+  })
 end
 
 ---------------------------------------------------------------------------
