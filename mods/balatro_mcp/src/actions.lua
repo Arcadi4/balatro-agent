@@ -17,7 +17,7 @@ end
 ---------------------------------------------------------------------------
 
 local function err(error_code, message)
-  return { ok = false, error_code = error_code, message = message }
+  return { ok = false, error_code = error_code, error_message = message }
 end
 
 local function ok(data)
@@ -46,9 +46,10 @@ end
 
 local function find_card_in(area, card_id)
   if not area or not area.cards then return nil end
+  local target_id = tostring(card_id)
   for _, card in ipairs(area.cards) do
     local cid = card.sort_id or (card.config and card.config.card_id)
-    if cid == card_id then
+    if cid ~= nil and tostring(cid) == target_id then
       return card
     end
   end
@@ -130,27 +131,37 @@ handlers.select_blind = function(args)
   local phase_err = check_phase({ S("BLIND_SELECT") })
   if phase_err then return phase_err end
 
-  local slot = args.slot
-  if not slot or (slot ~= "small" and slot ~= "big" and slot ~= "boss") then
-    return err("INVALID_TARGET", "Invalid blind slot: " .. tostring(slot))
-  end
-
-  -- Verify blind choice exists
   if not G.GAME or not G.GAME.round_resets or not G.GAME.round_resets.blind_choices then
-    return err("INVALID_TARGET", "No blind choices available")
+    return err("INVALID_TARGET", "No blind choices available; blind select UI is not ready")
   end
 
-  local blind_key = slot == "small" and "Small" or slot == "big" and "Big" or "Boss"
+  local blind_key = G.GAME.blind_on_deck
+  if args.slot then
+    blind_key = args.slot == "small" and "Small" or args.slot == "big" and "Big" or args.slot == "boss" and "Boss" or nil
+  end
+
+  if not blind_key or (blind_key ~= "Small" and blind_key ~= "Big" and blind_key ~= "Boss") then
+    return err("INVALID_TARGET", "Invalid blind slot: " .. tostring(args.slot) .. "; blind_on_deck=" .. tostring(G.GAME and G.GAME.blind_on_deck))
+  end
+
   if not G.GAME.round_resets.blind_choices[blind_key] then
-    return err("INVALID_TARGET", "Blind slot '" .. slot .. "' not available in current choices")
+    return err("INVALID_TARGET", "Blind slot '" .. tostring(blind_key) .. "' not available in current choices")
   end
 
-  -- Call G.FUNCS.select_blind
+  local blind_ui = G.blind_select_opts and G.blind_select_opts[string.lower(blind_key)]
+  local select_button = blind_ui and blind_ui.get_UIE_by_ID and blind_ui:get_UIE_by_ID("select_blind_button")
+  if not select_button or not select_button.UIBox or not select_button.config or not select_button.config.ref_table then
+    return err("INVALID_TARGET", "Blind select UI is not ready for slot: " .. tostring(blind_key) .. "; blind_select_opts=" .. tostring(G.blind_select_opts ~= nil) .. "; blind_ui=" .. tostring(blind_ui ~= nil) .. "; select_button=" .. tostring(select_button ~= nil))
+  end
+
   if G.FUNCS and G.FUNCS.select_blind then
-    G.FUNCS.select_blind({ config = { id = slot } })
+    G.FUNCS.select_blind(select_button)
   end
 
-  return ok({ blind_selected = slot })
+  return ok({
+    blind_selected = string.lower(blind_key),
+    blind_id = G.GAME.round_resets.blind_choices[blind_key],
+  })
 end
 
 ---------------------------------------------------------------------------
@@ -237,6 +248,48 @@ handlers.sort_hand = function(args)
   local phase_err = check_phase({ S("SELECTING_HAND") })
   if phase_err then return phase_err end
 
+  if args.order and type(args.order) == "table" then
+    if not G.hand or not G.hand.cards then
+      return err("INVALID_TARGET", "No hand cards to reorder")
+    end
+
+    local current_count = #G.hand.cards
+    if #args.order ~= current_count then
+      return err("INVALID_TARGET", "order count (" .. tostring(#args.order) .. ") does not match hand count (" .. tostring(current_count) .. ")")
+    end
+
+    local current_ids = {}
+    local id_to_card = {}
+    for _, card in ipairs(G.hand.cards) do
+      local cid = card.sort_id or (card.config and card.config.card_id)
+      local key = tostring(cid)
+      current_ids[key] = true
+      id_to_card[key] = card
+    end
+
+    local seen = {}
+    for _, cid in ipairs(args.order) do
+      local key = tostring(cid)
+      if not current_ids[key] then
+        return err("INVALID_TARGET", "Hand card ID not found: " .. tostring(cid))
+      end
+      if seen[key] then
+        return err("INVALID_TARGET", "Duplicate hand card ID in order: " .. tostring(cid))
+      end
+      seen[key] = true
+    end
+
+    local new_order = {}
+    for _, cid in ipairs(args.order) do
+      new_order[#new_order + 1] = id_to_card[tostring(cid)]
+    end
+    G.hand.cards = new_order
+    if G.hand.set_ranks then
+      G.hand:set_ranks()
+    end
+    return ok({ reordered = true, count = current_count })
+  end
+
   local by = args.by
   if by ~= "rank" and by ~= "suit" then
     return err("INVALID_TARGET", "Sort criterion must be 'rank' or 'suit', got: " .. tostring(by))
@@ -282,11 +335,26 @@ handlers.play_hand = function(args)
     return err("INVALID_TARGET", "Boss blind is blocking play")
   end
 
+  local cards_played = #G.hand.highlighted
+  local score_before = G.GAME and G.GAME.chips or 0
+  local hands_played_before = G.GAME and G.GAME.current_round and G.GAME.current_round.hands_played or 0
+  local blind_chips = G.GAME and G.GAME.blind and G.GAME.blind.chips or nil
+
   if G.FUNCS and G.FUNCS.play_cards_from_highlighted then
     G.FUNCS.play_cards_from_highlighted()
   end
 
-  return ok({ cards_played = #G.hand.highlighted })
+  return {
+    ok = true,
+    deferred = "play_hand_score",
+    timeout_seconds = 12,
+    data = {
+      cards_played = cards_played,
+      score_before = score_before,
+      hands_played_before = hands_played_before,
+      blind_chips = blind_chips,
+    }
+  }
 end
 
 ---------------------------------------------------------------------------
@@ -311,11 +379,12 @@ handlers.discard_hand = function(args)
     return err("INVALID_TARGET", "No discards remaining")
   end
 
+  local cards_discarded = #G.hand.highlighted
   if G.FUNCS and G.FUNCS.discard_cards_from_highlighted then
     G.FUNCS.discard_cards_from_highlighted()
   end
 
-  return ok({ cards_discarded = #G.hand.highlighted })
+  return ok({ cards_discarded = cards_discarded })
 end
 
 ---------------------------------------------------------------------------
@@ -372,7 +441,7 @@ end
 ---------------------------------------------------------------------------
 
 handlers.sell_card = function(args)
-  local phase_err = check_phase({ S("SHOP") })
+  local phase_err = check_phase({ S("BLIND_SELECT"), S("SELECTING_HAND"), S("ROUND_EVAL"), S("SHOP") })
   if phase_err then return phase_err end
 
   local card_id = args.card_id
@@ -537,14 +606,12 @@ handlers.buy_and_use_card = function(args)
     end
   end
 
-  -- Buy from shop (this deducts cost)
+  -- Native Balatro buy-and-use is a single delayed buy_from_shop flow. Passing
+  -- id='buy_and_use' makes buy_from_shop skip slot placement and call use_card
+  -- after it removes the card from the shop; calling use_card immediately races
+  -- that delayed removal and leaves c1.area nil in button_callbacks.lua.
   if G.FUNCS and G.FUNCS.buy_from_shop then
-    G.FUNCS.buy_from_shop({ config = { ref_table = card } })
-  end
-
-  -- Immediately use it
-  if G.FUNCS and G.FUNCS.use_card then
-    G.FUNCS.use_card({ config = { ref_table = card } })
+    G.FUNCS.buy_from_shop({ config = { id = "buy_and_use", ref_table = card } })
   end
 
   return ok({ bought_and_used = card_id, cost = cost })
@@ -605,7 +672,11 @@ handlers.cash_out = function(args)
   if phase_err then return phase_err end
 
   if G.FUNCS and G.FUNCS.cash_out then
-    G.FUNCS.cash_out()
+    local cash_out_button = nil
+    if G.round_eval and G.round_eval.get_UIE_by_ID then
+      cash_out_button = G.round_eval:get_UIE_by_ID("cash_out_button")
+    end
+    G.FUNCS.cash_out(cash_out_button or { config = { id = "cash_out_button", button = "cash_out" } })
   end
 
   return ok({ cashed_out = true })
@@ -739,26 +810,28 @@ handlers.reorder_jokers = function(args)
   local id_to_card = {}
   for _, card in ipairs(G.jokers.cards) do
     local cid = card.sort_id or (card.config and card.config.card_id)
-    current_ids[cid] = true
-    id_to_card[cid] = card
+    local key = tostring(cid)
+    current_ids[key] = true
+    id_to_card[key] = card
   end
 
   -- Validate all provided IDs exist and are unique
   local seen = {}
   for _, cid in ipairs(card_ids) do
-    if not current_ids[cid] then
+    local key = tostring(cid)
+    if not current_ids[key] then
       return err("INVALID_TARGET", "Joker ID not found: " .. tostring(cid))
     end
-    if seen[cid] then
+    if seen[key] then
       return err("INVALID_TARGET", "Duplicate joker ID in reorder: " .. tostring(cid))
     end
-    seen[cid] = true
+    seen[key] = true
   end
 
   -- Reorder: rebuild G.jokers.cards in the requested order
   local new_order = {}
   for _, cid in ipairs(card_ids) do
-    new_order[#new_order + 1] = id_to_card[cid]
+    new_order[#new_order + 1] = id_to_card[tostring(cid)]
   end
   G.jokers.cards = new_order
 

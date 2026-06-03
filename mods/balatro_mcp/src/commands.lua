@@ -26,9 +26,15 @@ local state_seq = 0
 local frame_count = 0
 local time_offset = nil -- calibration: os.time() - love.timer.getTime() at init
 local initialized = false
+local pending_responses = {}
+local state_writer = nil
 
 --- Action dispatcher registry (populated by actions module)
 local action_dispatchers = {}
+
+local function S(name)
+  return G and G.STATES and G.STATES[name]
+end
 
 ---------------------------------------------------------------------------
 -- Utility: get absolute bridge path
@@ -101,17 +107,13 @@ end
 ---------------------------------------------------------------------------
 local function list_command_files()
   local files = {}
-  local handle = io.popen('ls -1 "' .. commands_abs .. '" 2>/dev/null')
-  if not handle then
-    return files
-  end
-  for line in handle:lines() do
+  local items = love.filesystem.getDirectoryItems(COMMANDS_REL) or {}
+  for _, name in ipairs(items) do
     -- Only include .json files, skip .tmp and subdirectories
-    if line:match("^%d+%.json$") then
-      files[#files + 1] = line
+    if name:match("^%d+%.json$") then
+      files[#files + 1] = name
     end
   end
-  handle:close()
   table.sort(files)
   return files
 end
@@ -127,6 +129,9 @@ local function json_encode(tbl)
   -- Fallback: use SMODS/Lovely's JSON library
   if _G.JSON and _G.JSON.encode then
     return _G.JSON.encode(tbl)
+  end
+  if SMODS and SMODS.JSON and SMODS.JSON.encode then
+    return SMODS.JSON.encode(tbl)
   end
   -- Last resort: simple encoder for flat tables
   return Commands._simple_json_encode(tbl)
@@ -190,22 +195,10 @@ local function json_decode(str)
   if _G.JSON and _G.JSON.decode then
     return _G.JSON.decode(str)
   end
-  -- Fallback: use Lua load (safe subset — only literals)
-  -- This is NOT loadstring of arbitrary code; we construct a safe parser
-  -- by replacing JSON tokens with Lua equivalents
-  local s = str:gsub("null", "nil"):gsub("%[", "{"):gsub("%]", "}")
-  -- Handle JSON true/false (already valid Lua)
-  local fn, err = load("return " .. s)
-  if not fn then
-    return nil, "JSON parse error: " .. tostring(err)
+  if SMODS and SMODS.JSON and SMODS.JSON.decode then
+    return SMODS.JSON.decode(str)
   end
-  -- Execute in empty environment for safety
-  setfenv(fn, {})
-  local ok, result = pcall(fn)
-  if not ok then
-    return nil, "JSON eval error: " .. tostring(result)
-  end
-  return result
+  return nil, "No JSON decoder available"
 end
 
 ---------------------------------------------------------------------------
@@ -213,13 +206,21 @@ end
 ---------------------------------------------------------------------------
 local function write_response(seq, ok_flag, error_code, error_message, data, applied_seq)
   get_bridge_abs()
+  if state_writer then
+    local writer_ok, next_seq = pcall(state_writer)
+    if writer_ok and type(next_seq) == "number" then
+      state_seq = next_seq
+    elseif not writer_ok then
+      sendDebugMessage("MCP: Forced state write failed before response " .. tostring(seq) .. ": " .. tostring(next_seq), "balatro_mcp")
+    end
+  end
   local response = {
     seq = seq,
     ok = ok_flag,
     error_code = error_code,
     error_message = error_message,
     data = data,
-    applied_state_seq = applied_seq or state_seq,
+    applied_state_seq = state_seq,
   }
   local content = json_encode(response)
   local seq_str = string.format("%06d", seq)
@@ -229,6 +230,82 @@ local function write_response(seq, ok_flag, error_code, error_message, data, app
     sendDebugMessage("MCP: Failed to write response " .. seq_str .. ": " .. tostring(err), "balatro_mcp")
   end
   return success
+end
+
+local function queue_deferred_response(seq, kind, result)
+  pending_responses[#pending_responses + 1] = {
+    seq = seq,
+    kind = kind,
+    deferred = result.deferred,
+    data = result.data or {},
+    started_at = love.timer.getTime(),
+    timeout_seconds = result.timeout_seconds or 10,
+    saw_hand_played = false,
+  }
+end
+
+local function current_score()
+  return G and G.GAME and G.GAME.chips or 0
+end
+
+local function current_hands_played()
+  return G and G.GAME and G.GAME.current_round and G.GAME.current_round.hands_played or 0
+end
+
+local function blind_chips()
+  return G and G.GAME and G.GAME.blind and G.GAME.blind.chips or nil
+end
+
+local function finish_play_hand_response(pending, timed_out)
+  local before = pending.data.score_before or 0
+  local after = current_score()
+  local gained = after - before
+  local target = blind_chips() or pending.data.blind_chips
+  local data = {
+    cards_played = pending.data.cards_played,
+    points_gained = gained,
+    score_before = before,
+    score_after = after,
+    blind_chips = target,
+    blind_defeated = target ~= nil and after >= target or nil,
+    hands_played_before = pending.data.hands_played_before,
+    hands_played_after = current_hands_played(),
+    final_phase = G and G.STATE or nil,
+    timed_out = timed_out or nil,
+  }
+  write_response(pending.seq, true, nil, nil, data)
+end
+
+local function update_pending_responses()
+  if #pending_responses == 0 then return end
+
+  local remaining = {}
+  local now = love.timer.getTime()
+  for _, pending in ipairs(pending_responses) do
+    local finished = false
+
+    if pending.deferred == "play_hand_score" then
+      if G and G.STATE == S("HAND_PLAYED") then
+        pending.saw_hand_played = true
+      end
+
+      local timed_out = (now - pending.started_at) >= pending.timeout_seconds
+      local scoring_finished = pending.saw_hand_played and G and G.STATE ~= S("HAND_PLAYED")
+      if scoring_finished or timed_out then
+        finish_play_hand_response(pending, timed_out)
+        finished = true
+      end
+    else
+      write_response(pending.seq, false, "INTERNAL_ERROR", "Unknown deferred response kind: " .. tostring(pending.deferred), nil, state_seq)
+      finished = true
+    end
+
+    if not finished then
+      remaining[#remaining + 1] = pending
+    end
+  end
+
+  pending_responses = remaining
 end
 
 ---------------------------------------------------------------------------
@@ -336,7 +413,13 @@ local function process_command(filename)
     result = { ok = true }
   end
 
-  write_response(seq, result.ok ~= false, result.error_code, result.error_message, result.data, state_seq)
+  if result.ok ~= false and result.deferred then
+    queue_deferred_response(seq, kind, result)
+    delete_file(filepath)
+    return
+  end
+
+  write_response(seq, result.ok ~= false, result.error_code, result.error_message, result.data)
 
   -- On success, delete command file; on failure, move to failed/
   if result.ok ~= false then
@@ -423,7 +506,12 @@ function Commands.init()
 
   get_bridge_abs()
 
-  -- Ensure all required directories exist
+  -- Ensure all required directories exist through LÖVE first, then absolute fallback.
+  love.filesystem.createDirectory(BRIDGE_REL)
+  love.filesystem.createDirectory(COMMANDS_REL)
+  love.filesystem.createDirectory(COMMANDS_REL .. "invalid/")
+  love.filesystem.createDirectory(COMMANDS_REL .. "failed/")
+  love.filesystem.createDirectory(RESPONSES_REL)
   ensure_dir(bridge_abs)
   ensure_dir(commands_abs)
   ensure_dir(commands_abs .. "invalid/")
@@ -479,6 +567,10 @@ function Commands.update(dt)
 
   local files = files_or_err
   if not files or #files == 0 then
+    local ok_pending, pending_err = pcall(update_pending_responses)
+    if not ok_pending then
+      sendDebugMessage("MCP: Deferred response update failed: " .. tostring(pending_err), "balatro_mcp")
+    end
     return
   end
 
@@ -488,6 +580,11 @@ function Commands.update(dt)
     if not ok_proc then
       sendDebugMessage("MCP: Error processing command " .. filename .. ": " .. tostring(proc_err), "balatro_mcp")
     end
+  end
+
+  local ok_pending, pending_err = pcall(update_pending_responses)
+  if not ok_pending then
+    sendDebugMessage("MCP: Deferred response update failed: " .. tostring(pending_err), "balatro_mcp")
   end
 end
 
@@ -516,6 +613,10 @@ end
 ---------------------------------------------------------------------------
 function Commands.set_state_seq(seq)
   state_seq = seq
+end
+
+function Commands.set_state_writer(writer)
+  state_writer = writer
 end
 
 ---------------------------------------------------------------------------

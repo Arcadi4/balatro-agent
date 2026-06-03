@@ -222,7 +222,6 @@ local function serialize_joker(card)
   if not card then return nil end
   local obj = {
     card_id = card.sort_id or (card.config and card.config.card_id),
-    kind = 'joker',
     name = card.ability and card.ability.name,
     entity_id = card.config and card.config.center and ('joker/' .. (card.config.center.key or ''):gsub('^j_', ''):gsub(' ', '_')),
     sell_value = card.sell_cost,
@@ -233,15 +232,10 @@ local function serialize_joker(card)
   }
   if obj.debuffed == false then obj.debuffed = nil end
   -- extras: per-joker dynamic fields from ability
-  if card.ability then
+  if card.ability and type(card.ability.extra) == 'table' then
     local extras = {}
-    local dominated_keys = { name = true, extra = true, eternal = true, perishable = true, rental = true }
-    if type(card.ability.extra) == 'table' then
-      for k, v in pairs(card.ability.extra) do
-        extras[k] = v
-      end
-    elseif card.ability.extra ~= nil then
-      extras.value = card.ability.extra
+    for k, v in pairs(card.ability.extra) do
+      extras[k] = v
     end
     if next(extras) then
       obj.extras = extras
@@ -313,6 +307,17 @@ local function compute_legal_actions()
   local actions = {}
   local gs = G.STATE
 
+  local function has_sellable_card()
+    if G.jokers and G.jokers.cards then
+      for _, card in ipairs(G.jokers.cards) do
+        if card and not (card.ability and card.ability.eternal) then
+          return true
+        end
+      end
+    end
+    return G.consumeables and G.consumeables.cards and #G.consumeables.cards > 0
+  end
+
   -- G.STATES constants (from Balatro source)
   local STATES = G.STATES or {}
   local SELECTING_HAND = STATES.SELECTING_HAND or 13
@@ -364,18 +369,22 @@ local function compute_legal_actions()
         end
       end
     end
-    -- Can sell jokers/consumables
-    if G.jokers and G.jokers.cards and #G.jokers.cards > 0 then
-      actions[#actions + 1] = 'sell_card'
-    end
     -- Can reorder jokers
     if G.jokers and G.jokers.cards and #G.jokers.cards > 1 then
       actions[#actions + 1] = 'reorder_jokers'
     end
 
   elseif gs == BLIND_SELECT then
-    actions[#actions + 1] = 'select_blind'
-    actions[#actions + 1] = 'skip_blind'
+    local blind_key = G.GAME and G.GAME.blind_on_deck
+    local blind_ui = blind_key and G.blind_select_opts and G.blind_select_opts[string.lower(blind_key)]
+    local select_button = blind_ui and blind_ui.get_UIE_by_ID and blind_ui:get_UIE_by_ID('select_blind_button')
+    if G.GAME and G.GAME.round_resets and G.GAME.round_resets.blind_choices
+        and (blind_key == 'Small' or blind_key == 'Big' or blind_key == 'Boss')
+        and G.GAME.round_resets.blind_choices[blind_key]
+        and select_button and select_button.UIBox and select_button.config and select_button.config.ref_table then
+      actions[#actions + 1] = 'select_blind'
+      actions[#actions + 1] = 'skip_blind'
+    end
     -- Reroll in blind select requires Retcon voucher
     if G.GAME and G.GAME.used_vouchers and G.GAME.used_vouchers.v_retcon then
       actions[#actions + 1] = 'reroll_shop'
@@ -400,6 +409,10 @@ local function compute_legal_actions()
 
   elseif gs == ROUND_EVAL then
     actions[#actions + 1] = 'cash_out'
+  end
+
+  if (gs == BLIND_SELECT or gs == SELECTING_HAND or gs == ROUND_EVAL or gs == SHOP) and has_sellable_card() then
+    actions[#actions + 1] = 'sell_card'
   end
 
   return actions
