@@ -11,14 +11,12 @@ local MOD_ID = current_mod and current_mod.id or "balatro_mcp"
 --- Constants
 local PROTOCOL_VERSION = 1
 local MOD_VERSION = "0.1.0"
-local HEARTBEAT_UPDATE_INTERVAL = 1 -- seconds; in-memory debug heartbeat only
 
 --- State
 local frame_count = 0
 local initialized = false
 local state_seq = 0
 local state_writer = nil -- retained for compatibility with existing main.lua wiring
-local last_heartbeat_at = nil
 local current_phase = "unknown"
 
 --- Action dispatcher registry (populated by actions module)
@@ -156,24 +154,6 @@ local function detect_phase()
   end
 
   return "unknown"
-end
-
-local function update_heartbeat(force)
-  local now = love and love.timer and love.timer.getTime and love.timer.getTime() or 0
-  if not force and last_heartbeat_at and (now - last_heartbeat_at) < HEARTBEAT_UPDATE_INTERVAL then
-    return
-  end
-
-  current_phase = detect_phase()
-  last_heartbeat_at = now
-  Commands._heartbeat = {
-    protocol_version = PROTOCOL_VERSION,
-    seq = state_seq,
-    phase = current_phase,
-    updated_at = now,
-    mod_version = MOD_VERSION,
-    frame = frame_count,
-  }
 end
 
 local function queue_deferred_response(kind, result, request_id, client_fd)
@@ -339,7 +319,6 @@ end
 
 function Commands.set_state_seq(seq)
   state_seq = seq
-  update_heartbeat(true)
 end
 
 function Commands.set_state_writer(writer)
@@ -359,15 +338,8 @@ function Commands.get_phase()
   return current_phase
 end
 
-function Commands.get_heartbeat()
-  update_heartbeat(true)
-  return Commands._heartbeat
-end
-
 function Commands.update(dt)
   frame_count = frame_count + 1
-
-  update_heartbeat(false)
 
   if ensure_socket_server_started() and Commands._socket_server and Commands._socket_server.update then
     local ok, err = pcall(Commands._socket_server.update, dt)
