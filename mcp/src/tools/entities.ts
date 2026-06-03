@@ -6,7 +6,7 @@ import { formatResponse, type ResponseFormat } from "../response.js";
 import { toolError } from "../errors.js";
 
 const LIST_DESCRIPTION =
-  "Lists game entities from the Balatro entity catalog with optional type filtering and pagination. " +
+  "Lists static Balatro entity/wiki records from the entity catalog with optional type filtering and pagination. " +
   "Entities include jokers, tarot cards, planet cards, spectrals, vouchers, decks, blinds, tags, boosters, " +
   "enhancements, editions, seals, stakes, poker hands, stickers, challenges, and achievements. " +
   "Use the 'type' parameter to filter by entity category (e.g. 'joker', 'tarot', 'planet'). " +
@@ -14,10 +14,10 @@ const LIST_DESCRIPTION =
   "Error codes: INVALID_TARGET (unknown entity type).";
 
 const GET_DESCRIPTION =
-  "Retrieves full details for a single Balatro game entity by its canonical ID. " +
-  "Canonical IDs follow the format 'type/Name' (e.g. 'joker/Joker', 'tarot/The Fool', 'planet/Mercury'). " +
-  "Returns the complete entity record including name, effect text, metadata, and source information. " +
-  "Use balatro_list_game_entities first to discover available entity IDs if you don't know the exact ID. " +
+  "Reads the static wiki/entity knowledge for one Balatro entity. " +
+  "Canonical IDs use game-internal keys without their raw prefix (e.g. 'joker/trio', 'joker/sock_and_buskin', 'planet/mercury'). " +
+  "Also accepts common aliases such as raw game keys ('j_trio') and display names ('The Trio') when present in the catalog. " +
+  "Returns static identity, effect text, metadata, aliases, and source information; use balatro_inspect_card_instance for live per-run card state. " +
   "Error codes: INVALID_TARGET (malformed ID, unknown type, or entity not found).";
 
 const listInputSchema = z
@@ -50,7 +50,7 @@ const getInputSchema = z
   .object({
     id: z
       .string()
-      .describe("Canonical entity ID in 'type/Name' format (e.g. 'joker/Joker', 'tarot/The Fool')."),
+      .describe("Entity ID or alias (e.g. 'joker/trio', 'j_trio', 'The Trio', 'joker/the_trio')."),
     response_format: z
       .enum(["markdown", "json"])
       .default("markdown")
@@ -110,6 +110,25 @@ function entityToMarkdown(data: object): string {
   return lines.join("\n");
 }
 
+async function readEntity(deps: Deps, id: string, format: ResponseFormat) {
+  let entity: Record<string, unknown>;
+  try {
+    entity = (await deps.entityCatalog.get(id)) as Record<string, unknown>;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("INVALID_TARGET:")) {
+      const msg = err.message.replace("INVALID_TARGET: ", "");
+      return { ...toolError("INVALID_TARGET", msg) };
+    }
+    throw err;
+  }
+
+  const structured: Record<string, unknown> = { ...entity };
+  const envelope = formatResponse(structured, format, {
+    toMarkdown: entityToMarkdown,
+  });
+  return { ...envelope };
+}
+
 export function registerEntityTools(server: McpServer, deps: Deps): void {
   server.registerTool(
     "balatro_list_game_entities",
@@ -160,7 +179,7 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
   );
 
   server.registerTool(
-    "balatro_get_game_entity",
+    "balatro_read_entity_wiki",
     {
       description: GET_DESCRIPTION,
       inputSchema: getInputSchema,
@@ -168,24 +187,7 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
     },
     async (args) => {
       const format: ResponseFormat = args.response_format ?? "markdown";
-
-      let entity: Record<string, unknown>;
-      try {
-        entity = (await deps.entityCatalog.get(args.id)) as Record<string, unknown>;
-      } catch (err) {
-        if (err instanceof Error && err.message.startsWith("INVALID_TARGET:")) {
-          const msg = err.message.replace("INVALID_TARGET: ", "");
-          return { ...toolError("INVALID_TARGET", msg) };
-        }
-        throw err;
-      }
-
-      const structured: Record<string, unknown> = { ...entity };
-
-      const envelope = formatResponse(structured, format, {
-        toMarkdown: entityToMarkdown,
-      });
-      return { ...envelope };
+      return readEntity(deps, args.id, format);
     },
   );
 }

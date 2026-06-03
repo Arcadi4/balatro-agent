@@ -17,27 +17,31 @@ const INSTRUCTION_BLOCK = `## How to Use This Context
 When advising on a Balatro run, ground every recommendation in the rules
 above and the live game state available through MCP tools.
 
-### Canonical IDs
+### Entity Knowledge and Live Instances
 
 Every Balatro entity (joker, tarot, planet, voucher, deck, blind, tag,
 booster, enhancement, edition, seal, stake, poker_hand, sticker, challenge,
 achievement) has a stable canonical ID of the form \`<type>/<name_segment>\`,
-e.g. \`joker/blueprint\`, \`tarot/the_fool\`, \`voucher/overstock\`. Names are
-NFKC-normalized, ASCII-only, lowercase, and underscore-separated. Collisions
-are disambiguated with a \`__N\` suffix (\`__2\`, \`__3\`, …).
+e.g. \`joker/blueprint\`, \`joker/trio\`, \`tarot/fool\`, \`voucher/overstock\`.
+The name segment is derived from the game's internal key with the raw prefix
+removed (\`j_trio\` → \`joker/trio\`). Wiki/display names are aliases, not the
+primary identity.
 
-Always refer to entities by canonical ID in tool arguments and when citing
-specific cards in your reasoning. Resolve unfamiliar names via the entities
-resources before issuing commands.
+Use \`balatro_read_entity_wiki\` to read static entity knowledge: effect text,
+wiki/source metadata, base config, rarity, and aliases. Use
+\`balatro_inspect_card_instance\` to read one live card instance by \`card_id\`:
+current location, sell value, edition, stickers, debuff state, and dynamic
+runtime fields. Do not infer effects from names; resolve unfamiliar Jokers via
+the wiki/entity tool before making scoring claims.
 
 ### Tool Usage
 
-- Read the live state with the \`get_state\` tool before recommending an
+- Read the live state with \`balatro_inspect_game_state\` before recommending an
   action; the rules above describe phases and constraints, but only the
   state tells you what is actually playable right now.
-- Issue actions through the typed bridge tools (e.g. \`play_hand\`,
-  \`discard\`, \`buy_card\`, \`skip_blind\`). Use canonical IDs for any card
-  argument.
+- Issue actions through the typed bridge tools (e.g. \`balatro_play_hand\`,
+  \`balatro_discard\`, \`balatro_buy_card\`, \`balatro_skip_blind\`). Use
+  \`card_id\` for live card actions, not \`entity_id\`.
 - Tools return \`GAME_NOT_RUNNING\` when no Balatro instance is connected.
   Treat that as a hard stop — do not fabricate state or outcomes.
 - Tools are idempotent on the seq number; never replay a command unless the

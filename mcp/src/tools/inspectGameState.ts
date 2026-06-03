@@ -24,6 +24,156 @@ const inputSchema = z
   })
   .strict();
 
+const inspectCardInstanceSchema = z
+  .object({
+    card_id: z
+      .union([z.string(), z.number().int()])
+      .describe("Live card instance ID from balatro_inspect_game_state, not a static entity ID."),
+    response_format: z
+      .enum(["markdown", "json"])
+      .default("markdown")
+      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
+  })
+  .strict();
+
+function normalizeCardId(value: string | number): string {
+  return String(value);
+}
+
+function cloneRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return { ...(value as Record<string, unknown>) };
+}
+
+function findEntityById(deps: Deps, entityId: unknown): Promise<Record<string, unknown> | null> {
+  if (typeof entityId !== "string" || entityId.length === 0) return Promise.resolve(null);
+  return deps.entityCatalog.get(entityId)
+    .then((entity) => entity as Record<string, unknown>)
+    .catch(() => null);
+}
+
+async function enrichCardLike(deps: Deps, value: unknown): Promise<Record<string, unknown> | null> {
+  const instance = cloneRecord(value);
+  if (!instance) return null;
+
+  const entity = await findEntityById(deps, instance.entity_id);
+  if (entity) {
+    instance.entity = {
+      id: entity.id,
+      type: entity.type,
+      name: entity.name,
+      effect_text: entity.effect_text,
+      metadata: entity.metadata,
+      source_url: entity.source_url,
+    };
+
+    if (instance.effect_text === undefined && entity.effect_text !== undefined) {
+      instance.effect_text = entity.effect_text;
+    }
+  }
+
+  return instance;
+}
+
+async function enrichArray(deps: Deps, value: unknown): Promise<unknown> {
+  if (!Array.isArray(value)) return value;
+  const enriched = await Promise.all(value.map((item) => enrichCardLike(deps, item)));
+  return enriched.map((item, index) => item ?? value[index]);
+}
+
+async function enrichShop(deps: Deps, value: unknown): Promise<unknown> {
+  const shop = cloneRecord(value);
+  if (!shop) return value;
+  for (const key of ["jokers", "vouchers", "boosters", "cards"]) {
+    if (Array.isArray(shop[key])) shop[key] = await enrichArray(deps, shop[key]);
+  }
+  return shop;
+}
+
+async function enrichPack(deps: Deps, value: unknown): Promise<unknown> {
+  const pack = cloneRecord(value);
+  if (!pack) return value;
+  if (Array.isArray(pack.options)) pack.options = await enrichArray(deps, pack.options);
+  return pack;
+}
+
+async function enrichPayload(deps: Deps, payload: unknown): Promise<Record<string, unknown>> {
+  const enriched = cloneRecord(payload) ?? {};
+  enriched.jokers = await enrichArray(deps, enriched.jokers);
+  enriched.consumables = await enrichArray(deps, enriched.consumables);
+  enriched.shop = await enrichShop(deps, enriched.shop);
+  enriched.pack = await enrichPack(deps, enriched.pack);
+  return enriched;
+}
+
+function findInArray(items: unknown, cardId: string, location: string): Record<string, unknown> | null {
+  if (!Array.isArray(items)) return null;
+  for (const item of items) {
+    const record = cloneRecord(item);
+    if (record && normalizeCardId(record.card_id as string | number) === cardId) {
+      return { location, card: record };
+    }
+  }
+  return null;
+}
+
+function findCardInstance(payload: Record<string, unknown>, cardId: string): Record<string, unknown> | null {
+  const directLocations = [
+    ["hand", "hand"],
+    ["jokers", "jokers"],
+    ["consumables", "consumables"],
+  ] as const;
+
+  for (const [field, location] of directLocations) {
+    const found = findInArray(payload[field], cardId, location);
+    if (found) return found;
+  }
+
+  const shop = cloneRecord(payload.shop);
+  if (shop) {
+    for (const field of ["jokers", "vouchers", "boosters", "cards"]) {
+      const found = findInArray(shop[field], cardId, `shop.${field}`);
+      if (found) return found;
+    }
+  }
+
+  const pack = cloneRecord(payload.pack);
+  if (pack) {
+    const found = findInArray(pack.options, cardId, "pack.options");
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function cardInstanceToMarkdown(data: object): string {
+  const d = data as Record<string, unknown>;
+  const instance = (d.instance ?? {}) as Record<string, unknown>;
+  const entity = (d.entity ?? null) as Record<string, unknown> | null;
+  const lines: string[] = [];
+
+  lines.push(`# ${instance.name ?? instance.display ?? instance.card_id ?? "Card Instance"}\n`);
+  lines.push(`**Location:** ${d.location}  `);
+  lines.push(`**Card ID:** ${instance.card_id}  `);
+  if (instance.entity_id) lines.push(`**Entity ID:** \`${instance.entity_id}\`  `);
+  if (instance.sell_value !== undefined) lines.push(`**Sell Value:** $${instance.sell_value}  `);
+  if (instance.cost !== undefined) lines.push(`**Cost:** $${instance.cost}  `);
+  if (instance.debuffed !== undefined) lines.push(`**Debuffed:** ${instance.debuffed}  `);
+  lines.push("");
+
+  if (entity?.effect_text) {
+    lines.push("## Static Entity Effect\n");
+    lines.push(`${entity.effect_text}\n`);
+  }
+
+  lines.push("## Live Instance\n");
+  lines.push("```json");
+  lines.push(JSON.stringify(instance, null, 2));
+  lines.push("```");
+
+  return lines.join("\n");
+}
+
 function stateToMarkdown(data: object): string {
   const d = data as Record<string, unknown>;
   const payload = (d.payload ?? {}) as Record<string, unknown>;
@@ -126,6 +276,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
         throw err;
       }
 
+      const payload = await enrichPayload(deps, state.payload);
       const structured: Record<string, unknown> = {
         protocol_version: state.protocol_version,
         seq: state.seq,
@@ -133,11 +284,66 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
         state_hash: state.state_hash,
         rules_uri: "balatro://rules/global",
         rules_version: state.protocol_version,
-        payload: state.payload,
+        payload,
       };
 
       const envelope = formatResponse(structured, format, {
         toMarkdown: stateToMarkdown,
+      });
+      return { ...envelope };
+    },
+  );
+
+  server.registerTool(
+    "balatro_inspect_card_instance",
+    {
+      description:
+        "Reads one live card instance from the current Balatro state by card_id and separates live per-run fields from static entity/wiki knowledge. " +
+        "Use this after balatro_inspect_game_state when you need to inspect a specific Joker, consumable, shop card, pack option, or hand card. " +
+        "card_id is the live instance handle used by action tools; entity_id identifies the static card/Joker type. " +
+        "Error codes: INVALID_TARGET (card_id not found), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).",
+      inputSchema: inspectCardInstanceSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (args) => {
+      const format: ResponseFormat = args.response_format ?? "markdown";
+      const cardId = normalizeCardId(args.card_id);
+
+      let state;
+      try {
+        state = await deps.bridgeClient.getState({ maxAgeMs: 1500 });
+      } catch (err) {
+        if (err instanceof BridgeError) {
+          const envelope = toolError(err.code, err.message);
+          return { ...envelope };
+        }
+        throw err;
+      }
+
+      const payload = await enrichPayload(deps, state.payload);
+      const found = findCardInstance(payload, cardId);
+      if (!found) {
+        return { ...toolError("INVALID_TARGET", `card_id "${cardId}" not found in current live state`) };
+      }
+
+      const instance = (await enrichCardLike(deps, found.card)) ?? (found.card as Record<string, unknown>);
+      const entity = cloneRecord(instance.entity);
+      const structured: Record<string, unknown> = {
+        card_id: cardId,
+        location: found.location,
+        instance,
+        entity,
+        seq: state.seq,
+        wrote_at: state.wrote_at,
+      };
+
+      const envelope = formatResponse(structured, format, {
+        toMarkdown: cardInstanceToMarkdown,
       });
       return { ...envelope };
     },
