@@ -176,7 +176,7 @@ local function update_heartbeat(force)
   }
 end
 
-local function queue_deferred_response(kind, result)
+local function queue_deferred_response(kind, result, request_id, client_fd)
   pending_responses[#pending_responses + 1] = {
     kind = kind,
     deferred = result.deferred,
@@ -184,6 +184,8 @@ local function queue_deferred_response(kind, result)
     started_at = love.timer.getTime(),
     timeout_seconds = result.timeout_seconds or 10,
     saw_hand_played = false,
+    request_id = request_id,
+    client_fd = client_fd,
   }
 end
 
@@ -249,16 +251,36 @@ function Commands.update_pending_responses()
       local scoring_finished = pending.saw_hand_played and G and G.STATE ~= S("HAND_PLAYED")
       if scoring_finished or timed_out then
         finish_play_hand_response(pending, timed_out)
+        if pending.request_id and Commands._jsonrpc then
+          if timed_out then
+            Commands._jsonrpc.send_error(pending.client_fd, pending.request_id, -32004, "Scoring timeout", {timed_out=true})
+          else
+            local completed = Commands._completed_deferred_responses[#Commands._completed_deferred_responses]
+            if completed then
+              Commands._jsonrpc.send_result(pending.client_fd, pending.request_id, {ok=true, data=completed.data})
+            end
+          end
+        end
         finished = true
       end
     else
+      local error_message = "Unknown deferred response kind: " .. tostring(pending.deferred)
       record_deferred_response(
         pending,
         false,
         "INTERNAL_ERROR",
-        "Unknown deferred response kind: " .. tostring(pending.deferred),
+        error_message,
         nil
       )
+      if pending.request_id and Commands._jsonrpc then
+        Commands._jsonrpc.send_error(
+          pending.client_fd,
+          pending.request_id,
+          -32032,
+          error_message,
+          { error_code = "INTERNAL_ERROR" }
+        )
+      end
       finished = true
     end
 
@@ -271,7 +293,7 @@ function Commands.update_pending_responses()
   pending_responses = Commands._pending_responses
 end
 
-function Commands.handle_request(method, params)
+function Commands.handle_request(method, params, request_id, client_fd)
   local handler = action_dispatchers[method]
   if not handler then
     return { ok = false, error_code = "UNKNOWN_METHOD", error_message = "Unknown method: " .. tostring(method) }
@@ -287,7 +309,8 @@ function Commands.handle_request(method, params)
   end
 
   if result.ok ~= false and result.deferred then
-    queue_deferred_response(method, result)
+    queue_deferred_response(method, result, request_id, client_fd)
+    return nil
   end
 
   return result

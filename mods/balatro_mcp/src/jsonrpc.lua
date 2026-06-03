@@ -38,12 +38,19 @@ local function log_debug(message)
   end
 end
 
-function JsonRpc.dispatch(client_socket, request_str)
-  -- 1. Parse JSON
-  local ok, req = pcall(JSON.decode, request_str)
-  if not ok or type(req) ~= "table" then
-    JsonRpc.send_error(client_socket, nil, STANDARD_ERRORS.PARSE_ERROR, "Parse error: " .. tostring(req))
-    return
+function JsonRpc.dispatch(client_socket, request_str_or_table)
+  -- Accept either a raw JSON string or an already-decoded table
+  -- (socket_server dispatches decoded objects, but raw strings may also be passed)
+  local req
+  if type(request_str_or_table) == "table" then
+    req = request_str_or_table
+  else
+    local ok, decoded = pcall(JSON.decode, request_str_or_table)
+    if not ok or type(decoded) ~= "table" then
+      JsonRpc.send_error(client_socket, nil, STANDARD_ERRORS.PARSE_ERROR, "Parse error: " .. tostring(decoded))
+      return
+    end
+    req = decoded
   end
 
   -- 2. Validate jsonrpc field
@@ -67,26 +74,33 @@ function JsonRpc.dispatch(client_socket, request_str)
   -- 5. Route method
   local method = req.method
   local params = req.params or {}
+  local id = req.id
 
   if method == "get_state" then
     -- Pull-based state
     if not JsonRpc.state_handler then
-      JsonRpc.send_error(client_socket, req.id, STANDARD_ERRORS.METHOD_NOT_FOUND, "State handler not registered")
+      JsonRpc.send_error(client_socket, id, STANDARD_ERRORS.METHOD_NOT_FOUND, "State handler not registered")
       return
     end
     local state = JsonRpc.state_handler()
-    JsonRpc.send_result(client_socket, req.id, state)
+    JsonRpc.send_result(client_socket, id, state)
   elseif JsonRpc.action_handler then
     -- Game action
-    local handler_ok, result = pcall(JsonRpc.action_handler, method, params)
+    local handler_ok, result = pcall(function()
+      return JsonRpc.action_handler(method, params, id, client_socket)
+    end)
     if not handler_ok then
       JsonRpc.send_error(
         client_socket,
-        req.id,
+        id,
         ERROR_CODE_MAP.INTERNAL_ERROR,
         "Action handler error: " .. tostring(result),
         { error_code = "INTERNAL_ERROR" }
       )
+      return
+    end
+
+    if result == nil then
       return
     end
 
@@ -95,19 +109,19 @@ function JsonRpc.dispatch(client_socket, request_str)
     end
 
     if result.ok then
-      JsonRpc.send_result(client_socket, req.id, { ok = true, data = result.data })
+      JsonRpc.send_result(client_socket, id, { ok = true, data = result.data })
     else
       local code = ERROR_CODE_MAP[result.error_code] or STANDARD_ERRORS.METHOD_NOT_FOUND
       JsonRpc.send_error(
         client_socket,
-        req.id,
+        id,
         code,
         result.error_message or "Action failed",
         { error_code = result.error_code }
       )
     end
   else
-    JsonRpc.send_error(client_socket, req.id, STANDARD_ERRORS.METHOD_NOT_FOUND, "Unknown method: " .. method)
+    JsonRpc.send_error(client_socket, id, STANDARD_ERRORS.METHOD_NOT_FOUND, "Unknown method: " .. method)
   end
 end
 
