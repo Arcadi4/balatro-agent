@@ -4,7 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Deps } from "../deps.js";
 import { formatResponse, type ResponseFormat } from "../response.js";
 import { toolError } from "../errors.js";
-import { BridgeError } from "../bridge/client.js";
+import { BridgeError } from "../bridge/socket-client.js";
 
 const PLAY_HAND_DESCRIPTION =
   "Plays the currently selected cards from your hand, scoring them against the active blind's chip target and consuming one of your limited hands for the round. " +

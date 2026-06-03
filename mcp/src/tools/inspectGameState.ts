@@ -4,7 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Deps } from "../deps.js";
 import { formatResponse, type ResponseFormat } from "../response.js";
 import { toolError } from "../errors.js";
-import { BridgeError } from "../bridge/client.js";
+import { BridgeError } from "../bridge/socket-client.js";
 
 const DESCRIPTION =
   "Retrieves the complete current game state snapshot from the running Balatro instance. " +

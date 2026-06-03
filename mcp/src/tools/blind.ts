@@ -4,7 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Deps } from "../deps.js";
 import { formatResponse, type ResponseFormat } from "../response.js";
 import { toolError } from "../errors.js";
-import { BridgeError } from "../bridge/client.js";
+import { BridgeError } from "../bridge/socket-client.js";
 
 const SELECT_BLIND_DESCRIPTION =
   "Selects the currently presented blind to face it for the round, transitioning the game from BLIND_SELECT into SELECTING_HAND so cards are dealt. " +

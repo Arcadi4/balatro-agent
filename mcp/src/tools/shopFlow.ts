@@ -4,7 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Deps } from "../deps.js";
 import { formatResponse, type ResponseFormat } from "../response.js";
 import { toolError } from "../errors.js";
-import { BridgeError } from "../bridge/client.js";
+import { BridgeError } from "../bridge/socket-client.js";
 
 const REROLL_SHOP_DESCRIPTION =
   "Rerolls the current shop offerings, replacing the displayed cards with a fresh set generated from the run's seed and spending the current reroll cost in dollars. " +
