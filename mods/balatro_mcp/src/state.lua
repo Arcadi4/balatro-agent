@@ -1,17 +1,14 @@
---- Balatro MCP Bridge: State Snapshot Writer
---- Snapshots game state and writes it atomically to the bridge directory.
---- Protocol: file-based IPC with atomic rename, monotonic seq, FNV-1a hash.
+--- Balatro MCP Bridge: State Snapshots
+--- Produces game state envelopes on demand.
+--- Protocol: pull-based IPC with monotonic seq.
 
 local state = {}
 
 -- Constants
 local PROTOCOL_VERSION = 1
-local THROTTLE_INTERVAL = 0.1 -- 100ms minimum between writes
 
 -- Module state
-local _seq = 0
-local _last_write_time = 0
-local _last_state_hash = nil
+state.seq = 0
 
 -------------------------------------------------------------------------------
 -- JSON encoding (use SMODS.JSON if available, else love.data or fallback)
@@ -106,52 +103,6 @@ do
   end
 end
 
--------------------------------------------------------------------------------
--- FNV-1a hash (32-bit) over a string
--- Uses bit lib (LuaJIT) with fallback to pure arithmetic for portability
--------------------------------------------------------------------------------
-
-local bxor, band
-if bit then
-  bxor = bit.bxor
-  band = bit.band
-elseif bit32 then
-  bxor = bit32.bxor
-  band = bit32.band
-else
-  bxor = function(a, b)
-    local r, m = 0, 1
-    for _ = 1, 32 do
-      local x = a % 2 + b % 2
-      if x == 1 then r = r + m end
-      a = math.floor(a / 2)
-      b = math.floor(b / 2)
-      m = m * 2
-    end
-    return r
-  end
-  band = function(a, b)
-    local r, m = 0, 1
-    for _ = 1, 32 do
-      if a % 2 == 1 and b % 2 == 1 then r = r + m end
-      a = math.floor(a / 2)
-      b = math.floor(b / 2)
-      m = m * 2
-    end
-    return r
-  end
-end
-
-local function fnv1a(str)
-  local hash = 2166136261
-  for i = 1, #str do
-    hash = bxor(hash, str:byte(i))
-    hash = band(hash * 16777619, 0xFFFFFFFF)
-  end
-  return string.format('%08x', band(hash, 0xFFFFFFFF))
-end
-
--------------------------------------------------------------------------------
 -- Card serialization helpers
 -------------------------------------------------------------------------------
 
@@ -767,75 +718,16 @@ function state.snapshot()
 end
 
 -------------------------------------------------------------------------------
--- Atomic write to bridge directory
+-- On-demand state envelope
 -------------------------------------------------------------------------------
 
-function state.write(bridge_dir)
-  local payload = state.snapshot()
-  if not payload then return false end
-
-  -- Increment sequence
-  _seq = _seq + 1
-
-  -- Build envelope
-  local envelope = {
+function state.get_state_envelope()
+  state.seq = state.seq + 1
+  return {
     protocol_version = PROTOCOL_VERSION,
-    seq = _seq,
-    wrote_at = love.timer.getTime(),
-    payload = payload,
+    seq = state.seq,
+    payload = state.snapshot(),
   }
-
-  -- Encode to JSON
-  local json_str = json_encode(envelope)
-  if not json_str then return false end
-
-  -- Compute state hash (FNV-1a)
-  envelope.state_hash = fnv1a(json_str)
-  -- Re-encode with hash included
-  json_str = json_encode(envelope)
-
-  -- Atomic write: write to .tmp then rename
-  local tmp_path = bridge_dir .. '/state.json.tmp'
-  local final_path = bridge_dir .. '/state.json'
-
-  local f, err = io.open(tmp_path, 'w')
-  if not f then
-    -- Ensure bridge dir exists and retry
-    os.execute('mkdir -p "' .. bridge_dir .. '"')
-    f, err = io.open(tmp_path, 'w')
-    if not f then return false end
-  end
-
-  f:write(json_str)
-  f:close()
-
-  -- Atomic rename
-  local ok, rename_err = os.rename(tmp_path, final_path)
-  if not ok then return false end
-
-  _last_state_hash = envelope.state_hash
-  return true
-end
-
--------------------------------------------------------------------------------
--- Throttled update (call from love.update)
--------------------------------------------------------------------------------
-
-function state.update(bridge_dir)
-  local now = love.timer.getTime()
-
-  -- Throttle: at most every THROTTLE_INTERVAL
-  if (now - _last_write_time) < THROTTLE_INTERVAL then
-    return false
-  end
-
-  -- Quick change detection: check if G.STATE or seq-relevant fields changed
-  -- For simplicity, always write on throttle boundary (100ms is cheap)
-  local wrote = state.write(bridge_dir)
-  if wrote then
-    _last_write_time = now
-  end
-  return wrote
 end
 
 -------------------------------------------------------------------------------
@@ -843,11 +735,7 @@ end
 -------------------------------------------------------------------------------
 
 function state.get_seq()
-  return _seq
-end
-
-function state.get_last_hash()
-  return _last_state_hash
+  return state.seq
 end
 
 return state
