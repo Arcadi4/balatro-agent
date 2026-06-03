@@ -86,7 +86,7 @@ The server exposes tools with the `balatro_` prefix, including:
 | Shop      | `balatro_buy_card`, `balatro_buy_and_use_card`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
 | Cards     | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers`                                         |
 | Boosters  | `balatro_open_booster`, `balatro_select_booster_card`, `balatro_skip_booster`                                   |
-| Knowledge | `balatro_list_game_entities`, `balatro_get_game_entity`                                                         |
+| Knowledge | `balatro_list_game_entities`, `balatro_read_entity_wiki`, `balatro_inspect_card_instance`                       |
 
 It also registers:
 

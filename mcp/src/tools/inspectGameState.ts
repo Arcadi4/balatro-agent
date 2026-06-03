@@ -52,6 +52,22 @@ function findEntityById(deps: Deps, entityId: unknown): Promise<Record<string, u
     .catch(() => null);
 }
 
+function compactEntity(entity: Record<string, unknown>): Record<string, unknown> {
+  const metadata = cloneRecord(entity.metadata) ?? {};
+  const compact: Record<string, unknown> = {
+    id: entity.id,
+    name: entity.name,
+    effect_text: entity.effect_text,
+    source_url: entity.source_url,
+  };
+
+  for (const key of ["game_key", "rarity", "cost", "sell_value", "data_status"] as const) {
+    if (metadata[key] !== undefined) compact[key] = metadata[key];
+  }
+
+  return compact;
+}
+
 async function enrichCardLike(deps: Deps, value: unknown): Promise<Record<string, unknown> | null> {
   const instance = cloneRecord(value);
   if (!instance) return null;
@@ -59,12 +75,7 @@ async function enrichCardLike(deps: Deps, value: unknown): Promise<Record<string
   const entity = await findEntityById(deps, instance.entity_id);
   if (entity) {
     instance.entity = {
-      id: entity.id,
-      type: entity.type,
-      name: entity.name,
-      effect_text: entity.effect_text,
-      metadata: entity.metadata,
-      source_url: entity.source_url,
+      ...compactEntity(entity),
     };
 
     if (instance.effect_text === undefined && entity.effect_text !== undefined) {

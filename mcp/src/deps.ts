@@ -1,7 +1,7 @@
 import type { BridgeClient } from "./bridge/client.js";
 
 export interface EntityCatalog {
-  list(options?: { type?: string; limit?: number; offset?: number }): Promise<unknown>;
+  list(options?: { type?: string; name_contains?: string; limit?: number; offset?: number }): Promise<unknown>;
   get(canonicalId: string): Promise<unknown>;
 }
 

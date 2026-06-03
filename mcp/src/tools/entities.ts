@@ -9,7 +9,7 @@ const LIST_DESCRIPTION =
   "Lists static Balatro entity/wiki records from the entity catalog with optional type filtering and pagination. " +
   "Entities include jokers, tarot cards, planet cards, spectrals, vouchers, decks, blinds, tags, boosters, " +
   "enhancements, editions, seals, stakes, poker hands, stickers, challenges, and achievements. " +
-  "Use the 'type' parameter to filter by entity category (e.g. 'joker', 'tarot', 'planet'). " +
+  "Use the 'type' parameter to filter by entity category (e.g. 'joker', 'tarot', 'planet') and 'name_contains' for discovery by display name. " +
   "Results are paginated — use 'offset' and 'limit' to page through large result sets. " +
   "Error codes: INVALID_TARGET (unknown entity type).";
 
@@ -39,6 +39,10 @@ const listInputSchema = z
       .min(0)
       .default(0)
       .describe("Number of entities to skip for pagination. Default 0."),
+    name_contains: z
+      .string()
+      .optional()
+      .describe("Case-insensitive display-name substring filter, e.g. 'joker', 'fortune', or 'trio'."),
     response_format: z
       .enum(["markdown", "json"])
       .default("markdown")
@@ -75,12 +79,32 @@ function listToMarkdown(data: object): string {
   if (d.has_more) lines.push(`**Next offset:** ${d.next_offset}`);
   lines.push("");
 
+  if (items.length > 0) {
+    lines.push("| ID | Name | Rarity | Status |");
+    lines.push("|---|---|---|---|");
+  }
+
   for (const item of items) {
-    lines.push(`## ${item.name} (\`${item.id}\`)\n`);
-    if (item.effect_text) lines.push(`${item.effect_text}\n`);
+    lines.push(
+      `| \`${item.id}\` | ${item.name ?? "?"} | ${item.rarity ?? ""} | ${item.data_status ?? ""} |`,
+    );
   }
 
   return lines.join("\n");
+}
+
+function compactListItem(item: Record<string, unknown>): Record<string, unknown> {
+  const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+  const compact: Record<string, unknown> = {
+    id: item.id,
+    name: item.name,
+  };
+
+  for (const key of ["game_key", "rarity", "cost", "sell_value", "data_status"] as const) {
+    if (metadata[key] !== undefined) compact[key] = metadata[key];
+  }
+
+  return compact;
 }
 
 function entityToMarkdown(data: object): string {
@@ -144,6 +168,7 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
 
       const result = (await deps.entityCatalog.list({
         type: args.type,
+        name_contains: args.name_contains,
         limit,
         offset,
       })) as {
@@ -155,8 +180,10 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
         next_offset: number | null;
       };
 
+      const items = result.items.map(compactListItem);
+
       const structured: Record<string, unknown> = {
-        items: result.items,
+        items,
         total: result.total,
         count: result.count,
         offset: result.offset,
