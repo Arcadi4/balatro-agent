@@ -60,11 +60,11 @@ Balatro + Lovely + SMODS + balatro_mcp mod
 
 Use `make` from the repository root for the local development workflow:
 
-| Command | Description |
-| --- | --- |
-| `make doctor` | Check local Balatro, Lovely, and SMODS paths. |
+| Command             | Description                                                       |
+| ------------------- | ----------------------------------------------------------------- |
+| `make doctor`       | Check local Balatro, Lovely, and SMODS paths.                     |
 | `make install-mods` | Sync repo mods into `~/Library/Application Support/Balatro/Mods`. |
-| `make run` | Sync repo mods, then launch Balatro with Lovely. |
+| `make run`          | Sync repo mods, then launch Balatro with Lovely.                  |
 
 Override local paths when needed, for example:
 
@@ -78,20 +78,22 @@ Build the MCP server from `mcp/`, then configure your MCP client to launch `mcp/
 
 The server exposes tools with the `balatro_` prefix, including:
 
-| Area      | Tools                                                                                                           |
-| --------- | --------------------------------------------------------------------------------------------------------------- |
-| State     | `balatro_inspect_game_state`                                                                                    |
-| Blinds    | `balatro_select_blind`, `balatro_skip_blind`                                                                    |
-| Hand play | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand`                   |
-| Shop      | `balatro_buy_card`, `balatro_buy_and_use_card`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
-| Cards     | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers`                                         |
-| Boosters  | `balatro_open_booster`, `balatro_select_booster_card`, `balatro_skip_booster`                                   |
-| Knowledge | `balatro_list_game_entities`, `balatro_read_entity_wiki`, `balatro_inspect_card_instance`                       |
+| Area      | Tools                                                                                                               |
+| --------- | ------------------------------------------------------------------------------------------------------------------- |
+| State     | `balatro_inspect_game_state`                                                                                        |
+| Blinds    | `balatro_select_blind`, `balatro_skip_blind`                                                                        |
+| Hand play | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand`                       |
+| Shop      | `balatro_buy_card`, `balatro_buy_and_use_card`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out`     |
+| Cards     | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers`                                             |
+| Boosters  | `balatro_open_booster`, `balatro_select_booster_card`, `balatro_skip_booster`                                       |
+| Knowledge | `balatro_get_game_rules`, `balatro_list_game_entities`, `balatro_read_entity_wiki`, `balatro_inspect_card_instance` |
 
 It also registers:
 
 - `balatro://rules/global` as a static rules resource.
 - `balatro_strategy_context` as a strategy prompt for agents.
+
+Gameplay agents should call `balatro_get_game_rules` before starting or resuming a run, then call `balatro_inspect_game_state` before each action.
 
 ## Validation
 

@@ -59,11 +59,11 @@ Balatro + Lovely + SMODS + balatro_mcp mod
 
 请在仓库根目录使用 `make` 管理本地开发流程：
 
-| 命令 | 说明 |
-| --- | --- |
-| `make doctor` | 检查本机 Balatro、Lovely 与 SMODS 路径。 |
+| 命令                | 说明                                                                 |
+| ------------------- | -------------------------------------------------------------------- |
+| `make doctor`       | 检查本机 Balatro、Lovely 与 SMODS 路径。                             |
 | `make install-mods` | 将仓库内的 Mod 同步到 `~/Library/Application Support/Balatro/Mods`。 |
-| `make run` | 同步仓库内的 Mod，然后通过 Lovely 启动 Balatro。 |
+| `make run`          | 同步仓库内的 Mod，然后通过 Lovely 启动 Balatro。                     |
 
 需要时可以覆盖本地路径，例如：
 
@@ -77,20 +77,22 @@ make doctor BALATRO_DIR="/path/to/Balatro" BALATRO_SAVE="/path/to/Balatro/save"
 
 服务器暴露带有 `balatro_` 前缀的工具，包括：
 
-| 范围 | 工具 |
-| --- | --- |
-| 状态 | `balatro_inspect_game_state` |
-| 盲注 | `balatro_select_blind`, `balatro_skip_blind` |
-| 手牌行动 | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand` |
-| 商店 | `balatro_buy_card`, `balatro_buy_and_use_card`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
-| 卡牌 | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers` |
-| 补充包 | `balatro_open_booster`, `balatro_select_booster_card`, `balatro_skip_booster` |
-| 知识 | `balatro_list_game_entities`, `balatro_read_entity_wiki`, `balatro_inspect_card_instance` |
+| 范围     | 工具                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------- |
+| 状态     | `balatro_inspect_game_state`                                                                                        |
+| 盲注     | `balatro_select_blind`, `balatro_skip_blind`                                                                        |
+| 手牌行动 | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand`                       |
+| 商店     | `balatro_buy_card`, `balatro_buy_and_use_card`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out`     |
+| 卡牌     | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers`                                             |
+| 补充包   | `balatro_open_booster`, `balatro_select_booster_card`, `balatro_skip_booster`                                       |
+| 知识     | `balatro_get_game_rules`, `balatro_list_game_entities`, `balatro_read_entity_wiki`, `balatro_inspect_card_instance` |
 
 它还注册了：
 
 - `balatro://rules/global` 静态规则资源。
 - `balatro_strategy_context` 策略 prompt。
+
+游戏智能体应在开始或继续一局前调用 `balatro_get_game_rules`，并在每次行动前调用 `balatro_inspect_game_state`。
 
 ## 验证
 

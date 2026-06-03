@@ -10,8 +10,10 @@ import { registerShopFlowTools } from "./shopFlow.js";
 import { registerBoosterTools } from "./booster.js";
 import { registerReorderJokersTool } from "./reorderJokers.js";
 import { registerEntityTools } from "./entities.js";
+import { registerRulesTool } from "./rules.js";
 
 export function registerAllTools(server: McpServer, deps: Deps): void {
+  registerRulesTool(server, deps);
   registerInspectGameState(server, deps);
   registerBlindTools(server, deps);
   registerHandTools(server, deps);
