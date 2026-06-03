@@ -1,0 +1,10 @@
+{
+  "id": "balatro_mcp",
+  "name": "Balatro MCP",
+  "author": ["4rcadia"],
+  "description": "Exposes in-game data and functions to the MCP server.",
+  "prefix": "mcp",
+  "main_file": "main.lua",
+  "version": "0.1.0",
+  "priority": 0
+}
