@@ -16,7 +16,8 @@ const USE_CONSUMABLE_DESCRIPTION =
 const SELL_CARD_DESCRIPTION =
   "Sells a card (Joker or consumable) from your slots for its sell value in dollars, permanently removing it from your possession. " +
   "Use this when you need cash to buy a better card from the shop, when a Joker no longer fits your build, or when you need to free up a slot for an incoming card. " +
-  "Do NOT call this on cards in your hand (playing cards cannot be sold this way), on cards not present in your Joker or consumable slots, or outside of a phase where selling is permitted. " +
+  "Selling is available in stable interaction phases including blind select, hand selection, cash-out, and shop; it is not available during scoring/draw animations or while resolving Booster Packs. " +
+  "Do NOT call this on cards in your hand (playing cards cannot be sold this way), on cards not present in your Joker or consumable slots, or during animation/pack-resolution phases. " +
   "Error codes: INVALID_TARGET (card_id not found in sellable slots), WRONG_PHASE (selling not allowed in current phase), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const useConsumableSchema = z
