@@ -1,4 +1,4 @@
-import type { BridgeClient } from "./bridge/client.js";
+import type { BridgeClient } from "./bridge/socket-client.js";
 
 export interface EntityCatalog {
   list(options?: { type?: string; name_contains?: string; limit?: number; offset?: number }): Promise<unknown>;

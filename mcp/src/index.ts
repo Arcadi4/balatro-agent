@@ -1,6 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BridgeClient } from "./bridge/client.js";
+import { BridgeClient } from "./bridge/socket-client.js";
 import type { Deps } from "./deps.js";
 import { EntityCatalog } from "./entities/catalog.js";
 import { getRulesContent } from "./resources/rules.js";
