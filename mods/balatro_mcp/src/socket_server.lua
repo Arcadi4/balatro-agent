@@ -6,8 +6,6 @@ local C = ffi.C
 
 ffi.cdef[[
   struct sockaddr;
-  typedef struct fd_set fd_set;
-
   // Socket creation and management
   int socket(int domain, int type, int protocol);
   int bind(int sockfd, const struct sockaddr *addr, unsigned int addrlen);
@@ -16,26 +14,27 @@ ffi.cdef[[
   int close(int fd);
 
   // I/O
-  int read(int fd, void *buf, unsigned int count);
-  int write(int fd, const void *buf, unsigned int count);
+  long read(int fd, void *buf, unsigned long count);
+  long write(int fd, const void *buf, unsigned long count);
 
   // Non-blocking
   int fcntl(int fd, int cmd, ...);
 
-  // Select for non-blocking polling
-  int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *errorfds, struct timeval *timeout);
+  // Poll for readiness without blocking the game loop
+  typedef unsigned int nfds_t;
+  typedef struct pollfd {
+    int fd;
+    short events;
+    short revents;
+  } pollfd;
+  int poll(struct pollfd *fds, nfds_t nfds, int timeout);
 
-  // Socket address
+  // macOS Unix socket address
   typedef struct {
-    unsigned short sun_family;
-    char sun_path[108];
+    unsigned char sun_len;
+    unsigned char sun_family;
+    char sun_path[104];
   } sockaddr_un;
-
-  // timeval for select
-  typedef struct timeval {
-    long tv_sec;
-    long tv_usec;
-  } timeval;
 
   // Constants
   static const int AF_UNIX = 1;
@@ -45,6 +44,9 @@ ffi.cdef[[
   static const int F_GETFL = 3;          // macOS value
   static const int SOL_SOCKET = 1;       // macOS value
   static const int SO_REUSEADDR = 2;     // macOS value
+  static const short POLLIN = 0x0001;    // macOS/Linux value
+  static const short POLLHUP = 0x0010;   // macOS/Linux value
+  static const short POLLERR = 0x0008;   // macOS/Linux value
 ]]
 
 local SocketServer = {}
@@ -60,6 +62,7 @@ local initialized = false
 local has_client = false
 local line_buffer = ""
 local read_buffer = ffi.new("char[?]", READ_BUFFER_SIZE)
+local poll_fds = ffi.new("pollfd[1]")
 
 SocketServer.on_request_callback = nil
 
@@ -93,6 +96,35 @@ local function set_nonblocking(fd)
   end
 
   return true
+end
+
+local function poll_readable(fd)
+  poll_fds[0].fd = fd
+  poll_fds[0].events = C.POLLIN
+  poll_fds[0].revents = 0
+
+  local ready = C.poll(poll_fds, 1, 0)
+  if ready < 0 then
+    local errno = ffi.errno()
+    if not errno_is_would_block(errno) then
+      return false, true, errno
+    end
+    return false, false, errno
+  end
+
+  if ready == 0 then
+    return false, false, nil
+  end
+
+  local revents = tonumber(poll_fds[0].revents) or 0
+  if math.floor(revents / tonumber(C.POLLERR)) % 2 == 1 then
+    return false, true, nil
+  end
+  if math.floor(revents / tonumber(C.POLLHUP)) % 2 == 1 then
+    return false, true, nil
+  end
+
+  return math.floor(revents / tonumber(C.POLLIN)) % 2 == 1, false, nil
 end
 
 local function close_client(reason)
@@ -153,6 +185,13 @@ end
 local function accept_pending_client()
   if server_fd < 0 then return end
 
+  local readable, failed, errno = poll_readable(server_fd)
+  if failed then
+    log("Socket accept poll failed" .. (errno and (" (errno " .. tostring(errno) .. ")") or ""))
+    return
+  end
+  if not readable then return end
+
   local accepted_fd = C.accept(server_fd, nil, nil)
   if accepted_fd < 0 then
     local errno = ffi.errno()
@@ -185,6 +224,14 @@ local MAX_LINE_BUFFER_SIZE = 65536
 
 local function read_from_client()
   if not has_client or client_fd < 0 then return end
+
+  local readable, failed, errno = poll_readable(client_fd)
+  if failed then
+    log("Socket client poll failed" .. (errno and (" (errno " .. tostring(errno) .. ")") or ""))
+    close_client("poll failed")
+    return
+  end
+  if not readable then return end
 
   local bytes_read = C.read(client_fd, read_buffer, READ_BUFFER_SIZE)
   if bytes_read > 0 then
@@ -229,6 +276,7 @@ function SocketServer.init()
   end
 
   local addr = ffi.new("sockaddr_un")
+  addr.sun_len = ffi.sizeof(addr)
   addr.sun_family = C.AF_UNIX
   ffi.copy(addr.sun_path, SOCKET_PATH, #SOCKET_PATH)
 
