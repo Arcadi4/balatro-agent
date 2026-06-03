@@ -1,1 +1,190 @@
-[]
+[
+  {
+    "id": "joker/constellation",
+    "type": "joker",
+    "name": "Constellation",
+    "slug": "constellation",
+    "aliases": [
+      "j_constellation"
+    ],
+    "effect_text": "This Joker gains X0.1 Mult every time a Planet card is used (Currently X1 Mult).",
+    "effect_html": null,
+    "metadata": {
+      "game_key": "j_constellation",
+      "rarity": "Uncommon",
+      "cost": 6,
+      "sell_value": 3,
+      "config": {
+        "extra": 0.1,
+        "Xmult": 1
+      },
+      "runtime_fields": [
+        "card.ability.extra.Xmult",
+        "card.ability.x_mult"
+      ],
+      "unlock_requirement": "Available from start",
+      "blueprint_compat": true,
+      "perishable_compat": false,
+      "eternal_compat": true
+    },
+    "source_url": "https://balatrowiki.org/w/Constellation",
+    "license": "CC BY-NC-SA 3.0",
+    "wiki_revision": 0
+  },
+  {
+    "id": "joker/fortune_teller",
+    "type": "joker",
+    "name": "Fortune Teller",
+    "slug": "fortune_teller",
+    "aliases": [
+      "j_fortune_teller"
+    ],
+    "effect_text": "+1 Mult per Tarot card used this run (Currently +0).",
+    "effect_html": null,
+    "metadata": {
+      "game_key": "j_fortune_teller",
+      "rarity": "Common",
+      "cost": 6,
+      "sell_value": 3,
+      "config": {
+        "extra": 1
+      },
+      "runtime_fields": [
+        "G.GAME.consumeable_usage_total.tarot",
+        "card.ability.extra"
+      ],
+      "unlock_requirement": "Available from start",
+      "blueprint_compat": true,
+      "perishable_compat": true,
+      "eternal_compat": true
+    },
+    "source_url": "https://balatrowiki.org/w/Fortune_Teller",
+    "license": "CC BY-NC-SA 3.0",
+    "wiki_revision": 0
+  },
+  {
+    "id": "joker/odd_todd",
+    "type": "joker",
+    "name": "Odd Todd",
+    "slug": "odd_todd",
+    "aliases": [
+      "j_odd_todd"
+    ],
+    "effect_text": "Played cards with odd rank give +31 Chips when scored (A, 9, 7, 5, 3).",
+    "effect_html": null,
+    "metadata": {
+      "game_key": "j_odd_todd",
+      "rarity": "Common",
+      "cost": 4,
+      "sell_value": 2,
+      "config": {
+        "chips": 31
+      },
+      "runtime_fields": [
+        "card.ability.extra.chips"
+      ],
+      "unlock_requirement": "Available from start",
+      "blueprint_compat": true,
+      "perishable_compat": true,
+      "eternal_compat": true
+    },
+    "source_url": "https://balatrowiki.org/w/Odd_Todd",
+    "license": "CC BY-NC-SA 3.0",
+    "wiki_revision": 0
+  },
+  {
+    "id": "joker/popcorn",
+    "type": "joker",
+    "name": "Popcorn",
+    "slug": "popcorn",
+    "aliases": [
+      "j_popcorn"
+    ],
+    "effect_text": "+20 Mult. -4 Mult per round played. Destroyed at 0 Mult.",
+    "effect_html": null,
+    "metadata": {
+      "game_key": "j_popcorn",
+      "rarity": "Common",
+      "cost": 5,
+      "sell_value": 2,
+      "config": {
+        "mult": 20,
+        "extra": 4
+      },
+      "runtime_fields": [
+        "card.ability.mult",
+        "card.ability.extra"
+      ],
+      "unlock_requirement": "Available from start",
+      "blueprint_compat": true,
+      "perishable_compat": true,
+      "eternal_compat": false
+    },
+    "source_url": "https://balatrowiki.org/w/Popcorn",
+    "license": "CC BY-NC-SA 3.0",
+    "wiki_revision": 0
+  },
+  {
+    "id": "joker/sock_and_buskin",
+    "type": "joker",
+    "name": "Sock and Buskin",
+    "slug": "sock_and_buskin",
+    "aliases": [
+      "j_sock_and_buskin"
+    ],
+    "effect_text": "Retrigger all played face cards.",
+    "effect_html": null,
+    "metadata": {
+      "game_key": "j_sock_and_buskin",
+      "rarity": "Uncommon",
+      "cost": 6,
+      "sell_value": 3,
+      "config": {
+        "extra": 1
+      },
+      "runtime_fields": [
+        "card.ability.extra"
+      ],
+      "unlock_requirement": "Play 300 face cards across all runs",
+      "blueprint_compat": true,
+      "perishable_compat": true,
+      "eternal_compat": true
+    },
+    "source_url": "https://balatrowiki.org/w/Sock_and_Buskin",
+    "license": "CC BY-NC-SA 3.0",
+    "wiki_revision": 0
+  },
+  {
+    "id": "joker/trio",
+    "type": "joker",
+    "name": "The Trio",
+    "slug": "trio",
+    "aliases": [
+      "j_trio",
+      "joker/the_trio",
+      "the_trio"
+    ],
+    "effect_text": "X3 Mult if played hand contains a Three of a Kind.",
+    "effect_html": null,
+    "metadata": {
+      "game_key": "j_trio",
+      "rarity": "Rare",
+      "cost": 8,
+      "sell_value": 4,
+      "config": {
+        "Xmult": 3,
+        "type": "Three of a Kind"
+      },
+      "runtime_fields": [
+        "card.ability.extra.Xmult"
+      ],
+      "unlock_requirement": "Win a run without playing a Three of a Kind",
+      "blueprint_compat": true,
+      "perishable_compat": true,
+      "eternal_compat": true
+    },
+    "source_url": "https://balatrowiki.org/w/The_Trio",
+    "license": "CC BY-NC-SA 3.0",
+    "wiki_revision": 0
+  }
+]
