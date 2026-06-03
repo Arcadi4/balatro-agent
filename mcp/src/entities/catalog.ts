@@ -7,6 +7,7 @@ export interface EntityRecord {
   type: EntityType;
   name: string;
   slug: string;
+  aliases?: string[];
   effect_text: string | null;
   effect_html: string | null;
   metadata: Record<string, unknown>;
@@ -33,6 +34,7 @@ export class EntityCatalog {
   private readonly dataDir: string;
   private index: IndexEntry[] | null = null;
   private typeCache = new Map<string, EntityRecord[]>();
+  private aliasCache: Map<string, string> | null = null;
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -55,6 +57,83 @@ export class EntityCatalog {
     const records = JSON.parse(raw) as EntityRecord[];
     this.typeCache.set(type, records);
     return records;
+  }
+
+  private normalizeLookupKey(value: string): string {
+    return value.trim().normalize("NFKC").replace(/\s+/g, "_").toLowerCase();
+  }
+
+  private loadAliases(): Map<string, string> {
+    if (this.aliasCache) return this.aliasCache;
+
+    const aliases = new Map<string, string>();
+    for (const type of ENTITY_TYPES) {
+      for (const record of this.loadType(type)) {
+        const keys = [
+          record.id,
+          record.slug,
+          record.name,
+          `${record.type}/${record.slug}`,
+          ...(record.aliases ?? []),
+        ];
+
+        for (const key of keys) {
+          aliases.set(this.normalizeLookupKey(key), record.id);
+        }
+      }
+    }
+
+    this.aliasCache = aliases;
+    return aliases;
+  }
+
+  private getEntityExact(id: string): EntityRecord | null {
+    const slashIdx = id.indexOf("/");
+    if (slashIdx === -1) return null;
+    const type = id.slice(0, slashIdx);
+    if (!ENTITY_TYPES.includes(type as EntityType)) return null;
+    const records = this.loadType(type);
+    return records.find((r) => r.id === id) ?? null;
+  }
+
+  private titleFromSlug(slug: string): string {
+    return slug
+      .split("_")
+      .filter((part) => part.length > 0)
+      .map((part) => part[0].toUpperCase() + part.slice(1))
+      .join(" ");
+  }
+
+  private jokerFallback(id: string): EntityRecord | null {
+    const normalized = this.normalizeLookupKey(id);
+    let slug: string | null = null;
+
+    if (normalized.startsWith("j_")) {
+      slug = normalized.slice(2);
+    } else if (normalized.startsWith("joker/")) {
+      slug = normalized.slice("joker/".length);
+    }
+
+    if (!slug || !/^[a-z0-9_]+$/.test(slug)) return null;
+
+    const name = this.titleFromSlug(slug);
+    return {
+      id: `joker/${slug}`,
+      type: "joker",
+      name,
+      slug,
+      aliases: [`j_${slug}`],
+      effect_text: null,
+      effect_html: null,
+      metadata: {
+        game_key: `j_${slug}`,
+        data_status: "missing_curated_effect",
+        note: "Static effect data is not seeded yet; use the source_url or live instance fields for additional context.",
+      },
+      source_url: `https://balatrowiki.org/w/${name.replace(/ /g, "_")}`,
+      license: "CC BY-NC-SA 3.0",
+      wiki_revision: 0,
+    };
   }
 
   listEntities(opts: {
@@ -104,19 +183,26 @@ export class EntityCatalog {
   }
 
   getEntity(id: string): EntityRecord {
+    const exact = this.getEntityExact(id);
+    if (exact) return exact;
+
+    const aliasTarget = this.loadAliases().get(this.normalizeLookupKey(id));
+    if (aliasTarget) {
+      const aliasMatch = this.getEntityExact(aliasTarget);
+      if (aliasMatch) return aliasMatch;
+    }
+
+    const fallback = this.jokerFallback(id);
+    if (fallback) return fallback;
+
     const slashIdx = id.indexOf("/");
     if (slashIdx === -1) {
-      throw new Error(`INVALID_TARGET: malformed entity ID "${id}" — expected "type/Name"`);
+      throw new Error(`INVALID_TARGET: entity "${id}" not found — pass an internal-key canonical ID like "joker/trio", a raw game key like "j_trio", or a known display name`);
     }
     const type = id.slice(0, slashIdx);
     if (!ENTITY_TYPES.includes(type as EntityType)) {
       throw new Error(`INVALID_TARGET: unknown entity type "${type}"`);
     }
-    const records = this.loadType(type);
-    const found = records.find((r) => r.id === id);
-    if (!found) {
-      throw new Error(`INVALID_TARGET: entity "${id}" not found`);
-    }
-    return found;
+    throw new Error(`INVALID_TARGET: entity "${id}" not found`);
   }
 }

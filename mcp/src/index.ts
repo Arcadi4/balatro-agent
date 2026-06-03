@@ -9,7 +9,7 @@ import { runServer } from "./server.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const ENTITIES_DATA_DIR = resolve(__dirname, "../../data/entities");
+const ENTITIES_DATA_DIR = resolve(__dirname, "../data/entities");
 
 async function main(): Promise<void> {
   const bridgeClient = new BridgeClient();
