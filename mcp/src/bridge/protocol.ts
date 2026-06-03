@@ -66,6 +66,7 @@ export const ErrorCodeMap: Record<string, number> = Object.freeze({
   WRONG_PHASE: -32010,
   INVALID_TARGET: -32011,
   INSUFFICIENT_FUNDS: -32012,
+  NO_SLOT: -32013,
   SLOTS_FULL: -32013,
   ETERNAL_BLOCKED: -32014,
   PACK_LIMIT_REACHED: -32015,
@@ -103,6 +104,9 @@ export function toJsonRpcError(errorCode: string, message: string, data?: unknow
  * Returns "UNKNOWN" if not found.
  */
 export function errorCodeToString(code: number): string {
+  if (code === STANDARD_ERRORS.PARSE_ERROR.code) return "PARSE_ERROR";
+  if (code === STANDARD_ERRORS.INVALID_REQUEST.code) return "INVALID_REQUEST";
+  if (code === STANDARD_ERRORS.METHOD_NOT_FOUND.code) return "UNKNOWN_METHOD";
   return ReverseErrorMap[code] ?? "UNKNOWN";
 }
 

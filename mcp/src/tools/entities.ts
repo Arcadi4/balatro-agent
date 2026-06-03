@@ -12,7 +12,7 @@ const LIST_DESCRIPTION =
   "Reads Balatro entity prototypes from the running game runtime, not the local wiki catalog. " +
   "Use this to inspect in-game descriptions, prototype config, and any live card instances matching an entity. " +
   "Pass id for one entity (e.g. 'j_odd_todd' or 'joker/odd_todd'), or type/name_contains with pagination for discovery. " +
-  "Error codes: GAME_NOT_RUNNING (Balatro bridge unavailable), INVALID_TARGET (unknown runtime entity).";
+  "Error codes: GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), INVALID_TARGET (unknown runtime entity).";
 
 const GET_DESCRIPTION =
   "Fetches the actual Balatro Wiki page body for an entity and returns clean, compact, model-readable text. " +

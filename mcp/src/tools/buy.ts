@@ -11,13 +11,13 @@ const BUY_CARD_DESCRIPTION =
   "Purchases a card from the shop. Jokers are placed into Joker slots, Tarot/Planet/Spectral cards are placed into consumable slots, and Vouchers are redeemed immediately as permanent run effects. " +
   "Use this when you have enough dollars and an open slot for the card type, or when you want to redeem the shop Voucher. " +
   "Do NOT call this outside of the SHOP phase, on a card_id that is not currently in the shop, or when you lack the dollars or the slot capacity to receive it; use balatro_buy_and_use_card if your intent is to buy a consumable and immediately apply its effect. " +
-  "Error codes: WRONG_PHASE (not in SHOP), INVALID_TARGET (card_id not present in current shop offerings), INSUFFICIENT_FUNDS (not enough dollars to purchase), NO_SLOT (no open slot for this card type), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in SHOP), INVALID_TARGET (card_id not present in current shop offerings), INSUFFICIENT_FUNDS (not enough dollars to purchase), SLOTS_FULL (no open slot for this card type), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const BUY_AND_USE_CARD_DESCRIPTION =
   "Purchases a consumable card (Tarot, Planet, or Spectral) from the shop and immediately uses it in a single atomic action, applying its effect to the game state and bypassing the consumable slot entirely. " +
   "Use this when you want to spend dollars on a consumable purely for its immediate effect — for example, buying a Tarot to enhance specific hand cards via the optional targets array, or buying a Planet to upgrade a poker hand level. " +
   "Do NOT call this outside of the SHOP phase, on Joker or Voucher cards (they cannot be 'used'), on a card_id not present in the current shop, or when you lack the dollars to afford it; pass targets only for consumables that operate on specific cards (e.g. Tarots that enhance hand cards). " +
-  "Error codes: WRONG_PHASE (not in SHOP), INVALID_TARGET (card_id not in shop, not a usable consumable, or one or more targets not valid for this consumable), INSUFFICIENT_FUNDS (not enough dollars to purchase), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in SHOP), INVALID_TARGET (card_id not in shop, not a usable consumable, or one or more targets not valid for this consumable), INSUFFICIENT_FUNDS (not enough dollars to purchase), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const buyCardSchema = z
   .object({

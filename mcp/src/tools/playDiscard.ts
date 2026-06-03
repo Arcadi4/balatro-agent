@@ -10,13 +10,13 @@ const PLAY_HAND_DESCRIPTION =
   "Plays the currently selected cards from your hand, scoring them against the active blind's chip target and consuming one of your limited hands for the round. " +
   "Use this after selecting cards via balatro_select_cards_for_hand when you are confident the resulting poker hand scores enough chips to make progress toward (or defeat) the blind. " +
   "Do NOT call this outside of the SELECTING_HAND phase, and do NOT call it when no cards are selected — select cards first with balatro_select_cards_for_hand. " +
-  "Error codes: WRONG_PHASE (not in SELECTING_HAND), INVALID_TARGET (no cards currently selected for play), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in SELECTING_HAND), INVALID_TARGET (no cards currently selected for play), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const DISCARD_HAND_DESCRIPTION =
   "Discards the currently selected cards from your hand, drawing replacements from the deck and consuming one of your limited discards for the round. " +
   "Use this after selecting cards via balatro_select_cards_for_hand when you want to cycle unwanted cards in search of better scoring combinations before committing a play. " +
   "Do NOT call this outside of the SELECTING_HAND phase, and do NOT call it when you have zero discards remaining — check game state first. " +
-  "Error codes: WRONG_PHASE (not in SELECTING_HAND), INVALID_TARGET (no cards currently selected for discard or zero discards remaining), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in SELECTING_HAND), INVALID_TARGET (no cards currently selected for discard or zero discards remaining), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const inputSchema = z
   .object({

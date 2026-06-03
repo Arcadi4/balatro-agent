@@ -11,13 +11,13 @@ const SELECT_HAND_CARDS_DESCRIPTION =
   "Highlights (selects) specific cards in the player's hand for a subsequent play or discard action, using replace-mode semantics so each call replaces any previously selected cards entirely with the new set. " +
   "Pass an empty array to deselect all cards, or pass card IDs from the current state to highlight that exact set; order does not matter and duplicate IDs are not meaningful. " +
   "Use this before balatro_play_hand or balatro_discard_hand to choose which cards to include, and do NOT pass card IDs that are not currently in the hand or select more than the legal hand size (typically 5). " +
-  "Error codes: WRONG_PHASE (not in SELECTING_HAND), INVALID_TARGET (one or more card_ids not in current hand or too many cards specified), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in SELECTING_HAND), INVALID_TARGET (one or more card_ids not in current hand or too many cards specified), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const SORT_HAND_DESCRIPTION =
   "Reorders the cards in the player's hand to the explicit order specified by an array of card IDs, where the first ID becomes the leftmost card and the last ID becomes the rightmost. " +
   "This is a visual/organizational action that does not consume any game resources (hands or discards) and does not alter card values, ranks, suits, or any gameplay-relevant state beyond display order. " +
   "Use this to reorganize cards for better visibility before deciding what to play, and do NOT expect it to change scoring, modify card properties, or work outside of SELECTING_HAND. " +
-  "Error codes: WRONG_PHASE (not in SELECTING_HAND), INVALID_TARGET (one or more card_ids not in current hand, or order does not match the hand contents), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in SELECTING_HAND), INVALID_TARGET (one or more card_ids not in current hand, or order does not match the hand contents), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const selectHandCardsSchema = z
   .object({

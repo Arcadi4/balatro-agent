@@ -11,7 +11,7 @@ const REORDER_JOKERS_DESCRIPTION =
   "Reorders the Jokers in the player's Joker area to the explicit left-to-right order specified by an array of Joker card IDs, where the first ID becomes the leftmost Joker and the last ID becomes the rightmost. " +
   "This is a visual/organizational action that does not consume any game resources and does not alter Joker abilities, editions, or any gameplay-relevant state beyond display order; Joker scoring order is determined by the game engine independently of this visual arrangement. " +
   "Use this to reorganize Jokers for better visibility or mental bookkeeping, and do NOT pass Joker IDs that are not currently in your Joker area or omit any Joker IDs that are present — the order array must contain exactly the set of Joker IDs currently held. " +
-  "Error codes: WRONG_PHASE (not in a valid phase for Joker management), INVALID_TARGET (one or more Joker IDs not in current Joker area, or order array does not match the set of Jokers held), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in a valid phase for Joker management), INVALID_TARGET (one or more Joker IDs not in current Joker area, or order array does not match the set of Jokers held), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const reorderJokersSchema = z
   .object({

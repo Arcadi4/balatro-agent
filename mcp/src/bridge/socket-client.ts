@@ -60,11 +60,22 @@ function errnoCode(err: Error): string | undefined {
 
 function isConnectionUnavailable(err: Error): boolean {
   const code = errnoCode(err);
-  return code === "ECONNREFUSED" || code === "ENOENT" || code === "EPIPE" || code === "ECONNRESET";
+  return code === "ECONNREFUSED" || code === "ENOENT";
+}
+
+function isConnectionSevered(err: Error): boolean {
+  const code = errnoCode(err);
+  return code === "EPIPE" || code === "ECONNRESET";
 }
 
 function gameNotRunningError(message = "Balatro is not running"): BridgeError {
   return new BridgeError("GAME_NOT_RUNNING", message);
+}
+
+function instanceBusyError(
+  message = "Balatro bridge is already connected to another client",
+): BridgeError {
+  return new BridgeError("INSTANCE_BUSY", message);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -74,6 +85,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function extractAppliedStateSeq(value: unknown): number | undefined {
   if (!isRecord(value)) return undefined;
   return typeof value.applied_state_seq === "number" ? value.applied_state_seq : undefined;
+}
+
+function jsonRpcErrorCode(error: JsonRpcResponse["error"]): string {
+  if (!error) return "UNKNOWN_ERROR";
+  if (isRecord(error.data) && typeof error.data.error_code === "string") {
+    return error.data.error_code;
+  }
+  return errorCodeToString(error.code);
 }
 
 function normalizeWroteAt(value: unknown): string {
@@ -102,6 +121,8 @@ export class BridgeClient {
   private connectResolve?: () => void;
   private connectReject?: (error: Error) => void;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private connectedAtMs?: number;
+  private lastDisconnectError?: BridgeError;
   private readonly pendingRequests = new Map<number, PendingRequest>();
 
   constructor() {
@@ -147,7 +168,7 @@ export class BridgeClient {
       );
 
       if (response.error) {
-        throw new BridgeError(errorCodeToString(response.error.code), response.error.message);
+        throw new BridgeError(jsonRpcErrorCode(response.error), response.error.message);
       }
 
       const result = response.result;
@@ -206,7 +227,10 @@ export class BridgeClient {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       this.rejectAndDeletePending(id, error);
-      throw isConnectionUnavailable(error) ? gameNotRunningError("Balatro is not running") : error;
+      if (error instanceof BridgeError) throw error;
+      if (isConnectionUnavailable(error)) throw gameNotRunningError("Balatro is not running");
+      if (isConnectionSevered(error)) throw this.errorForConnectionInterrupted();
+      throw error;
     }
   }
 
@@ -230,7 +254,7 @@ export class BridgeClient {
     if (response.error) {
       return {
         ok: false,
-        error_code: errorCodeToString(response.error.code),
+        error_code: jsonRpcErrorCode(response.error),
         error_message: response.error.message,
         seq,
       };
@@ -255,6 +279,8 @@ export class BridgeClient {
     }
 
     this.connected = false;
+    this.connectedAtMs = undefined;
+    this.lastDisconnectError = undefined;
     this.buffer = "";
 
     if (this.socket) {
@@ -275,6 +301,8 @@ export class BridgeClient {
       if (this.socket !== socket) return;
 
       this.connected = true;
+      this.connectedAtMs = Date.now();
+      this.lastDisconnectError = undefined;
       this.commandSeq = 0;
       this.connectResolve?.();
       this.clearConnectPromise();
@@ -306,17 +334,20 @@ export class BridgeClient {
   private handleSocketClose(socket: Socket): void {
     if (this.socket !== socket) return;
 
+    const error = this.errorForSocketClose(socket);
+
     this.socket = undefined;
     this.connected = false;
     this.buffer = "";
-    this.rejectAllPending(gameNotRunningError("Balatro is not running"));
+    this.lastDisconnectError = error;
+    this.rejectAllPending(error);
 
     if (this.connectReject) {
-      this.connectReject(gameNotRunningError("Balatro is not running"));
+      this.connectReject(error);
       this.clearConnectPromise();
     }
 
-    if (!this.disposed) {
+    if (!this.disposed && error.code !== "INSTANCE_BUSY") {
       this.scheduleReconnect();
     }
   }
@@ -330,6 +361,22 @@ export class BridgeClient {
         this.openSocket();
       }
     }, RECONNECT_DELAY_MS);
+  }
+
+  private errorForSocketClose(socket: Socket): BridgeError {
+    const connectedForMs = this.connectedAtMs === undefined ? undefined : Date.now() - this.connectedAtMs;
+    this.connectedAtMs = undefined;
+
+    return socket.bytesRead === 0 && connectedForMs !== undefined && connectedForMs < RECONNECT_DELAY_MS
+      ? instanceBusyError()
+      : gameNotRunningError("Balatro is not running");
+  }
+
+  private errorForConnectionInterrupted(): BridgeError {
+    const connectedForMs = this.connectedAtMs === undefined ? undefined : Date.now() - this.connectedAtMs;
+    return connectedForMs !== undefined && connectedForMs < RECONNECT_DELAY_MS
+      ? instanceBusyError()
+      : gameNotRunningError("Balatro is not running");
   }
 
   private handleData(chunk: string): void {
@@ -349,6 +396,7 @@ export class BridgeClient {
   private async writeFrame(request: JsonRpcRequest): Promise<void> {
     const socket = this.socket;
     if (!this.connected || !socket || socket.destroyed) {
+      if (this.lastDisconnectError) throw this.lastDisconnectError;
       throw gameNotRunningError("Balatro is not running");
     }
 
@@ -450,6 +498,7 @@ export class BridgeClient {
 
   private assertConnected(): void {
     if (!this.connected) {
+      if (this.lastDisconnectError) throw this.lastDisconnectError;
       throw gameNotRunningError("Balatro is not running");
     }
   }

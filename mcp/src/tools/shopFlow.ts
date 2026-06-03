@@ -10,19 +10,19 @@ const REROLL_SHOP_DESCRIPTION =
   "Rerolls the current shop offerings, replacing the displayed cards with a fresh set generated from the run's seed and spending the current reroll cost in dollars. " +
   "Use this when the current shop offerings are not useful for your build and you have enough dollars to afford the rising reroll cost (which scales each time within the same shop visit). " +
   "Do NOT call this outside of the SHOP phase, when you cannot afford the current reroll cost, or when a Voucher restricts rerolling; this affects only the card row, not Booster Packs or Vouchers. " +
-  "Error codes: WRONG_PHASE (not in SHOP), INSUFFICIENT_FUNDS (not enough dollars to pay the current reroll cost), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in SHOP), INSUFFICIENT_FUNDS (not enough dollars to pay the current reroll cost), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const LEAVE_SHOP_DESCRIPTION =
   "Leaves the current shop and advances the run to the next BLIND_SELECT phase, finalizing all purchases and rerolls made during this shop visit. " +
   "Use this when you are done buying cards, opening Booster Packs, and rerolling, and want to proceed to the next ante's blind selection. " +
   "Do NOT call this outside of the SHOP phase, while a Booster Pack is still open and awaiting picks (resolve the pack first), or before cashing out from the prior round if a cash-out is still pending. " +
-  "Error codes: WRONG_PHASE (not in SHOP), INVALID_TARGET (shop cannot be left, e.g. an open Booster Pack still requires resolution), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in SHOP), INVALID_TARGET (shop cannot be left, e.g. an open Booster Pack still requires resolution), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const CASH_OUT_DESCRIPTION =
   "Cashes out the round-end rewards (blind reward, interest, hand and discard bonuses, and any per-Joker dollar effects) into your bankroll and transitions the run from ROUND_EVAL into the SHOP phase. " +
   "Use this immediately after defeating a blind when the game is presenting the cash-out screen and you are ready to enter the shop. " +
   "Do NOT call this outside of the ROUND_EVAL phase, before all end-of-round Joker effects have resolved, or expect it to be reversible — once cashed out, in non-endless runs the round cannot be replayed. " +
-  "Error codes: WRONG_PHASE (not in ROUND_EVAL), GAME_NOT_RUNNING (Balatro not running or heartbeat stale >5s), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Error codes: WRONG_PHASE (not in ROUND_EVAL), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
 
 const inputSchema = z
   .object({
