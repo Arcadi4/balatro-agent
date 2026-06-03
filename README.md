@@ -58,7 +58,21 @@ Balatro + Lovely + SMODS + balatro_mcp mod
 
 ## Quick Start
 
-Build the MCP server, install or reload the companion Balatro mod with your local Lovely/SMODS workflow, then configure your MCP client to launch the built server entrypoint.
+Use `make` from the repository root for the local development workflow:
+
+| Command | Description |
+| --- | --- |
+| `make doctor` | Check local Balatro, Lovely, and SMODS paths. |
+| `make install-mods` | Sync repo mods into `~/Library/Application Support/Balatro/Mods`. |
+| `make run` | Sync repo mods, then launch Balatro with Lovely. |
+
+Override local paths when needed, for example:
+
+```sh
+make doctor BALATRO_DIR="/path/to/Balatro" BALATRO_SAVE="/path/to/Balatro/save"
+```
+
+Build the MCP server from `mcp/`, then configure your MCP client to launch `mcp/dist/index.js`.
 
 ## Using the MCP Server
 
@@ -81,7 +95,7 @@ It also registers:
 
 ## Validation
 
-When changing the MCP server or companion mod, run the relevant TypeScript and Lua checks for your checkout. After changing the Balatro mod, reload Balatro and verify the behavior through the MCP tools rather than only reading the code.
+When changing the MCP server or companion mod, run the relevant TypeScript and Lua checks for your checkout. After changing the Balatro mod, run `make install-mods`, reload Balatro, and verify the behavior through the MCP tools rather than only reading the code.
 
 ## Troubleshooting
 
