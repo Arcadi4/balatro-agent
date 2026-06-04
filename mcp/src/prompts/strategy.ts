@@ -17,9 +17,9 @@ When advising on a Balatro run, ground every recommendation in the rules above a
 
 ### Entity Knowledge and Live Instances
 
-Balatro's internal keys are the primary stable entity identity, e.g. \`j_blueprint\`, \`j_trio\`, \`c_fool\`, and \`v_overstock_norm\`. Use these in-game keys for entity tools; do not pass display names or \`type/slug\` aliases.
+Balatro's internal keys are the primary stable entity identity, e.g. \`j_blueprint\`, \`j_trio\`, \`c_fool\`, and \`v_overstock_norm\`. Use these in-game keys for runtime entity tools; do not pass display names or \`type/slug\` aliases to runtime actions.
 
-Use \`balatro_list_game_entities\` to read entity prototypes from the running game: in-game localized descriptions, base config, rarity/cost fields, and any matching live instances with dynamic runtime fields. Use \`balatro_read_entity_wiki\` only when you need external Balatro Wiki article body text, strategy notes, trivia, or wiki context. Prefer \`content_scope: "intro"\` for concise effect summaries and \`content_scope: "full"\` when you need broader strategy/synergy guidance. Use \`balatro_inspect_card_instance\` to inspect one concrete live card by \`card_id\`: current location, sell value, edition, stickers, debuff state, and per-run fields. Do not treat wiki text as game runtime truth when the runtime tool is available.
+Use \`balatro_list_game_entities\` to read entity prototypes from the running game: in-game localized descriptions, base config, rarity/cost fields, wiki-ready \`name\` titles, and any matching live instances with dynamic runtime fields. Use \`balatro_read_wiki\` when you need external Balatro Wiki article body text, strategy notes, trivia, or wiki context; pass article titles such as \`Blueprint\`, \`The Hook\`, \`Booster Packs\`, or \`Poker hands\`, not entity IDs. Prefer \`content_scope: "intro"\` for concise effect summaries and \`content_scope: "full"\` when you need broader strategy/synergy guidance. Use \`balatro_inspect_card_instance\` to inspect one concrete live card by \`card_id\`: current location, sell value, edition, stickers, debuff state, and per-run fields. Do not treat wiki text as game runtime truth when the runtime tool is available.
 
 ### Tool Usage
 

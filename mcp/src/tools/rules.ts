@@ -37,7 +37,7 @@ export function registerRulesTool(server: McpServer, deps: Deps): void {
       const structured: Record<string, unknown> = {
         rules_version: getRulesVersion(),
         rules_last_updated: getRulesLastUpdated(),
-        source_url: rules.source_url ?? "https://balatrowiki.org",
+        source: rules.source ?? "bundled Balatro rules resource with wiki lookup guidance",
         required_first_step:
           "Before playing or resuming a Balatro run, call balatro_get_game_rules, then call balatro_inspect_game_state before any action.",
         rules_prompt: rules.markdown,

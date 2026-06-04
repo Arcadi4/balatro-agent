@@ -85,7 +85,7 @@ make doctor BALATRO_DIR="/path/to/Balatro" BALATRO_SAVE="/path/to/Balatro/save"
 | 商店     | `balatro_buy_card`, `balatro_buy_and_use_card`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out`     |
 | 卡牌     | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers`                                             |
 | 补充包   | `balatro_open_booster`, `balatro_select_booster_card`, `balatro_skip_booster`                                       |
-| 知识     | `balatro_get_game_rules`, `balatro_list_game_entities`, `balatro_read_entity_wiki`, `balatro_inspect_card_instance` |
+| 知识     | `balatro_get_game_rules`, `balatro_list_game_entities`, `balatro_read_wiki`, `balatro_inspect_card_instance` |
 
 它还注册了：
 

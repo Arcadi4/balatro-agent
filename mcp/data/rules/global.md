@@ -1,3 +1,4 @@
+<!-- oxfmt-ignore-start -->
 # Balatro Game Rules Reference
 
 ## Run Loop
@@ -7,7 +8,7 @@
 - **Win Condition**: Defeat the Boss Blind at Ante 8; optionally continue in Endless Mode (Ante 9+)
 - **Defeat Condition**: Play a hand and score chips to meet the Blind's requirement; limited hands and discards per Blind
 
-Source: https://balatrowiki.org/w/Gameplay_loop
+Wiki lookup guide: This is summarized from the Balatro Wiki page "Gameplay loop". To read the article through MCP, call `balatro_read_wiki` with `title: "Gameplay loop"`.
 
 ## Game Phases
 
@@ -17,7 +18,7 @@ Source: https://balatrowiki.org/w/Gameplay_loop
 - **Booster Pack States**: Open packs (Arcana/Celestial/Standard/Buffoon/Spectral) and select cards
 - **ROUND_EVAL**: Cash out after defeating Blind; earn money based on remaining hands + interest
 
-Source: https://balatrowiki.org/w/Gameplay_loop
+Wiki lookup guide: This is summarized from the Balatro Wiki page "Gameplay loop". To read the article through MCP, call `balatro_read_wiki` with `title: "Gameplay loop"`.
 
 ## Point Calculation
 
@@ -52,7 +53,7 @@ When a hand is played, effects activate in this sequence:
 - **Debuffed cards can be played and can form hands**, but are treated as blank — they contribute no chips, no effects, and don't trigger card or Joker effects.
 - **Joker order matters**: +Mult before ×Mult yields a higher score. +Chips Jokers should go leftmost.
 
-Sources: https://balatrowiki.org/wiki/Poker_hands, https://balatrogame.fandom.com/wiki/Guide:_Activation_Sequence
+Wiki lookup guide: This is summarized from the Balatro Wiki page "Poker hands" plus an external activation-sequence guide. To read the wiki article through MCP, call `balatro_read_wiki` with `title: "Poker hands"`; the external activation-sequence guide is not addressable by Balatro MCP tools, so use this bundled scoring-order summary instead of browsing the web.
 
 ## High-Risk Rules Agents Often Hallucinate
 
@@ -61,7 +62,7 @@ Sources: https://balatrowiki.org/wiki/Poker_hands, https://balatrogame.fandom.co
 - **Non-scored played cards trigger nothing**. When you play 5 cards for a Pair, only the 2 pairing cards score — the other 3 are functionally discards. See Point Calculation section for the full scoring sequence.
 - **Runtime state beats memory and wiki summaries**. Always inspect live debuffs, selected cards, legal actions, hand/discard counts, money, blind effect, and available card IDs before acting.
 
-Sources: https://balatrowiki.org/w/Poker_hands, https://balatrowiki.org/w/Card_modifiers, https://balatrowiki.org/w/Blinds_and_Antes
+Wiki lookup guide: This is summarized from the Balatro Wiki pages "Poker hands", "Card modifiers", and "Blinds and Antes". To read them through MCP, call `balatro_read_wiki` with article titles such as `"Poker hands"`, `"Card modifiers"`, `"Blinds and Antes"`, `"Bonus cards"`, `"Foil"`, `"Gold Seal"`, `"Stakes"`, `"Small Blind"`, or `"Big Blind"`.
 
 ## Poker Hand Evaluation (Highest to Lowest)
 
@@ -81,7 +82,7 @@ Sources: https://balatrowiki.org/w/Poker_hands, https://balatrowiki.org/w/Card_m
 
 Secret hands appear in Run Info only after being played in the current run; their Planet cards then become obtainable during that run.
 
-Source: https://balatrowiki.org/w/Poker_Hands
+Wiki lookup guide: This is summarized from the Balatro Wiki page "Poker hands". To read the article through MCP, call `balatro_read_wiki` with `title: "Poker hands"`.
 
 ## Money Rules
 
@@ -92,33 +93,33 @@ Source: https://balatrowiki.org/w/Poker_Hands
 - **Voucher Discounts**: Clearance Sale (25% off), Liquidation (50% off)
 - **Debt**: Credit Card allows up to -$20 debt; The Tooth and Rental sticker charges can also reduce money below $0
 
-Source: https://balatrowiki.org/w/The_Shop, https://balatrowiki.org/w/Money
+Wiki lookup guide: This is summarized from the Balatro Wiki pages "The Shop" and "Money". To read them through MCP, call `balatro_read_wiki` with `title: "The Shop"`, `"Money"`, `"Overstock"`, `"Clearance Sale"`, `"Liquidation"`, or `"Coupon Tag"`.
 
 ## Card Modifier Interactions
 
 - **Eternal Sticker**: Joker cannot be sold or destroyed (Black Stake+, 30% chance in shops/packs)
 - **Perishable Sticker**: Joker is debuffed after 5 rounds (Orange Stake+, 30% chance in shops/packs); cannot coexist with Eternal
 - **Rental Sticker**: Joker costs $1 to buy and charges $3/round (Gold Stake, 30% chance in shops/packs); can stack with Eternal/Perishable
-- **Editions**: Foil (+50 chips), Holographic (+10 mult), Polychrome (x1.5 mult), Negative (+1 Joker slot)
+- **Editions**: Foil (+50 chips), Holographic (+10 mult), Polychrome (x1.5 mult), Negative (+1 Joker slot, only applies to Jokers)
 - **Enhancements/Seals**: One per playing card; replaced if new one applied; Editions are permanent
 - **Debuffed Cards/Jokers**: Modifier effects are disabled except Negative slot effects and Stone cards' no-rank/no-suit identity; debuffed Wild cards revert to their original suit
 
-Source: https://balatrowiki.org/w/Card_Modifiers, https://balatrowiki.org/w/Stickers
+Wiki lookup guide: This is summarized from the Balatro Wiki pages "Card modifiers" and "Stickers". To read related articles through MCP, call `balatro_read_wiki` with titles such as `"Card modifiers"`, `"Stickers"`, `"Bonus cards"`, `"Mult cards"`, `"Wild cards"`, `"Glass cards"`, `"Steel cards"`, `"Stone cards"`, `"Gold cards"`, `"Lucky cards"`, `"Foil"`, `"Holographic"`, `"Polychrome"`, `"Negative"`, `"Red Seal"`, `"Blue Seal"`, `"Gold Seal"`, or `"Purple Seal"`.
 
 ## Booster Pack Pick Counts
 
-| Pack Type | Normal ($4) | Jumbo ($6) | Mega ($8) |
-|-----------|-------------|------------|-----------|
-| Arcana (Tarot, immediate use) | Pick 1 of 3 | Pick 1 of 5 | Pick 2 of 5 |
-| Celestial (Planet, immediate use) | Pick 1 of 3 | Pick 1 of 5 | Pick 2 of 5 |
+| Pack Type                              | Normal ($4) | Jumbo ($6)  | Mega ($8)   |
+| -------------------------------------- | ----------- | ----------- | ----------- |
+| Arcana (Tarot, immediate use)          | Pick 1 of 3 | Pick 1 of 5 | Pick 2 of 5 |
+| Celestial (Planet, immediate use)      | Pick 1 of 3 | Pick 1 of 5 | Pick 2 of 5 |
 | Standard (Playing Cards added to deck) | Pick 1 of 3 | Pick 1 of 5 | Pick 2 of 5 |
-| Buffoon (Jokers) | Pick 1 of 2 | Pick 1 of 4 | Pick 2 of 4 |
-| Spectral (Spectral, immediate use) | Pick 1 of 2 | Pick 1 of 4 | Pick 2 of 4 |
+| Buffoon (Jokers)                       | Pick 1 of 2 | Pick 1 of 4 | Pick 2 of 4 |
+| Spectral (Spectral, immediate use)     | Pick 1 of 2 | Pick 1 of 4 | Pick 2 of 4 |
 
 - **Shop Inventory**: 2 random cards + 2 Booster Packs + 1 Voucher (default)
 - **Reroll Behavior**: Packs and Vouchers do NOT restock on reroll; only on new shop entry
 
-Source: https://balatrowiki.org/w/Booster_Packs
+Wiki lookup guide: This is summarized from the Balatro Wiki page "Booster Packs". To read the article through MCP, call `balatro_read_wiki` with `title: "Booster Packs"`; for pack contents, use entity names from `balatro_list_game_entities` and pass those names to `balatro_read_wiki`, such as `"The Fool"`, `"Mercury"`, `"Familiar"`, or `"Joker"`.
 
 ## Stakes Summary
 
@@ -135,7 +136,7 @@ Stakes are cumulative difficulty modifiers (each adds to previous):
 
 Green/Purple stakes change the Ante chip table, not the poker-hand scoring formula. Use live `blind.score_required` as the source of truth.
 
-Source: https://balatrowiki.org/w/Stakes
+Wiki lookup guide: This is summarized from the Balatro Wiki page "Stakes". To read the article through MCP, call `balatro_read_wiki` with `title: "Stakes"` or a redirected title such as `"White Stake"`, `"Red Stake"`, `"Green Stake"`, `"Black Stake"`, `"Blue Stake"`, `"Purple Stake"`, `"Orange Stake"`, or `"Gold Stake"`.
 
 ## Endless Mode
 
@@ -143,7 +144,7 @@ Source: https://balatrowiki.org/w/Stakes
 - **Scaling**: Score requirements increase exponentially (Ante 9: 110k base, Ante 10: 560k base, etc.)
 - **Showdown Blinds**: Appear every 8 Antes (Ante 8, 16, 24, 32...)
 
-Source: https://balatrowiki.org/w/Blinds_and_Antes
+Wiki lookup guide: This is summarized from the Balatro Wiki page "Blinds and Antes". To read it through MCP, call `balatro_read_wiki` with `title: "Blinds and Antes"`; for individual blind pages, pass natural article titles such as `"Small Blind"`, `"Big Blind"`, `"The Hook"`, `"The Wall"`, `"The Psychic"`, `"Amber Acorn"`, `"Verdant Leaf"`, `"Violet Vessel"`, `"Crimson Heart"`, or `"Cerulean Bell"`.
 
 ## Challenge Mode
 
@@ -151,26 +152,18 @@ Source: https://balatrowiki.org/w/Blinds_and_Antes
 - **Examples**: Inflation (prices increase $1 per purchase), specific Joker/Voucher restrictions
 - **Unlocks**: Completing challenges unlocks new Jokers, Decks, or other content
 
-Source: https://balatrowiki.org/w/Balatro
+Wiki lookup guide: This is summarized from the Balatro Wiki's general Balatro/challenge coverage. To read challenge articles through MCP, call `balatro_read_wiki` with titles such as `"Challenge Decks"`, `"Fragile"`, `"Bram Poker"`, `"Mad World"`, or `"Jokerless"`; always combine that with live `active_challenge` state.
 
 ---
 
 ## Attribution
 
-Content summarized from Balatro Wiki (https://balatrowiki.org), licensed under CC BY-NC-SA 3.0.  
+Content summarized from Balatro Wiki, licensed under CC BY-NC-SA 3.0.  
 This reference is for AI agent use in the Balatro MCP Bridge project.
 
-Original wiki pages:
-- Gameplay Loop: https://balatrowiki.org/w/Gameplay_loop
-- Poker Hands: https://balatrowiki.org/w/Poker_Hands
-- The Shop: https://balatrowiki.org/w/The_Shop
-- Money: https://balatrowiki.org/w/Money
-- Booster Packs: https://balatrowiki.org/w/Booster_Packs
-- Card Modifiers: https://balatrowiki.org/w/Card_Modifiers
-- Stickers: https://balatrowiki.org/w/Stickers
-- Stakes: https://balatrowiki.org/w/Stakes
-- Blinds and Antes: https://balatrowiki.org/w/Blinds_and_Antes
-- Score: https://balatrowiki.org/w/Score
-- Chips: https://balatrowiki.org/w/Chips
-- Activation Sequence: https://balatrogame.fandom.com/wiki/Guide:_Activation_Sequence
-- Score Calculation Guide: https://kosgames.com/balatro-score-calculation-guide-53637/
+Wiki lookup guide:
+- Wiki article lookup: call `balatro_read_wiki` with exact article titles. When starting from an entity ID, call `balatro_list_game_entities`, read the returned `name`, and pass that title to `balatro_read_wiki`.
+- Special high-value article titles summarized here: "Gameplay loop", "Poker hands", "The Shop", "Money", "Booster Packs", "Card modifiers", "Stickers", "Blinds and Antes", "Score", "Chips", "Stakes", "Jokers", "Tags", "Vouchers", "Decks", "Editions", "Enhancements", and "Challenge Decks".
+- Boss Blind article titles are natural names, not entity IDs: "The Hook", "The Wall", "The Psychic", "Amber Acorn", "Verdant Leaf", "Violet Vessel", "Crimson Heart", and "Cerulean Bell".
+- External non-Balatro-Wiki references summarized here but not addressable by MCP tools: the activation-sequence guide and the score-calculation guide. Use the summaries in this bundled resource; do not browse the web from a game-playing agent.
+<!-- oxfmt-ignore-end -->
