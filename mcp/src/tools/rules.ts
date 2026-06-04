@@ -45,7 +45,6 @@ export function registerRulesTool(server: McpServer, deps: Deps): void {
       const format: ResponseFormat = args.response_format ?? "markdown";
       const rules = await deps.rulesService.getGlobalRules();
       const structured: Record<string, unknown> = {
-        rules_uri: "balatro://rules/global",
         rules_version: getRulesVersion(),
         rules_last_updated: getRulesLastUpdated(),
         source_url: rules.source_url ?? "https://balatrowiki.org",

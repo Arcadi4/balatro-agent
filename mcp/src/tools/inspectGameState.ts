@@ -12,7 +12,7 @@ const DESCRIPTION =
   "Returns all information visible to the player: hand cards, jokers, consumables, money, blind info, " +
   "round progress, deck composition summary, shop contents (when in shop), and booster pack contents (when open). " +
   "This is the primary observation tool — call it before making any strategic decision to understand the current situation. " +
-  "Output includes legal_actions[] indicating valid moves and rules_uri pointing to the full game rules resource. " +
+  "Output includes legal_actions[] indicating valid moves. " +
   "Do NOT poll faster than 1 Hz; prefer calling once per decision point rather than repeatedly.";
 
 const READ_ONLY_ANNOTATIONS = {
@@ -115,8 +115,7 @@ function cardInstanceToMarkdown(data: object): string {
 }
 
 function stateToMarkdown(data: object): string {
-  const d = data as Record<string, unknown>;
-  const payload = (d.payload ?? {}) as Record<string, unknown>;
+  const payload = ((data as Record<string, unknown>).payload ?? {}) as Record<string, unknown>;
 
   const lines: string[] = [];
   lines.push("# Balatro Game State\n");
@@ -181,10 +180,6 @@ function stateToMarkdown(data: object): string {
     lines.push("");
   }
 
-  if (d.rules_uri) {
-    lines.push(`---\n\n*Rules:* \`${d.rules_uri}\`\n`);
-  }
-
   return lines.join("\n");
 }
 
@@ -212,7 +207,6 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
 
       const payload = cloneRecord(state.payload) ?? {};
       const structured: Record<string, unknown> = {
-        rules_uri: "balatro://rules/global",
         payload,
       };
 
