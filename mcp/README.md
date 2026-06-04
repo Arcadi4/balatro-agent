@@ -11,6 +11,3 @@ Communicates with Balatro via a WebSocket plugin mod.
 | `pnpm start` | Run compiled server |
 | `pnpm dev` | Run with tsx (watch mode) |
 | `pnpm typecheck` | Type-check without emitting |
-| `pnpm regen:entities` | Regenerate entity definitions |
-| `pnpm check:entities` | Validate entity definitions |
-| `pnpm audit:tools` | Audit registered tools |

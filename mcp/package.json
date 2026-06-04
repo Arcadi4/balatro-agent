@@ -11,10 +11,7 @@
     "build": "tsc -p .",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit -p .",
-    "regen:entities": "tsx src/scripts/regen-entities.ts",
-    "check:entities": "tsx src/scripts/check-entities.ts",
-    "audit:tools": "tsx src/scripts/audit-tools.ts"
+    "typecheck": "tsc --noEmit -p ."
   },
   "engines": {
     "node": ">=18"
