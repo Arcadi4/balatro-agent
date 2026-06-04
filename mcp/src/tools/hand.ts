@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { cardIdSchema, normalizeCardIds } from "./cardIds.js";
@@ -27,10 +27,6 @@ const selectHandCardsSchema = z
       .describe(
         "Array of card IDs to highlight. Empty array deselects all cards. Each ID must reference a card currently in the player's hand. Order does not matter; this is a replace-mode operation.",
       ),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
@@ -43,10 +39,6 @@ const sortHandSchema = z
       .describe(
         "Array of card IDs in the desired left-to-right display order. Each ID must reference a card currently in the player's hand. The array should contain exactly the cards in the hand to fully reorder them.",
       ),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
@@ -60,7 +52,6 @@ const ANNOTATIONS = {
 async function executeHandCommand(
   deps: Deps,
   command: { kind: "select_hand_cards"; card_ids: string[] } | { kind: "sort_hand"; order: string[] },
-  format: ResponseFormat,
 ) {
   let response;
   try {
@@ -90,7 +81,7 @@ async function executeHandCommand(
     data: response.data,
   };
 
-  return formatResponse(structured, format);
+  return formatResponse(structured);
 }
 
 export function registerHandTools(server: McpServer, deps: Deps): void {
@@ -102,12 +93,10 @@ export function registerHandTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
       const cardIds = normalizeCardIds(args.card_ids);
       const envelope = await executeHandCommand(
         deps,
         { kind: "select_hand_cards", card_ids: cardIds },
-        format,
       );
       return { ...envelope };
     },
@@ -121,12 +110,10 @@ export function registerHandTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
       const order = normalizeCardIds(args.order);
       const envelope = await executeHandCommand(
         deps,
         { kind: "sort_hand", order },
-        format,
       );
       return { ...envelope };
     },

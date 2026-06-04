@@ -4,22 +4,13 @@ import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
 import { getRulesLastUpdated, getRulesVersion } from "../resources/rules.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 
 const DESCRIPTION =
   "Retrieves the compact Balatro game rules prompt. Call this before starting or resuming gameplay because model memory may be stale on edge cases like debuffed cards, secret poker hands, stakes, and shop rules. " +
   "This is read-only and does not require a running Balatro instance.";
 
-const inputSchema = z
-  .object({
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe(
-        "Output format. Use 'json' for programmatic parsing, 'markdown' for the prompt text.",
-      ),
-  })
-  .strict();
+const inputSchema = z.object({}).strict();
 
 const ANNOTATIONS = {
   readOnlyHint: true,
@@ -41,8 +32,7 @@ export function registerRulesTool(server: McpServer, deps: Deps): void {
       inputSchema,
       annotations: ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
+    async () => {
       const rules = await deps.rulesService.getGlobalRules();
       const structured: Record<string, unknown> = {
         rules_version: getRulesVersion(),
@@ -53,7 +43,7 @@ export function registerRulesTool(server: McpServer, deps: Deps): void {
         rules_prompt: rules.markdown,
       };
 
-      const envelope = formatResponse(structured, format, { toMarkdown: rulesToMarkdown });
+      const envelope = formatResponse(structured, { toMarkdown: rulesToMarkdown });
       return { ...envelope };
     },
   );

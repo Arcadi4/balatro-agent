@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { normalizeCardId } from "./cardIds.js";
@@ -24,10 +24,6 @@ const useConsumableSchema = z
     card_id: z
       .union([z.string(), z.number().int()])
       .describe("The ID of the consumable card to use from your consumable slots."),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
@@ -36,10 +32,6 @@ const sellCardSchema = z
     card_id: z
       .union([z.string(), z.number().int()])
       .describe("The ID of the card to sell — must be a Joker or consumable in your slots."),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
@@ -54,7 +46,6 @@ async function executeCardAction(
   deps: Deps,
   kind: "use_consumable" | "sell_card",
   cardId: string,
-  format: ResponseFormat,
 ) {
   let response;
   try {
@@ -78,7 +69,7 @@ async function executeCardAction(
     data: response.data,
   };
 
-  return formatResponse(structured, format);
+  return formatResponse(structured);
 }
 
 export function registerCardActionTools(server: McpServer, deps: Deps): void {
@@ -90,8 +81,7 @@ export function registerCardActionTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const envelope = await executeCardAction(deps, "use_consumable", normalizeCardId(args.card_id), format);
+      const envelope = await executeCardAction(deps, "use_consumable", normalizeCardId(args.card_id));
       return { ...envelope };
     },
   );
@@ -104,8 +94,7 @@ export function registerCardActionTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const envelope = await executeCardAction(deps, "sell_card", normalizeCardId(args.card_id), format);
+      const envelope = await executeCardAction(deps, "sell_card", normalizeCardId(args.card_id));
       return { ...envelope };
     },
   );

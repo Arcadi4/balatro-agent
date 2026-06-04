@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { cardIdSchema, normalizeCardId, normalizeCardIds } from "./cardIds.js";
@@ -25,12 +25,6 @@ const buyCardSchema = z
       .describe(
         "The ID of the card in the shop to purchase. Must reference a card currently offered in the SHOP phase.",
       ),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe(
-        "Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries.",
-      ),
   })
   .strict();
 
@@ -46,12 +40,6 @@ const buyAndUseCardSchema = z
       .optional()
       .describe(
         "Optional array of target card IDs for consumables that operate on specific cards (e.g. Tarots that enhance hand cards). Omit for consumables that take no targets.",
-      ),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe(
-        "Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries.",
       ),
   })
   .strict();
@@ -75,7 +63,6 @@ async function executeBuyCommand(
   command:
     | { kind: "buy_card"; card_id: string }
     | { kind: "buy_and_use_card"; card_id: string; targets?: string[] },
-  format: ResponseFormat,
 ) {
   let response;
   try {
@@ -103,7 +90,7 @@ async function executeBuyCommand(
     data: response.data,
   };
 
-  return formatResponse(structured, format);
+  return formatResponse(structured);
 }
 
 export function registerBuyTools(server: McpServer, deps: Deps): void {
@@ -115,9 +102,8 @@ export function registerBuyTools(server: McpServer, deps: Deps): void {
       annotations: BUY_CARD_ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
       const cardId = normalizeCardId(args.card_id);
-      const envelope = await executeBuyCommand(deps, { kind: "buy_card", card_id: cardId }, format);
+      const envelope = await executeBuyCommand(deps, { kind: "buy_card", card_id: cardId });
       return { ...envelope };
     },
   );
@@ -130,13 +116,11 @@ export function registerBuyTools(server: McpServer, deps: Deps): void {
       annotations: BUY_AND_USE_CARD_ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
       const cardId = normalizeCardId(args.card_id);
       const targets = args.targets ? normalizeCardIds(args.targets) : undefined;
       const envelope = await executeBuyCommand(
         deps,
         { kind: "buy_and_use_card", card_id: cardId, targets },
-        format,
       );
       return { ...envelope };
     },

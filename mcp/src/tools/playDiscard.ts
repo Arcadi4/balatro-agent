@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 
@@ -17,14 +17,7 @@ const DISCARD_HAND_DESCRIPTION =
   "Use this after selecting cards via balatro_select_cards_for_hand when you want to cycle unwanted cards in search of better scoring combinations before committing a play. " +
   "Requires SELECTING_HAND, currently selected cards, and at least one discard remaining; check game state first.";
 
-const inputSchema = z
-  .object({
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
-  })
-  .strict();
+const inputSchema = z.object({}).strict();
 
 function playHandToMarkdown(data: object): string {
   const d = data as Record<string, unknown>;
@@ -62,7 +55,6 @@ const ANNOTATIONS = {
 async function executePlayDiscardCommand(
   deps: Deps,
   kind: "play_hand" | "discard_hand",
-  format: ResponseFormat,
 ) {
   let response;
   try {
@@ -88,7 +80,7 @@ async function executePlayDiscardCommand(
     data: response.data,
   };
 
-  return formatResponse(structured, format, kind === "play_hand" ? { toMarkdown: playHandToMarkdown } : undefined);
+  return formatResponse(structured, kind === "play_hand" ? { toMarkdown: playHandToMarkdown } : undefined);
 }
 
 export function registerPlayDiscardTools(server: McpServer, deps: Deps): void {
@@ -99,9 +91,8 @@ export function registerPlayDiscardTools(server: McpServer, deps: Deps): void {
       inputSchema,
       annotations: ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const envelope = await executePlayDiscardCommand(deps, "play_hand", format);
+    async () => {
+      const envelope = await executePlayDiscardCommand(deps, "play_hand");
       return { ...envelope };
     },
   );
@@ -113,9 +104,8 @@ export function registerPlayDiscardTools(server: McpServer, deps: Deps): void {
       inputSchema,
       annotations: ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const envelope = await executePlayDiscardCommand(deps, "discard_hand", format);
+    async () => {
+      const envelope = await executePlayDiscardCommand(deps, "discard_hand");
       return { ...envelope };
     },
   );

@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 
@@ -22,24 +22,13 @@ const READ_ONLY_ANNOTATIONS = {
   openWorldHint: false,
 } as const satisfies ToolAnnotations;
 
-const inputSchema = z
-  .object({
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
-  })
-  .strict();
+const inputSchema = z.object({}).strict();
 
 const inspectCardInstanceSchema = z
   .object({
     card_id: z
       .union([z.string(), z.number().int()])
       .describe("Live card instance ID from balatro_inspect_game_state, not an entity/prototype ID."),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
@@ -191,9 +180,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
       inputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-
+    async () => {
       let state;
       try {
         state = await deps.bridgeClient.getState({ maxAgeMs: 1500 });
@@ -210,7 +197,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
         payload,
       };
 
-      const envelope = formatResponse(structured, format, {
+      const envelope = formatResponse(structured, {
         toMarkdown: stateToMarkdown,
       });
       return { ...envelope };
@@ -228,7 +215,6 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
       const cardId = normalizeCardId(args.card_id);
 
       let state;
@@ -255,7 +241,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
         instance,
       };
 
-      const envelope = formatResponse(structured, format, {
+      const envelope = formatResponse(structured, {
         toMarkdown: cardInstanceToMarkdown,
       });
       return { ...envelope };

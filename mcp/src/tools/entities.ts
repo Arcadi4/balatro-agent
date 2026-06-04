@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 
@@ -42,10 +42,6 @@ const listInputSchema = z
       .min(0)
       .default(0)
       .describe("Number of runtime entities to skip for pagination. Default 0."),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
@@ -62,10 +58,6 @@ const getInputSchema = z
       .max(20000)
       .default(8000)
       .describe("Maximum cleaned wiki text characters to return. Default 8000, max 20000."),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
@@ -210,7 +202,7 @@ async function fetchWikiExtract(id: string, contentScope: WikiContentScope, maxC
   };
 }
 
-async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSchema>, format: ResponseFormat) {
+async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSchema>) {
   let seq: number;
   try {
     seq = await deps.bridgeClient.sendCommand({
@@ -233,7 +225,7 @@ async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSch
 
   const bridgePayload = (response.data ?? {}) as Record<string, unknown>;
   const structured = ((bridgePayload.data ?? bridgePayload) as Record<string, unknown>);
-  const envelope = formatResponse(structured, format, {
+  const envelope = formatResponse(structured, {
     toMarkdown: listToMarkdown,
     truncation: {
       total: typeof structured.total === "number" ? structured.total : undefined,
@@ -270,12 +262,12 @@ async function runtimeTitleForId(deps: Deps, id: string): Promise<string | undef
   return typeof first?.name === "string" ? first.name : undefined;
 }
 
-async function readWiki(deps: Deps, id: string, contentScope: WikiContentScope, maxChars: number, format: ResponseFormat) {
+async function readWiki(deps: Deps, id: string, contentScope: WikiContentScope, maxChars: number) {
   try {
     const title = await runtimeTitleForId(deps, id) ?? wikiTitleFromId(id);
     const structured = await fetchWikiExtract(title, contentScope, maxChars);
     structured.id = id;
-    const envelope = formatResponse(structured, format, { toMarkdown: wikiToMarkdown });
+    const envelope = formatResponse(structured, { toMarkdown: wikiToMarkdown });
     return { ...envelope };
   } catch (err) {
     return { ...toolError("WIKI_FETCH_FAILED", err instanceof Error ? err.message : String(err)) };
@@ -294,8 +286,7 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
       const parsed = listInputSchema.safeParse(args);
       if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) };
 
-      const format: ResponseFormat = parsed.data.response_format ?? "markdown";
-      return listRuntimeEntities(deps, parsed.data, format);
+      return listRuntimeEntities(deps, parsed.data);
     },
   );
 
@@ -310,9 +301,8 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
       const parsed = getInputSchema.safeParse(args);
       if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) };
 
-      const format: ResponseFormat = parsed.data.response_format ?? "markdown";
       const contentScope: WikiContentScope = parsed.data.content_scope ?? "intro";
-      return readWiki(deps, parsed.data.id, contentScope, parsed.data.max_chars ?? 8000, format);
+      return readWiki(deps, parsed.data.id, contentScope, parsed.data.max_chars ?? 8000);
     },
   );
 }

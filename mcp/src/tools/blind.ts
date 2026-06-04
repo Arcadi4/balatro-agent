@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 
@@ -17,14 +17,7 @@ const SKIP_BLIND_DESCRIPTION =
   "Use this when the blind's chip target is too risky for your current build, or when the Tag reward outweighs the cash payout. " +
   "Requires BLIND_SELECT and a skippable non-Boss Blind; do NOT confuse it with balatro_skip_booster, which forfeits Booster Pack picks.";
 
-const inputSchema = z
-  .object({
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
-  })
-  .strict();
+const inputSchema = z.object({}).strict();
 
 const ANNOTATIONS = {
   readOnlyHint: false,
@@ -36,7 +29,6 @@ const ANNOTATIONS = {
 async function executeBlindCommand(
   deps: Deps,
   kind: "select_blind" | "skip_blind",
-  format: ResponseFormat,
 ) {
   let response;
   try {
@@ -60,7 +52,7 @@ async function executeBlindCommand(
     data: response.data,
   };
 
-  return formatResponse(structured, format);
+  return formatResponse(structured);
 }
 
 export function registerBlindTools(server: McpServer, deps: Deps): void {
@@ -71,9 +63,8 @@ export function registerBlindTools(server: McpServer, deps: Deps): void {
       inputSchema,
       annotations: ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const envelope = await executeBlindCommand(deps, "select_blind", format);
+    async () => {
+      const envelope = await executeBlindCommand(deps, "select_blind");
       return { ...envelope };
     },
   );
@@ -85,9 +76,8 @@ export function registerBlindTools(server: McpServer, deps: Deps): void {
       inputSchema,
       annotations: ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const envelope = await executeBlindCommand(deps, "skip_blind", format);
+    async () => {
+      const envelope = await executeBlindCommand(deps, "skip_blind");
       return { ...envelope };
     },
   );

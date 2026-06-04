@@ -2,8 +2,6 @@ import { CHARACTER_LIMIT } from "./constants.js";
 
 import type { CallToolResult, TextContent } from "@modelcontextprotocol/sdk/types.js";
 
-export type ResponseFormat = "markdown" | "json";
-
 export interface TruncationContext {
   truncated?: boolean;
   truncation_message?: string;
@@ -72,18 +70,10 @@ function enforceCharacterLimit(
 
 export function formatResponse(
   data: Record<string, unknown>,
-  format: ResponseFormat,
   context?: FormatResponseContext,
 ): ToolResponseEnvelope {
   const structured = withTruncationFlag(data, context?.truncation);
-
-  let text: string;
-  if (format === "json") {
-    text = JSON.stringify(structured, null, 2);
-  } else {
-    const md = (context?.toMarkdown ?? defaultMarkdown)(structured);
-    text = md;
-  }
+  const text = (context?.toMarkdown ?? defaultMarkdown)(structured);
 
   const enforced = enforceCharacterLimit(text, structured);
 

@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 
@@ -22,14 +22,7 @@ const CASH_OUT_DESCRIPTION =
   "Use this immediately after defeating a blind when the game is presenting the cash-out screen and you are ready to enter the shop. " +
   "Requires ROUND_EVAL after end-of-round effects have resolved; this is irreversible in non-endless runs.";
 
-const inputSchema = z
-  .object({
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
-  })
-  .strict();
+const inputSchema = z.object({}).strict();
 
 const REROLL_SHOP_ANNOTATIONS = {
   readOnlyHint: false,
@@ -57,7 +50,6 @@ type ShopFlowKind = "reroll_shop" | "leave_shop" | "cash_out";
 async function executeShopFlowCommand(
   deps: Deps,
   kind: ShopFlowKind,
-  format: ResponseFormat,
 ) {
   let response;
   try {
@@ -81,7 +73,7 @@ async function executeShopFlowCommand(
     data: response.data,
   };
 
-  return formatResponse(structured, format);
+  return formatResponse(structured);
 }
 
 export function registerShopFlowTools(server: McpServer, deps: Deps): void {
@@ -92,9 +84,8 @@ export function registerShopFlowTools(server: McpServer, deps: Deps): void {
       inputSchema,
       annotations: REROLL_SHOP_ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const envelope = await executeShopFlowCommand(deps, "reroll_shop", format);
+    async () => {
+      const envelope = await executeShopFlowCommand(deps, "reroll_shop");
       return { ...envelope };
     },
   );
@@ -106,9 +97,8 @@ export function registerShopFlowTools(server: McpServer, deps: Deps): void {
       inputSchema,
       annotations: LEAVE_SHOP_ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const envelope = await executeShopFlowCommand(deps, "leave_shop", format);
+    async () => {
+      const envelope = await executeShopFlowCommand(deps, "leave_shop");
       return { ...envelope };
     },
   );
@@ -120,9 +110,8 @@ export function registerShopFlowTools(server: McpServer, deps: Deps): void {
       inputSchema,
       annotations: CASH_OUT_ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const envelope = await executeShopFlowCommand(deps, "cash_out", format);
+    async () => {
+      const envelope = await executeShopFlowCommand(deps, "cash_out");
       return { ...envelope };
     },
   );

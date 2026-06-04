@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { cardIdSchema, normalizeCardId, normalizeCardIds } from "./cardIds.js";
@@ -28,10 +28,6 @@ const openBoosterSchema = z
     card_id: z
       .union([z.string(), z.number().int()])
       .describe("The ID of the Booster Pack in the shop to open. Must reference a purchased Booster Pack available in the current SHOP phase."),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
@@ -44,21 +40,10 @@ const selectBoosterCardSchema = z
       .array(cardIdSchema)
       .optional()
       .describe("Optional array of target card IDs for consumables that operate on specific cards (e.g. Tarots that enhance hand cards). Omit for cards that take no targets."),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
-const skipBoosterSchema = z
-  .object({
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
-  })
-  .strict();
+const skipBoosterSchema = z.object({}).strict();
 
 const OPEN_BOOSTER_ANNOTATIONS = {
   readOnlyHint: false,
@@ -87,7 +72,6 @@ async function executeBoosterCommand(
     | { kind: "open_booster"; args: { card_id: string } }
     | { kind: "select_booster_card"; args: { card_id: string; targets?: string[] } }
     | { kind: "skip_booster" },
-  format: ResponseFormat,
 ) {
   let response;
   try {
@@ -115,7 +99,7 @@ async function executeBoosterCommand(
     data: response.data,
   };
 
-  return formatResponse(structured, format);
+  return formatResponse(structured);
 }
 
 export function registerBoosterTools(server: McpServer, deps: Deps): void {
@@ -127,12 +111,10 @@ export function registerBoosterTools(server: McpServer, deps: Deps): void {
       annotations: OPEN_BOOSTER_ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
       const cardId = normalizeCardId(args.card_id);
       const envelope = await executeBoosterCommand(
         deps,
         { kind: "open_booster", args: { card_id: cardId } },
-        format,
       );
       return { ...envelope };
     },
@@ -146,13 +128,11 @@ export function registerBoosterTools(server: McpServer, deps: Deps): void {
       annotations: SELECT_BOOSTER_CARD_ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
       const cardId = normalizeCardId(args.card_id);
       const targets = args.targets ? normalizeCardIds(args.targets) : undefined;
       const envelope = await executeBoosterCommand(
         deps,
         { kind: "select_booster_card", args: { card_id: cardId, targets } },
-        format,
       );
       return { ...envelope };
     },
@@ -165,12 +145,10 @@ export function registerBoosterTools(server: McpServer, deps: Deps): void {
       inputSchema: skipBoosterSchema,
       annotations: SKIP_BOOSTER_ANNOTATIONS,
     },
-    async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
+    async () => {
       const envelope = await executeBoosterCommand(
         deps,
         { kind: "skip_booster" },
-        format,
       );
       return { ...envelope };
     },

@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
-import { formatResponse, type ResponseFormat } from "../response.js";
+import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { cardIdSchema, normalizeCardIds } from "./cardIds.js";
@@ -22,10 +22,6 @@ const reorderJokersSchema = z
       .describe(
         "Array of Joker card IDs in the desired left-to-right display order. Each ID must reference a Joker currently in the player's Joker area. The array should contain exactly the Jokers held to fully reorder them.",
       ),
-    response_format: z
-      .enum(["markdown", "json"])
-      .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
   })
   .strict();
 
@@ -39,7 +35,6 @@ const REORDER_JOKERS_ANNOTATIONS = {
 async function executeReorderJokersCommand(
   deps: Deps,
   order: string[],
-  format: ResponseFormat,
 ) {
   let response;
   try {
@@ -66,7 +61,7 @@ async function executeReorderJokersCommand(
     data: response.data,
   };
 
-  return formatResponse(structured, format);
+  return formatResponse(structured);
 }
 
 export function registerReorderJokersTool(server: McpServer, deps: Deps): void {
@@ -78,9 +73,8 @@ export function registerReorderJokersTool(server: McpServer, deps: Deps): void {
       annotations: REORDER_JOKERS_ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
       const order = normalizeCardIds(args.order);
-      const envelope = await executeReorderJokersCommand(deps, order, format);
+      const envelope = await executeReorderJokersCommand(deps, order);
       return { ...envelope };
     },
   );

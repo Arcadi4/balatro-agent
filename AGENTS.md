@@ -211,13 +211,13 @@ import { registerSelectBlindTool } from './tools/select-blind.js';
    } as const;
    ```
 
-3. **Response format**: Tools accept `format?: "markdown" | "json"` with default of `"markdown"`. Wrap with `formatResponse()` or `toolError()`.
+3. **Response format**: Tools emit markdown-centered text and preserve machine-readable data in `structuredContent`. Wrap with `formatResponse()` or `toolError()`.
 
 4. **Error handling pattern**:
    ```ts
    try {
      const result = await deps.bridgeClient.sendCommand('action', params);
-     return formatResponse(result, format);
+     return formatResponse(result);
    } catch (error) {
      if (error instanceof BridgeError) {
        return toolError(error.message);
@@ -244,7 +244,7 @@ import { registerSelectBlindTool } from './tools/select-blind.js';
 
 9. **Return unwrapping**: Use spread pattern for MCP tool handlers:
    ```ts
-   return { ...formatResponse(data, format) };
+   return { ...formatResponse(data) };
    ```
 
 ## Build and Deployment
