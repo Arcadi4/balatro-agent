@@ -103,6 +103,72 @@ function cardInstanceToMarkdown(data: object): string {
   return lines.join("\n");
 }
 
+function displayCardRank(value: unknown): string {
+  const rank = String(value ?? "?");
+  const ranks: Record<string, string> = {
+    Ace: "A",
+    King: "K",
+    Queen: "Q",
+    Jack: "J",
+  };
+  return ranks[rank] ?? rank;
+}
+
+function displayCardSuit(value: unknown): string {
+  const suit = String(value ?? "").toLowerCase();
+  const suits: Record<string, string> = {
+    spades: "♠",
+    hearts: "♥",
+    clubs: "♣",
+    diamonds: "♦",
+  };
+  return suits[suit] ?? "?";
+}
+
+function displayCardModifier(value: unknown, names: Record<string, string>): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const key = String(value).toLowerCase();
+  return names[key] ?? String(value);
+}
+
+function displayHandCard(card: Record<string, unknown>): string {
+  const enhancements: Record<string, string> = {
+    bonus: "Bonus",
+    mult: "Mult",
+    wild: "Wild",
+    glass: "Glass",
+    steel: "Steel",
+    stone: "Stone",
+    gold: "Gold",
+    lucky: "Lucky",
+  };
+  const seals: Record<string, string> = {
+    red: "Red Seal",
+    blue: "Blue Seal",
+    purple: "Purple Seal",
+    gold: "Gold Seal",
+  };
+  const editions: Record<string, string> = {
+    foil: "Foil",
+    holo: "Holographic",
+    holographic: "Holographic",
+    polychrome: "Polychrome",
+    negative: "Negative",
+  };
+
+  const isStone = card.enhancement === "stone";
+  const enhancement = isStone ? undefined : displayCardModifier(card.enhancement, enhancements);
+  const seal = displayCardModifier(card.seal, seals);
+  const edition = displayCardModifier(card.edition, editions);
+  const modifiers = [enhancement, seal, edition].filter((value): value is string => value !== undefined);
+  if (card.debuffed !== undefined) modifiers.push("Debuffed");
+
+  const base = isStone
+    ? "Stone Card"
+    : `${displayCardSuit(card.suit)}${displayCardRank(card.rank)}`;
+  return modifiers.length > 0 ? `${base} (${modifiers.join(", ")})` : base;
+}
+
 function stateToMarkdown(data: object): string {
   const payload = ((data as Record<string, unknown>).payload ?? {}) as Record<string, unknown>;
 
@@ -142,11 +208,9 @@ function stateToMarkdown(data: object): string {
 
   if (Array.isArray(payload.hand) && payload.hand.length > 0) {
     lines.push("## Hand\n");
-    lines.push("| ID | Card | Enhancements |");
-    lines.push("|---|---|---|");
     for (const card of payload.hand) {
       const c = card as Record<string, unknown>;
-      lines.push(`| ${c.card_id ?? "?"} | ${c.display ?? c.name ?? "?"} | ${c.enhancements ?? "—"} |`);
+      lines.push(`- ${displayHandCard(c)}`);
     }
     lines.push("");
   }
