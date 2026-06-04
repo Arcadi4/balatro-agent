@@ -27,7 +27,7 @@ const inspectCardInstanceSchema = z
   .object({
     card_id: z
       .union([z.string(), z.number().int()])
-      .describe("Live card instance ID from balatro_inspect_game_state, not a static entity ID."),
+      .describe("Live card instance ID from balatro_inspect_game_state, not an entity/prototype ID."),
     response_format: z
       .enum(["markdown", "json"])
       .default("markdown")
@@ -42,78 +42,6 @@ function normalizeCardId(value: string | number): string {
 function cloneRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return { ...(value as Record<string, unknown>) };
-}
-
-function findEntityById(deps: Deps, entityId: unknown): Promise<Record<string, unknown> | null> {
-  if (typeof entityId !== "string" || entityId.length === 0) return Promise.resolve(null);
-  return deps.entityCatalog.get(entityId)
-    .then((entity) => entity as Record<string, unknown>)
-    .catch(() => null);
-}
-
-function compactEntity(entity: Record<string, unknown>): Record<string, unknown> {
-  const metadata = cloneRecord(entity.metadata) ?? {};
-  const compact: Record<string, unknown> = {
-    id: entity.id,
-    name: entity.name,
-    effect_text: entity.effect_text,
-    source_url: entity.source_url,
-  };
-
-  for (const key of ["game_key", "rarity", "cost", "sell_value", "data_status"] as const) {
-    if (metadata[key] !== undefined) compact[key] = metadata[key];
-  }
-
-  return compact;
-}
-
-async function enrichCardLike(deps: Deps, value: unknown): Promise<Record<string, unknown> | null> {
-  const instance = cloneRecord(value);
-  if (!instance) return null;
-
-  const entity = await findEntityById(deps, instance.entity_id);
-  if (entity) {
-    instance.entity = {
-      ...compactEntity(entity),
-    };
-
-    if (instance.effect_text === undefined && entity.effect_text !== undefined) {
-      instance.effect_text = entity.effect_text;
-    }
-  }
-
-  return instance;
-}
-
-async function enrichArray(deps: Deps, value: unknown): Promise<unknown> {
-  if (!Array.isArray(value)) return value;
-  const enriched = await Promise.all(value.map((item) => enrichCardLike(deps, item)));
-  return enriched.map((item, index) => item ?? value[index]);
-}
-
-async function enrichShop(deps: Deps, value: unknown): Promise<unknown> {
-  const shop = cloneRecord(value);
-  if (!shop) return value;
-  for (const key of ["jokers", "vouchers", "boosters", "cards"]) {
-    if (Array.isArray(shop[key])) shop[key] = await enrichArray(deps, shop[key]);
-  }
-  return shop;
-}
-
-async function enrichPack(deps: Deps, value: unknown): Promise<unknown> {
-  const pack = cloneRecord(value);
-  if (!pack) return value;
-  if (Array.isArray(pack.options)) pack.options = await enrichArray(deps, pack.options);
-  return pack;
-}
-
-async function enrichPayload(deps: Deps, payload: unknown): Promise<Record<string, unknown>> {
-  const enriched = cloneRecord(payload) ?? {};
-  enriched.jokers = await enrichArray(deps, enriched.jokers);
-  enriched.consumables = await enrichArray(deps, enriched.consumables);
-  enriched.shop = await enrichShop(deps, enriched.shop);
-  enriched.pack = await enrichPack(deps, enriched.pack);
-  return enriched;
 }
 
 function findInArray(items: unknown, cardId: string, location: string): Record<string, unknown> | null {
@@ -159,7 +87,6 @@ function findCardInstance(payload: Record<string, unknown>, cardId: string): Rec
 function cardInstanceToMarkdown(data: object): string {
   const d = data as Record<string, unknown>;
   const instance = (d.instance ?? {}) as Record<string, unknown>;
-  const entity = (d.entity ?? null) as Record<string, unknown> | null;
   const lines: string[] = [];
 
   lines.push(`# ${instance.name ?? instance.display ?? instance.card_id ?? "Card Instance"}\n`);
@@ -170,11 +97,6 @@ function cardInstanceToMarkdown(data: object): string {
   if (instance.cost !== undefined) lines.push(`**Cost:** $${instance.cost}  `);
   if (instance.debuffed !== undefined) lines.push(`**Debuffed:** ${instance.debuffed}  `);
   lines.push("");
-
-  if (entity?.effect_text) {
-    lines.push("## Static Entity Effect\n");
-    lines.push(`${entity.effect_text}\n`);
-  }
 
   lines.push("## Live Instance\n");
   lines.push("```json");
@@ -286,7 +208,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
         throw err;
       }
 
-      const payload = await enrichPayload(deps, state.payload);
+      const payload = cloneRecord(state.payload) ?? {};
       const structured: Record<string, unknown> = {
         protocol_version: state.protocol_version,
         seq: state.seq,
@@ -308,7 +230,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
     "balatro_inspect_card_instance",
     {
       description:
-        "Reads one live card instance from the current Balatro state by card_id and separates live per-run fields from static entity/wiki knowledge. " +
+        "Reads one live card instance from the current Balatro state by card_id and returns live per-run fields. " +
         "Use this after balatro_inspect_game_state when you need to inspect a specific Joker, consumable, shop card, pack option, or hand card. " +
         "card_id is the live instance handle used by action tools; entity_id identifies the static card/Joker type. Requires a card_id present in the current live state.",
       inputSchema: inspectCardInstanceSchema,
@@ -334,19 +256,17 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
         throw err;
       }
 
-      const payload = await enrichPayload(deps, state.payload);
+      const payload = cloneRecord(state.payload) ?? {};
       const found = findCardInstance(payload, cardId);
       if (!found) {
         return { ...toolError("INVALID_TARGET", `card_id "${cardId}" not found in current live state`) };
       }
 
-      const instance = (await enrichCardLike(deps, found.card)) ?? (found.card as Record<string, unknown>);
-      const entity = cloneRecord(instance.entity);
+      const instance = cloneRecord(found.card) ?? (found.card as Record<string, unknown>);
       const structured: Record<string, unknown> = {
         card_id: cardId,
         location: found.location,
         instance,
-        entity,
         seq: state.seq,
         wrote_at: state.wrote_at,
       };
