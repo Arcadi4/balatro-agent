@@ -169,6 +169,10 @@ function displayHandCard(card: Record<string, unknown>): string {
   return modifiers.length > 0 ? `${base} (${modifiers.join(", ")})` : base;
 }
 
+function displayHandCardLine(card: Record<string, unknown>): string {
+  return `[${String(card.card_id ?? "?")}] ${displayHandCard(card)}`;
+}
+
 function stateToMarkdown(data: object): string {
   const payload = ((data as Record<string, unknown>).payload ?? {}) as Record<string, unknown>;
 
@@ -210,7 +214,7 @@ function stateToMarkdown(data: object): string {
     lines.push("## Hand\n");
     for (const card of payload.hand) {
       const c = card as Record<string, unknown>;
-      lines.push(`- ${displayHandCard(c)}`);
+      lines.push(`- ${displayHandCardLine(c)}`);
     }
     lines.push("");
   }
