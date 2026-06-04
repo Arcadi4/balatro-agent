@@ -1,6 +1,6 @@
 <div align="center">
 
-# Balatro MCP
+# Balatro Agent
 
 <!-- README-I18N:START -->
 
@@ -12,7 +12,7 @@
 
 </div>
 
-Balatro MCP 将 TypeScript MCP 服务器与 Steamodded/Lovely Balatro Mod 配对，让智能体可以通过完全基于文本的接口观察实时游戏状态并与 Balatro 交互。不需要视觉模型，也不需要屏幕抓取。
+Balatro Agent 将 TypeScript MCP 服务器与 Steamodded/Lovely Balatro Mod 配对，让智能体可以通过完全基于文本的接口观察实时游戏状态并与 Balatro 交互。不需要视觉模型，也不需要屏幕抓取。
 
 > [!WARNING]
 > 本项目目前仅针对 macOS Apple Silicon 配置并测试。未来会加入更通用的安装支持。
