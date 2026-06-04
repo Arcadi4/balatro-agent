@@ -121,7 +121,6 @@ function stateToMarkdown(data: object): string {
   const lines: string[] = [];
   lines.push("# Balatro Game State\n");
 
-  if (d.seq !== undefined) lines.push(`**Seq:** ${d.seq}  `);
   if (payload.phase) lines.push(`**Phase:** ${String(payload.phase)}  `);
   if (payload.g_state) lines.push(`**G.STATE:** ${String(payload.g_state)}  `);
   if (payload.money !== undefined) lines.push(`**Money:** $${payload.money}  `);
@@ -213,12 +212,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
 
       const payload = cloneRecord(state.payload) ?? {};
       const structured: Record<string, unknown> = {
-        protocol_version: state.protocol_version,
-        seq: state.seq,
-        wrote_at: state.wrote_at,
-        state_hash: state.state_hash,
         rules_uri: "balatro://rules/global",
-        rules_version: state.protocol_version,
         payload,
       };
 
@@ -265,8 +259,6 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
         card_id: cardId,
         location: found.location,
         instance,
-        seq: state.seq,
-        wrote_at: state.wrote_at,
       };
 
       const envelope = formatResponse(structured, format, {

@@ -52,16 +52,11 @@ async function executeBlindCommand(
   if (!response.ok) {
     const code = response.error_code ?? "UNKNOWN_ERROR";
     const message = response.error_message ?? `Command ${kind} failed`;
-    return toolError(code, message, {
-      seq: response.seq,
-      applied_state_seq: response.applied_state_seq,
-    });
+    return toolError(code, message);
   }
 
   const structured: Record<string, unknown> = {
     ok: response.ok,
-    seq: response.seq,
-    applied_state_seq: response.applied_state_seq,
     data: response.data,
   };
 

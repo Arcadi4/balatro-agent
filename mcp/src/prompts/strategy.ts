@@ -51,8 +51,8 @@ tool is available.
   connected, \`INSTANCE_BUSY\` means another MCP client owns the bridge, and
   \`PROTOCOL_MISMATCH\` means the TypeScript server and Balatro mod versions are
   incompatible. Treat these as hard stops — do not fabricate state or outcomes.
-- Tools are idempotent on the seq number; never replay a command unless the
-  bridge explicitly reports it was lost.
+- Do not replay an action tool call unless the bridge explicitly reports it was
+  lost or failed.
 
 ### Reasoning Style
 
