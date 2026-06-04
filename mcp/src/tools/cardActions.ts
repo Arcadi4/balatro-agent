@@ -10,15 +10,13 @@ import { normalizeCardId } from "./cardIds.js";
 const USE_CONSUMABLE_DESCRIPTION =
   "Uses a consumable card (Tarot, Planet, or Spectral) from your consumable slots, applying its effect to the game state immediately. " +
   "Use this when you want to activate a consumable's effect — for example, enhancing cards with a Tarot, upgrading a poker hand level with a Planet, or triggering a Spectral card's special ability. " +
-  "Do NOT call this on Joker cards (they are passive and cannot be 'used'), on cards not present in your consumable slots, or outside of a phase where consumable use is permitted (e.g. during blind selection without cards dealt). " +
-  "Error codes: INVALID_TARGET (card_id not found in consumable slots or not a usable consumable), WRONG_PHASE (consumable use not allowed in current phase), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Requires a usable consumable card_id in your consumable slots and a phase where that consumable can be applied; Joker cards are passive and cannot be used.";
 
 const SELL_CARD_DESCRIPTION =
   "Sells a card (Joker or consumable) from your slots for its sell value in dollars, permanently removing it from your possession. " +
   "Use this when you need cash to buy a better card from the shop, when a Joker no longer fits your build, or when you need to free up a slot for an incoming card. " +
   "Selling is available in stable interaction phases including blind select, hand selection, cash-out, and shop; it is not available during scoring/draw animations or while resolving Booster Packs. " +
-  "Do NOT call this on cards in your hand (playing cards cannot be sold this way), on cards not present in your Joker or consumable slots, or during animation/pack-resolution phases. " +
-  "Error codes: INVALID_TARGET (card_id not found in sellable slots), WRONG_PHASE (selling not allowed in current phase), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Requires a sellable Joker or consumable card_id in your slots; playing cards in hand cannot be sold this way.";
 
 const useConsumableSchema = z
   .object({

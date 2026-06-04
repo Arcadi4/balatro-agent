@@ -10,20 +10,17 @@ import { cardIdSchema, normalizeCardId, normalizeCardIds } from "./cardIds.js";
 const OPEN_BOOSTER_DESCRIPTION =
   "Opens a Booster Pack that you have already purchased from the shop, revealing the cards inside for selection. " +
   "Use this when you have bought a Booster Pack (Arcana, Celestial, Spectral, Standard, or Buffoon) and want to see its contents and begin choosing cards from it. " +
-  "Do NOT call this outside of the SHOP phase, on a card_id that does not reference a purchased Booster Pack, or while another Booster Pack is already open and awaiting resolution. " +
-  "Error codes: WRONG_PHASE (not in SHOP), INVALID_TARGET (card_id does not reference a valid purchased Booster Pack), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Requires SHOP, a purchased Booster Pack card_id, and no other open Booster Pack awaiting resolution.";
 
 const SELECT_BOOSTER_CARD_DESCRIPTION =
   "Selects a card from an open Booster Pack, adding it to your collection or applying its effect immediately if it is a consumable with targets specified. " +
   "Use this when a Booster Pack is open and you want to pick one of the revealed cards — for example, choosing a Joker from a Buffoon Pack, a Tarot from an Arcana Pack, or a playing card from a Standard Pack. " +
-  "Do NOT call this when no Booster Pack is currently open, on a card_id not present among the revealed pack contents, or when you have already used all your picks for this pack; pass targets only for consumables that operate on specific cards (e.g. Tarots that enhance hand cards). " +
-  "Error codes: WRONG_PHASE (no Booster Pack open), INVALID_TARGET (card_id not in open pack contents, or targets invalid for this card), SLOTS_FULL (no open slot to receive the selected card), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Requires an open Booster Pack, remaining picks, a revealed pack card_id, any needed slot capacity, and valid targets only for targeted consumables.";
 
 const SKIP_BOOSTER_DESCRIPTION =
   "Skips the remaining picks in an open Booster Pack, closing it and returning to the shop without selecting any more cards. " +
   "Use this when a Booster Pack is open but you do not want any of the remaining revealed cards, or you have already picked the cards you want and wish to forfeit the remaining selections. " +
-  "Do NOT call this when no Booster Pack is currently open; this action is irreversible — once skipped, the remaining cards in the pack are lost permanently. " +
-  "Error codes: WRONG_PHASE (no Booster Pack open), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Requires an open Booster Pack; this action is irreversible and the remaining cards in the pack are lost permanently.";
 
 const openBoosterSchema = z
   .object({

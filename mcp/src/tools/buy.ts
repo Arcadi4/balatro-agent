@@ -10,24 +10,26 @@ import { cardIdSchema, normalizeCardId, normalizeCardIds } from "./cardIds.js";
 const BUY_CARD_DESCRIPTION =
   "Purchases a card from the shop. Jokers are placed into Joker slots, Tarot/Planet/Spectral cards are placed into consumable slots, and Vouchers are redeemed immediately as permanent run effects. " +
   "Use this when you have enough dollars and an open slot for the card type, or when you want to redeem the shop Voucher. " +
-  "Do NOT call this outside of the SHOP phase, on a card_id that is not currently in the shop, or when you lack the dollars or the slot capacity to receive it; use balatro_buy_and_use_card if your intent is to buy a consumable and immediately apply its effect. " +
-  "Error codes: WRONG_PHASE (not in SHOP), INVALID_TARGET (card_id not present in current shop offerings), INSUFFICIENT_FUNDS (not enough dollars to purchase), SLOTS_FULL (no open slot for this card type), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Requires SHOP, a current shop card_id, enough dollars, and any needed slot capacity; use balatro_buy_and_use_card to buy and immediately apply a consumable.";
 
 const BUY_AND_USE_CARD_DESCRIPTION =
   "Purchases a consumable card (Tarot, Planet, or Spectral) from the shop and immediately uses it in a single atomic action, applying its effect to the game state and bypassing the consumable slot entirely. " +
   "Use this when you want to spend dollars on a consumable purely for its immediate effect — for example, buying a Tarot to enhance specific hand cards via the optional targets array, or buying a Planet to upgrade a poker hand level. " +
-  "Do NOT call this outside of the SHOP phase, on Joker or Voucher cards (they cannot be 'used'), on a card_id not present in the current shop, or when you lack the dollars to afford it; pass targets only for consumables that operate on specific cards (e.g. Tarots that enhance hand cards). " +
-  "Error codes: WRONG_PHASE (not in SHOP), INVALID_TARGET (card_id not in shop, not a usable consumable, or one or more targets not valid for this consumable), INSUFFICIENT_FUNDS (not enough dollars to purchase), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Requires SHOP, an affordable Tarot/Planet/Spectral shop card, and valid targets only when that consumable operates on specific cards.";
 
 const buyCardSchema = z
   .object({
     card_id: z
       .union([z.string(), z.number().int()])
-      .describe("The ID of the card in the shop to purchase. Must reference a card currently offered in the SHOP phase."),
+      .describe(
+        "The ID of the card in the shop to purchase. Must reference a card currently offered in the SHOP phase.",
+      ),
     response_format: z
       .enum(["markdown", "json"])
       .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
+      .describe(
+        "Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries.",
+      ),
   })
   .strict();
 
@@ -35,15 +37,21 @@ const buyAndUseCardSchema = z
   .object({
     card_id: z
       .union([z.string(), z.number().int()])
-      .describe("The ID of the consumable card in the shop to purchase and immediately use. Must be a Tarot, Planet, or Spectral card currently offered in the SHOP phase."),
+      .describe(
+        "The ID of the consumable card in the shop to purchase and immediately use. Must be a Tarot, Planet, or Spectral card currently offered in the SHOP phase.",
+      ),
     targets: z
       .array(cardIdSchema)
       .optional()
-      .describe("Optional array of target card IDs for consumables that operate on specific cards (e.g. Tarots that enhance hand cards). Omit for consumables that take no targets."),
+      .describe(
+        "Optional array of target card IDs for consumables that operate on specific cards (e.g. Tarots that enhance hand cards). Omit for consumables that take no targets.",
+      ),
     response_format: z
       .enum(["markdown", "json"])
       .default("markdown")
-      .describe("Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries."),
+      .describe(
+        "Output format. Use 'json' for programmatic parsing, 'markdown' for human-readable summaries.",
+      ),
   })
   .strict();
 
@@ -113,11 +121,7 @@ export function registerBuyTools(server: McpServer, deps: Deps): void {
     async (args) => {
       const format: ResponseFormat = args.response_format ?? "markdown";
       const cardId = normalizeCardId(args.card_id);
-      const envelope = await executeBuyCommand(
-        deps,
-        { kind: "buy_card", card_id: cardId },
-        format,
-      );
+      const envelope = await executeBuyCommand(deps, { kind: "buy_card", card_id: cardId }, format);
       return { ...envelope };
     },
   );

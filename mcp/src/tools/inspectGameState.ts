@@ -12,8 +12,7 @@ const DESCRIPTION =
   "round progress, deck composition summary, shop contents (when in shop), and booster pack contents (when open). " +
   "This is the primary observation tool — call it before making any strategic decision to understand the current situation. " +
   "Output includes legal_actions[] indicating valid moves and rules_uri pointing to the full game rules resource. " +
-  "Do NOT poll faster than 1 Hz; prefer calling once per decision point rather than repeatedly. " +
-  "Error codes: GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Do NOT poll faster than 1 Hz; prefer calling once per decision point rather than repeatedly.";
 
 const inputSchema = z
   .object({
@@ -311,8 +310,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
       description:
         "Reads one live card instance from the current Balatro state by card_id and separates live per-run fields from static entity/wiki knowledge. " +
         "Use this after balatro_inspect_game_state when you need to inspect a specific Joker, consumable, shop card, pack option, or hand card. " +
-        "card_id is the live instance handle used by action tools; entity_id identifies the static card/Joker type. " +
-        "Error codes: INVALID_TARGET (card_id not found), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).",
+        "card_id is the live instance handle used by action tools; entity_id identifies the static card/Joker type. Requires a card_id present in the current live state.",
       inputSchema: inspectCardInstanceSchema,
       annotations: {
         readOnlyHint: true,

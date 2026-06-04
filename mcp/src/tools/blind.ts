@@ -9,14 +9,12 @@ import { BridgeError } from "../bridge/socket-client.js";
 const SELECT_BLIND_DESCRIPTION =
   "Selects the currently presented blind to face it for the round, transitioning the game from BLIND_SELECT into SELECTING_HAND so cards are dealt. " +
   "Use this when you want to commit to playing the upcoming blind rather than skipping it for the Tag reward. " +
-  "Do NOT call this outside of the BLIND_SELECT phase, and do NOT use it when your intent is to skip — use balatro_skip_blind instead. " +
-  "Error codes: WRONG_PHASE (not in BLIND_SELECT), INVALID_TARGET (no selectable blind currently presented), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Requires BLIND_SELECT and a selectable blind; use balatro_skip_blind instead when your intent is to skip.";
 
 const SKIP_BLIND_DESCRIPTION =
   "Skips the currently presented blind, forfeiting its cash reward in exchange for a Tag reward redeemed in the shop or later rounds. " +
   "Use this when the blind's chip target is too risky for your current build, or when the Tag reward outweighs the cash payout. " +
-  "Do NOT call this on a Boss Blind (it is mandatory and cannot be skipped) or outside of the BLIND_SELECT phase, and do NOT confuse it with balatro_skip_booster which forfeits booster pack picks. " +
-  "Error codes: WRONG_PHASE (not in BLIND_SELECT), INVALID_TARGET (current blind is not skippable, e.g. Boss Blind), GAME_NOT_RUNNING (Balatro not running), INSTANCE_BUSY (another MCP client already owns the bridge connection), PROTOCOL_MISMATCH (server/mod version mismatch).";
+  "Requires BLIND_SELECT and a skippable non-Boss Blind; do NOT confuse it with balatro_skip_booster, which forfeits Booster Pack picks.";
 
 const inputSchema = z
   .object({

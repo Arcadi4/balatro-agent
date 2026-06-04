@@ -47,9 +47,10 @@ tool is available.
 - Issue actions through the typed bridge tools (e.g. \`balatro_play_hand\`,
   \`balatro_discard\`, \`balatro_buy_card\`, \`balatro_skip_blind\`). Use
   \`card_id\` for live card actions, not \`entity_id\`.
-- Tools return \`GAME_NOT_RUNNING\` when no Balatro instance is connected, or
-  \`INSTANCE_BUSY\` when another MCP client already owns the bridge connection.
-  Treat either as a hard stop — do not fabricate state or outcomes.
+- Shared bridge errors: \`GAME_NOT_RUNNING\` means no Balatro instance is
+  connected, \`INSTANCE_BUSY\` means another MCP client owns the bridge, and
+  \`PROTOCOL_MISMATCH\` means the TypeScript server and Balatro mod versions are
+  incompatible. Treat these as hard stops — do not fabricate state or outcomes.
 - Tools are idempotent on the seq number; never replay a command unless the
   bridge explicitly reports it was lost.
 
