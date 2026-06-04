@@ -1,5 +1,7 @@
 import { CHARACTER_LIMIT } from "./constants.js";
 
+import type { CallToolResult, TextContent } from "@modelcontextprotocol/sdk/types.js";
+
 export type ResponseFormat = "markdown" | "json";
 
 export interface TruncationContext {
@@ -17,16 +19,19 @@ export interface FormatResponseContext {
   toMarkdown?: (data: object) => string;
 }
 
-export interface ToolResponseEnvelope {
-  content: [{ type: "text"; text: string }];
+export type ToolResponseEnvelope = CallToolResult & {
+  content: [TextContent];
   structuredContent: Record<string, unknown>;
-}
+};
 
 function defaultMarkdown(data: object): string {
   return "```json\n" + JSON.stringify(data, null, 2) + "\n```";
 }
 
-function withTruncationFlag(structured: Record<string, unknown>, ctx?: TruncationContext): Record<string, unknown> {
+function withTruncationFlag(
+  structured: Record<string, unknown>,
+  ctx?: TruncationContext,
+): Record<string, unknown> {
   if (!ctx) return structured;
   const merged: Record<string, unknown> = { ...structured };
   if (ctx.truncated !== undefined) merged.truncated = ctx.truncated;
@@ -39,7 +44,10 @@ function withTruncationFlag(structured: Record<string, unknown>, ctx?: Truncatio
   return merged;
 }
 
-function enforceCharacterLimit(text: string, structured: Record<string, unknown>): {
+function enforceCharacterLimit(
+  text: string,
+  structured: Record<string, unknown>,
+): {
   text: string;
   structured: Record<string, unknown>;
 } {

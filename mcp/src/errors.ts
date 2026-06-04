@@ -1,12 +1,16 @@
-export interface ToolErrorEnvelope {
-  content: [{ type: "text"; text: string }];
-  structuredContent: {
-    error_code: string;
-    message: string;
-    [key: string]: unknown;
-  };
+import type { CallToolResult, TextContent } from "@modelcontextprotocol/sdk/types.js";
+
+type ToolErrorStructuredContent = {
+  error_code: string;
+  message: string;
+  [key: string]: unknown;
+};
+
+export type ToolErrorEnvelope = CallToolResult & {
+  content: [TextContent];
+  structuredContent: ToolErrorStructuredContent;
   isError: true;
-}
+};
 
 export function toolError(
   errorCode: string,

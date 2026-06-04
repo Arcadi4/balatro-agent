@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
 import { formatResponse, type ResponseFormat } from "../response.js";
@@ -64,21 +65,21 @@ const OPEN_BOOSTER_ANNOTATIONS = {
   destructiveHint: false,
   idempotentHint: false,
   openWorldHint: false,
-} as const;
+} as const satisfies ToolAnnotations;
 
 const SELECT_BOOSTER_CARD_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: true,
   idempotentHint: false,
   openWorldHint: false,
-} as const;
+} as const satisfies ToolAnnotations;
 
 const SKIP_BOOSTER_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: true,
   idempotentHint: false,
   openWorldHint: false,
-} as const;
+} as const satisfies ToolAnnotations;
 
 async function executeBoosterCommand(
   deps: Deps,

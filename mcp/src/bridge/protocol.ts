@@ -24,25 +24,29 @@
  * The 17 action kinds from actions.lua are the method names.
  */
 
-export interface JsonRpcRequest {
-  jsonrpc: "2.0";
+import type {
+  JSONRPCErrorResponse,
+  JSONRPCRequest,
+  JSONRPCResultResponse,
+} from "@modelcontextprotocol/sdk/types.js";
+
+export type JsonRpcRequest = Omit<JSONRPCRequest, "id" | "params"> & {
   id: number;
-  method: string;
   params?: Record<string, unknown>;
-}
+};
 
-export interface JsonRpcResponse {
-  jsonrpc: "2.0";
-  id: number;
-  result?: unknown;
-  error?: JsonRpcError;
-}
+export type JsonRpcResponse =
+  | (Omit<JSONRPCResultResponse, "id" | "result"> & {
+    id: number;
+    result: unknown;
+    error?: never;
+  })
+  | (Omit<JSONRPCErrorResponse, "id"> & {
+    id: number;
+    result?: never;
+  });
 
-export interface JsonRpcError {
-  code: number;
-  message: string;
-  data?: unknown;
-}
+export type JsonRpcError = JSONRPCErrorResponse["error"];
 
 // Error Code Mapping
 // Application-level string codes → JSON-RPC integer codes.

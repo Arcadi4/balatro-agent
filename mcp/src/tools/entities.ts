@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 
 import type { Deps } from "../deps.js";
 import { formatResponse, type ResponseFormat } from "../response.js";
@@ -73,7 +74,7 @@ const ANNOTATIONS = {
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: true,
-} as const;
+} as const satisfies ToolAnnotations;
 
 function listToMarkdown(data: object): string {
   const d = data as Record<string, unknown>;
