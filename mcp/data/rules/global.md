@@ -1,8 +1,5 @@
 # Balatro Game Rules Reference
 
-Version: 1.1  
-Last Updated: 2026-06-03
-
 ## Run Loop
 
 - **Ante Structure**: Each run has 8 Antes (rounds), each with 3 Blinds: Small Blind, Big Blind, Boss Blind
@@ -22,11 +19,46 @@ Source: https://balatrowiki.org/w/Gameplay_loop
 
 Source: https://balatrowiki.org/w/Gameplay_loop
 
+## Point Calculation
+
+The final score of a played hand is always **Score = Chips × Mult**.
+
+### Played vs. Scored Cards (Critical Distinction)
+
+"Played" cards are all cards you select before clicking "Play Hand". **Only the subset that actually form the poker hand are "scored"** — all others are simply discarded with no effect.
+
+**Example**: Playing `7♥ 7♦ 3♠ 2♥` produces a Pair. Only the two 7s are **scored**; the 3♠ and 2♥ are merely **played**. They contribute **no chips, no Mult, and trigger no effects of any kind** (card enhancements, seals, editions, or "on scored" Jokers).
+
+The only exceptions that let non-scoring cards count:
+- **Splash** Joker: all played cards become scored
+- **Stone cards**: always score regardless of hand type
+- **Four Fingers**: can admit extra cards into Straights and Flushes
+
+### Scoring Order
+
+When a hand is played, effects activate in this sequence:
+
+1. **Boss Blind effects** (e.g., The Flint halves base chips/mult, The Arm reduces hand level)
+2. **"On played" Jokers** — trigger before any card scoring (e.g., Green Joker scaling, DNA)
+3. **Scored cards** (left to right), each card in order:
+   - Base chips (rank value) → enhancement → seal → edition → "on scored" Jokers → retriggers
+4. **Held-in-hand cards** (left to right) — Steel cards, Baron, Shoot the Moon, Mime retriggers
+5. **Joker editions + "Independent" Jokers** (left to right) — Foil, Holographic, Polychrome, and independent effects (e.g., The Duo, Blackboard)
+6. **Score = Chips × Mult** — the final multiplication
+
+### Key Rules
+
+- **Non-scored played cards have zero impact on the score**. Period. They don't add chips, don't trigger "on scored" Jokers, don't activate enhancements/seals/editions.
+- **Debuffed cards can be played and can form hands**, but are treated as blank — they contribute no chips, no effects, and don't trigger card or Joker effects.
+- **Joker order matters**: +Mult before ×Mult yields a higher score. +Chips Jokers should go leftmost.
+
+Sources: https://balatrowiki.org/wiki/Poker_hands, https://balatrogame.fandom.com/wiki/Guide:_Activation_Sequence
+
 ## High-Risk Rules Agents Often Hallucinate
 
 - **Debuffed/disabled cards can still be selected and played**. They can still form the named poker hand, but debuffed cards do not score, do not contribute chips/mult, and do not trigger card or Joker effects. Do not treat a debuffed card as illegal unless the live state says the action is blocked.
 - **Boss Blind hand restrictions can allow a play while nullifying it**. A hand that violates a Boss Blind restriction may be playable but may not score or trigger effects.
-- **Only scoring cards count by default**. Extra played cards can be used like an extra discard, but they do not score or trigger scored-card effects unless a rule/Joker such as Splash changes that.
+- **Non-scored played cards trigger nothing**. When you play 5 cards for a Pair, only the 2 pairing cards score — the other 3 are functionally discards. See Point Calculation section for the full scoring sequence.
 - **Runtime state beats memory and wiki summaries**. Always inspect live debuffs, selected cards, legal actions, hand/discard counts, money, blind effect, and available card IDs before acting.
 
 Sources: https://balatrowiki.org/w/Poker_hands, https://balatrowiki.org/w/Card_modifiers, https://balatrowiki.org/w/Blinds_and_Antes
@@ -138,3 +170,7 @@ Original wiki pages:
 - Stickers: https://balatrowiki.org/w/Stickers
 - Stakes: https://balatrowiki.org/w/Stakes
 - Blinds and Antes: https://balatrowiki.org/w/Blinds_and_Antes
+- Score: https://balatrowiki.org/w/Score
+- Chips: https://balatrowiki.org/w/Chips
+- Activation Sequence: https://balatrogame.fandom.com/wiki/Guide:_Activation_Sequence
+- Score Calculation Guide: https://kosgames.com/balatro-score-calculation-guide-53637/
