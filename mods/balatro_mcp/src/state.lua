@@ -174,7 +174,7 @@ local function serialize_joker(card)
   local obj = {
     card_id = card.sort_id or (card.config and card.config.card_id),
     name = card.ability and card.ability.name,
-    entity_id = card.config and card.config.center and ('joker/' .. (card.config.center.key or ''):gsub('^j_', ''):gsub(' ', '_')),
+    entity_id = card.config and card.config.center and card.config.center.key,
     sell_value = card.sell_cost,
     edition = get_card_edition(card),
     stickers = get_card_stickers(card),
@@ -204,14 +204,11 @@ local function serialize_consumable(card)
       kind = set
     end
   end
-  local entity_prefix = kind
-  if entity_prefix == 'consumable' then entity_prefix = 'spectral' end
-
   local obj = {
     card_id = card.sort_id or (card.config and card.config.card_id),
     kind = kind,
     name = card.ability and card.ability.name,
-    entity_id = card.config and card.config.center and (entity_prefix .. '/' .. (card.config.center.key or ''):gsub('^c_', ''):gsub(' ', '_')),
+    entity_id = card.config and card.config.center and card.config.center.key,
     sell_value = card.sell_cost,
     edition = get_card_edition(card),
     stickers = get_card_stickers(card),
@@ -239,7 +236,7 @@ local function serialize_shop_card(card)
     card_id = card.sort_id or (card.config and card.config.card_id),
     kind = kind,
     name = card.ability and card.ability.name,
-    entity_id = card.config and card.config.center and (kind .. '/' .. (card.config.center.key or ''):gsub('^[jcvb]_', ''):gsub(' ', '_')),
+    entity_id = card.config and card.config.center and card.config.center.key,
     cost = card.cost,
     sell_value = card.sell_cost,
     edition = get_card_edition(card),
@@ -536,7 +533,7 @@ local function snapshot_tags()
   for _, tag in ipairs(G.GAME.tags) do
     tags[#tags + 1] = {
       name = tag.name,
-      entity_id = tag.key and ('tag/' .. tag.key:gsub('^tag_', ''):gsub(' ', '_')),
+      entity_id = tag.key,
     }
   end
   if #tags == 0 then return nil end

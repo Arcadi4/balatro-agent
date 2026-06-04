@@ -24,33 +24,14 @@ local function ok(data)
   return { ok = true, data = data or {} }
 end
 
-local function normalize_entity_id(id, entity_type)
+local function normalize_entity_id(id)
   if not id then return nil end
   local value = tostring(id):gsub("%s+", "_"):lower()
-  local slash = value:find("/", 1, true)
-  if slash then
-    local prefix = value:sub(1, slash - 1)
-    local slug = value:sub(slash + 1)
-    if prefix == "joker" then return "j_" .. slug end
-    if prefix == "tarot" or prefix == "planet" or prefix == "spectral" then return "c_" .. slug end
-    if prefix == "voucher" then return "v_" .. slug end
-    if prefix == "booster" then return "p_" .. slug end
-    if prefix == "blind" then return "bl_" .. slug end
-    if prefix == "tag" then return "tag_" .. slug end
-    return slug
-  end
-
-  if value:match("^[jcvp]_") or value:match("^bl_") or value:match("^tag_") then
+  if value:match("^[jcvpmeb]_") or value:match("^bl_") or value:match("^tag_") then
     return value
   end
 
-  if entity_type == "joker" then return "j_" .. value end
-  if entity_type == "tarot" or entity_type == "planet" or entity_type == "spectral" then return "c_" .. value end
-  if entity_type == "voucher" then return "v_" .. value end
-  if entity_type == "booster" then return "p_" .. value end
-  if entity_type == "blind" then return "bl_" .. value end
-  if entity_type == "tag" then return "tag_" .. value end
-  return value
+  return nil
 end
 
 local function entity_type_from_center(center)
@@ -268,9 +249,10 @@ handlers.list_game_entities = function(args)
     return err("GAME_NOT_RUNNING", "Game prototypes are not available")
   end
 
-  local requested_type = args.type and tostring(args.type):lower() or nil
-  local requested_id = normalize_entity_id(args.id, requested_type)
-  local name_contains = args.name_contains and tostring(args.name_contains):lower() or nil
+  local requested_id = normalize_entity_id(args.id)
+  if args.id and not requested_id then
+    return err("INVALID_TARGET", "Entity id must be an in-game key such as j_odd_todd, c_strength, or tag_coupon")
+  end
   local limit = tonumber(args.limit) or 20
   local offset = tonumber(args.offset) or 0
   if limit < 1 then limit = 1 end
@@ -279,12 +261,8 @@ handlers.list_game_entities = function(args)
 
   local records = {}
   for key, center in pairs(G.P_CENTERS) do
-    local record_type = entity_type_from_center(center)
-    local record_name = (center.loc_txt and center.loc_txt.name) or center.name or key
-    local type_ok = not requested_type or requested_type == record_type
     local id_ok = not requested_id or requested_id == key
-    local name_ok = not name_contains or tostring(record_name):lower():find(name_contains, 1, true) ~= nil
-    if type_ok and id_ok and name_ok then
+    if id_ok then
       local record = serialize_center(center)
       if record then
         record.live_instances = live_matches_for_entity(key)

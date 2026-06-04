@@ -11,24 +11,25 @@ const WIKI_API_URL = "https://balatrowiki.org/api.php";
 const LIST_DESCRIPTION =
   "Reads Balatro entity prototypes from the running game runtime, not the local wiki catalog. " +
   "Use this to inspect in-game descriptions, prototype config, and any live card instances matching an entity. " +
-  "Pass id for one known runtime entity (e.g. 'j_odd_todd' or 'joker/odd_todd'), or type/name_contains with pagination for discovery.";
+  "Pass id for one known in-game entity key (e.g. 'j_odd_todd' or 'c_strength'), or omit id and use pagination for discovery.";
 
 const GET_DESCRIPTION =
   "Fetches the actual Balatro Wiki page body for an entity and returns clean, compact, model-readable text. " +
   "Use content_scope='intro' for a concise effect summary, or content_scope='full' when you need strategy/synergy guidance from the rest of the article. " +
   "This reads balatrowiki.org through the MediaWiki API; use balatro_list_game_entities for game-runtime descriptions and dynamic fields. " +
-  "Accepts raw game IDs like 'j_odd_todd', path aliases like 'joker/odd_todd', or display titles like 'Odd Todd'.";
+  "Accepts in-game entity keys like 'j_odd_todd', 'v_overstock_norm', or 'tag_coupon'.";
+
+const gameIdSchema = z
+  .string()
+  .regex(
+    /^(?:[jcvpmeb]_|bl_|tag_|stake_|seal_)[a-z0-9]+(?:_[a-z0-9]+)*$/,
+    "Use an in-game entity key such as 'j_odd_todd', not a bare slug, display name, or type/slug alias.",
+  )
+  .describe("In-game entity key, e.g. 'j_odd_todd', 'c_strength', 'v_overstock_norm', or 'tag_coupon'.");
 
 const listInputSchema = z
   .object({
-    id: z
-      .string()
-      .optional()
-      .describe("Optional entity ID for a single runtime entity, e.g. 'j_odd_todd', 'joker/odd_todd', or 'c_strength'."),
-    type: z
-      .string()
-      .optional()
-      .describe("Optional runtime entity type filter, e.g. joker, tarot, planet, spectral, voucher, booster."),
+    id: gameIdSchema.optional().describe("Optional in-game entity key for a single runtime entity, e.g. 'j_odd_todd' or 'c_strength'."),
     limit: z
       .number()
       .min(1)
@@ -40,10 +41,6 @@ const listInputSchema = z
       .min(0)
       .default(0)
       .describe("Number of runtime entities to skip for pagination. Default 0."),
-    name_contains: z
-      .string()
-      .optional()
-      .describe("Case-insensitive display-name substring filter, e.g. 'joker', 'fortune', or 'trio'."),
     response_format: z
       .enum(["markdown", "json"])
       .default("markdown")
@@ -53,17 +50,11 @@ const listInputSchema = z
 
 const getInputSchema = z
   .object({
-    id: z
-      .string()
-      .describe("Entity ID, alias, or wiki page title, e.g. 'j_odd_todd', 'joker/odd_todd', 'Odd Todd', or 'Canio'."),
+    id: gameIdSchema,
     content_scope: z
       .enum(["intro", "full"])
       .default("intro")
       .describe("Wiki body scope. 'intro' returns the concise page lead; 'full' includes strategy, synergies, trivia, and other article sections up to max_chars."),
-    intro_only: z
-      .boolean()
-      .optional()
-      .describe("Deprecated compatibility flag. Prefer content_scope='intro' or content_scope='full'. When provided, true maps to intro and false maps to full."),
     max_chars: z
       .number()
       .min(500)
@@ -124,6 +115,7 @@ function wikiToMarkdown(data: object): string {
 
 function titleCaseSlug(slug: string): string {
   return slug
+    .replace(/\s+/g, "_")
     .split("_")
     .filter((part) => part.length > 0)
     .map((part) => part[0].toUpperCase() + part.slice(1))
@@ -131,12 +123,15 @@ function titleCaseSlug(slug: string): string {
 }
 
 function wikiTitleFromId(id: string): string {
-  const trimmed = id.trim();
-  if (trimmed.includes(" ")) return trimmed;
+  const trimmed = id.trim().normalize("NFKC");
+  if (trimmed.includes(" ")) return titleCaseSlug(trimmed.toLowerCase());
 
-  const normalized = trimmed.normalize("NFKC").replace(/\s+/g, "_").toLowerCase();
-  const slashIndex = normalized.indexOf("/");
-  if (slashIndex !== -1) return titleCaseSlug(normalized.slice(slashIndex + 1));
+  const normalized = trimmed.toLowerCase();
+  if (normalized.startsWith("bl_")) return `${titleCaseSlug(normalized.slice(3))} Blind`;
+  if (normalized.startsWith("tag_")) return `${titleCaseSlug(normalized.slice(4))} Tag`;
+  if (normalized.startsWith("b_")) return `${titleCaseSlug(normalized.slice(2))} Deck`;
+  if (normalized.startsWith("seal_")) return `${titleCaseSlug(normalized.slice(5))} Seal`;
+  if (normalized.startsWith("stake_")) return `${titleCaseSlug(normalized.slice(6))} Stake`;
   if (/^[a-z]+_/.test(normalized)) return titleCaseSlug(normalized.replace(/^[a-z]+_/, ""));
   return titleCaseSlug(normalized);
 }
@@ -221,8 +216,6 @@ async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSch
       kind: "list_game_entities",
       args: {
         id: args.id,
-        type: args.type,
-        name_contains: args.name_contains,
         limit: args.limit ?? 20,
         offset: args.offset ?? 0,
       },
@@ -252,9 +245,35 @@ async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSch
   return { ...envelope };
 }
 
-async function readWiki(id: string, contentScope: WikiContentScope, maxChars: number, format: ResponseFormat) {
+async function runtimeTitleForId(deps: Deps, id: string): Promise<string | undefined> {
+  let seq: number;
   try {
-    const structured = await fetchWikiExtract(id, contentScope, maxChars);
+    seq = await deps.bridgeClient.sendCommand({
+      kind: "list_game_entities",
+      args: { id, limit: 1, offset: 0 },
+    });
+  } catch (err) {
+    if (err instanceof BridgeError) return undefined;
+    throw err;
+  }
+
+  const response = await deps.bridgeClient.awaitResponse(seq, { timeoutMs: 5_000 });
+  if (!response.ok) return undefined;
+
+  const bridgePayload = (response.data ?? {}) as Record<string, unknown>;
+  const structured = ((bridgePayload.data ?? bridgePayload) as Record<string, unknown>);
+  const items = structured.items;
+  if (!Array.isArray(items)) return undefined;
+
+  const first = items[0] as Record<string, unknown> | undefined;
+  return typeof first?.name === "string" ? first.name : undefined;
+}
+
+async function readWiki(deps: Deps, id: string, contentScope: WikiContentScope, maxChars: number, format: ResponseFormat) {
+  try {
+    const title = await runtimeTitleForId(deps, id) ?? wikiTitleFromId(id);
+    const structured = await fetchWikiExtract(title, contentScope, maxChars);
+    structured.id = id;
     const envelope = formatResponse(structured, format, { toMarkdown: wikiToMarkdown });
     return { ...envelope };
   } catch (err) {
@@ -271,8 +290,11 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      return listRuntimeEntities(deps, args, format);
+      const parsed = listInputSchema.safeParse(args);
+      if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) };
+
+      const format: ResponseFormat = parsed.data.response_format ?? "markdown";
+      return listRuntimeEntities(deps, parsed.data, format);
     },
   );
 
@@ -284,13 +306,12 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const format: ResponseFormat = args.response_format ?? "markdown";
-      const contentScope: WikiContentScope = args.intro_only === true
-        ? "intro"
-        : args.intro_only === false
-          ? "full"
-          : args.content_scope ?? "intro";
-      return readWiki(args.id, contentScope, args.max_chars ?? 8000, format);
+      const parsed = getInputSchema.safeParse(args);
+      if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) };
+
+      const format: ResponseFormat = parsed.data.response_format ?? "markdown";
+      const contentScope: WikiContentScope = parsed.data.content_scope ?? "intro";
+      return readWiki(deps, parsed.data.id, contentScope, parsed.data.max_chars ?? 8000, format);
     },
   );
 }

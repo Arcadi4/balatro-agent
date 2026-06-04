@@ -20,9 +20,9 @@ above and the live game state available through MCP tools.
 ### Entity Knowledge and Live Instances
 
 Balatro's internal keys are the primary stable entity identity, e.g.
-\`j_blueprint\`, \`j_trio\`, \`c_fool\`, and \`v_overstock_norm\`. Human-readable
-paths such as \`joker/trio\` are accepted aliases for lookup, but the runtime
-game key is the source of truth.
+\`j_blueprint\`, \`j_trio\`, \`c_fool\`, and \`v_overstock_norm\`. Use these
+in-game keys for entity tools; do not pass display names or \`type/slug\`
+aliases.
 
 Use \`balatro_list_game_entities\` to read entity prototypes from the running
 game: in-game localized descriptions, base config, rarity/cost fields, and any
