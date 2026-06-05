@@ -28,7 +28,9 @@ const inspectCardInstanceSchema = z
   .object({
     card_id: z
       .union([z.string(), z.number().int()])
-      .describe("Live card instance ID from balatro_inspect_game_state, not an entity/prototype ID."),
+      .describe(
+        "Live card instance ID from balatro_inspect_game_state, not an entity/prototype ID.",
+      ),
   })
   .strict();
 
@@ -41,7 +43,11 @@ function cloneRecord(value: unknown): Record<string, unknown> | null {
   return { ...(value as Record<string, unknown>) };
 }
 
-function findInArray(items: unknown, cardId: string, location: string): Record<string, unknown> | null {
+function findInArray(
+  items: unknown,
+  cardId: string,
+  location: string,
+): Record<string, unknown> | null {
   if (!Array.isArray(items)) return null;
   for (const item of items) {
     const record = cloneRecord(item);
@@ -52,7 +58,10 @@ function findInArray(items: unknown, cardId: string, location: string): Record<s
   return null;
 }
 
-function findCardInstance(payload: Record<string, unknown>, cardId: string): Record<string, unknown> | null {
+function findCardInstance(
+  payload: Record<string, unknown>,
+  cardId: string,
+): Record<string, unknown> | null {
   const directLocations = [
     ["hand", "hand"],
     ["jokers", "jokers"],
@@ -160,7 +169,9 @@ function displayHandCard(card: Record<string, unknown>): string {
   const enhancement = isStone ? undefined : displayCardModifier(card.enhancement, enhancements);
   const seal = displayCardModifier(card.seal, seals);
   const edition = displayCardModifier(card.edition, editions);
-  const modifiers = [enhancement, seal, edition].filter((value): value is string => value !== undefined);
+  const modifiers = [enhancement, seal, edition].filter(
+    (value): value is string => value !== undefined,
+  );
   if (card.debuffed !== undefined) modifiers.push("Debuffed");
 
   const base = isStone
@@ -171,6 +182,59 @@ function displayHandCard(card: Record<string, unknown>): string {
 
 function displayHandCardLine(card: Record<string, unknown>): string {
   return `[${String(card.card_id ?? "?")}] ${displayHandCard(card)}`;
+}
+
+function displayShopCardLine(card: Record<string, unknown>): string {
+  const label = card.name ?? card.entity_id ?? "Unknown Card";
+  const details = [card.kind, card.edition].filter((value) => value !== undefined).map(String);
+  const suffix = details.length > 0 ? ` (${details.join(", ")})` : "";
+  const cost = card.cost !== undefined ? ` — $${String(card.cost)}` : "";
+  return `[${String(card.card_id ?? "?")}] ${String(label)}${suffix}${cost}`;
+}
+
+function appendShopSection(lines: string[], shop: Record<string, unknown>): void {
+  lines.push("## Shop\n");
+  appendField(lines, "Dollars", shop.dollars);
+  appendField(lines, "Reroll Cost", shop.reroll_cost);
+  appendField(lines, "Joker Slots", shop.slots);
+
+  const sections = [
+    ["Jokers", shop.jokers],
+    ["Vouchers", shop.vouchers],
+    ["Boosters", shop.boosters],
+    ["Cards", shop.cards],
+  ] as const;
+
+  for (const [label, items] of sections) {
+    if (!Array.isArray(items) || items.length === 0) continue;
+    lines.push(`\n### ${label}\n`);
+    for (const item of items) {
+      const card = cloneRecord(item);
+      if (card) lines.push(`- ${displayShopCardLine(card)}`);
+    }
+  }
+
+  lines.push("");
+}
+
+function appendField(lines: string[], label: string, value: unknown): void {
+  if (value !== undefined) lines.push(`- **${label}:** ${String(value)}`);
+}
+
+function appendCurrentRound(lines: string[], value: unknown): void {
+  const round = cloneRecord(value);
+  if (!round) {
+    appendField(lines, "Round", value);
+    return;
+  }
+
+  appendField(lines, "Hands Left", round.hands_left);
+  appendField(lines, "Discards Left", round.discards_left);
+  appendField(lines, "Hands Played", round.hands_played);
+  appendField(lines, "Discards Used", round.discards_used);
+  appendField(lines, "Round Dollars", round.dollars);
+  appendField(lines, "Reroll Cost", round.reroll_cost);
+  appendField(lines, "Free Rerolls", round.free_rerolls);
 }
 
 function stateToMarkdown(data: object): string {
@@ -186,10 +250,8 @@ function stateToMarkdown(data: object): string {
 
   if (payload.ante !== undefined || payload.current_round !== undefined) {
     lines.push("## Round Info\n");
-    if (payload.ante !== undefined) lines.push(`- **Ante:** ${payload.ante}`);
-    if (payload.current_round !== undefined) lines.push(`- **Round:** ${payload.current_round}`);
-    if (payload.hands_left !== undefined) lines.push(`- **Hands Left:** ${payload.hands_left}`);
-    if (payload.discards_left !== undefined) lines.push(`- **Discards Left:** ${payload.discards_left}`);
+    appendField(lines, "Ante", payload.ante);
+    appendCurrentRound(lines, payload.current_round);
     lines.push("");
   }
 
@@ -236,6 +298,9 @@ function stateToMarkdown(data: object): string {
     }
     lines.push("");
   }
+
+  const shop = cloneRecord(payload.shop);
+  if (shop) appendShopSection(lines, shop);
 
   return lines.join("\n");
 }
@@ -299,7 +364,9 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
       const payload = cloneRecord(state.payload) ?? {};
       const found = findCardInstance(payload, cardId);
       if (!found) {
-        return { ...toolError("INVALID_TARGET", `card_id "${cardId}" not found in current live state`) };
+        return {
+          ...toolError("INVALID_TARGET", `card_id "${cardId}" not found in current live state`),
+        };
       }
 
       const instance = cloneRecord(found.card) ?? (found.card as Record<string, unknown>);

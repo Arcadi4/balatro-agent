@@ -19,27 +19,38 @@ const DISCARD_HAND_DESCRIPTION =
 
 const inputSchema = z.object({}).strict();
 
+function cloneRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return { ...(value as Record<string, unknown>) };
+}
+
 function playHandToMarkdown(data: object): string {
   const d = data as Record<string, unknown>;
-  const result = (d.data ?? {}) as Record<string, unknown>;
+  const result = cloneRecord(d.data) ?? {};
   const lines: string[] = [];
 
   lines.push("# Hand Played");
   lines.push("");
   lines.push(`- **Cards played:** ${String(result.cards_played ?? "unknown")}`);
-  if (result.points_gained !== undefined) lines.push(`- **Points gained:** ${String(result.points_gained)}`);
+  if (result.points_gained !== undefined)
+    lines.push(`- **Points gained:** ${String(result.points_gained)}`);
   if (result.score_before !== undefined && result.score_after !== undefined) {
     lines.push(`- **Score:** ${String(result.score_before)} -> ${String(result.score_after)}`);
   }
-  if (result.blind_chips !== undefined) lines.push(`- **Blind target:** ${String(result.blind_chips)}`);
+  if (result.blind_chips !== undefined)
+    lines.push(`- **Blind target:** ${String(result.blind_chips)}`);
   if (result.blind_defeated !== undefined) {
     lines.push(`- **Blind defeated:** ${String(result.blind_defeated)}`);
   }
   if (result.hands_played_before !== undefined && result.hands_played_after !== undefined) {
-    lines.push(`- **Hands played:** ${String(result.hands_played_before)} -> ${String(result.hands_played_after)}`);
+    lines.push(
+      `- **Hands played:** ${String(result.hands_played_before)} -> ${String(result.hands_played_after)}`,
+    );
   }
   if (result.timed_out) {
-    lines.push("- **Warning:** Scoring wait timed out; score fields reflect the latest observed game state.");
+    lines.push(
+      "- **Warning:** Scoring wait timed out; score fields reflect the latest observed game state.",
+    );
   }
 
   return lines.join("\n");
@@ -52,10 +63,7 @@ const ANNOTATIONS = {
   openWorldHint: false,
 } as const satisfies ToolAnnotations;
 
-async function executePlayDiscardCommand(
-  deps: Deps,
-  kind: "play_hand" | "discard_hand",
-) {
+async function executePlayDiscardCommand(deps: Deps, kind: "play_hand" | "discard_hand") {
   let response;
   try {
     const seq = await deps.bridgeClient.sendCommand({ kind });
@@ -80,7 +88,10 @@ async function executePlayDiscardCommand(
     data: response.data,
   };
 
-  return formatResponse(structured, kind === "play_hand" ? { toMarkdown: playHandToMarkdown } : undefined);
+  return formatResponse(
+    structured,
+    kind === "play_hand" ? { toMarkdown: playHandToMarkdown } : undefined,
+  );
 }
 
 export function registerPlayDiscardTools(server: McpServer, deps: Deps): void {

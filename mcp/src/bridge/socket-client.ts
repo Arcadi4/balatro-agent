@@ -1,12 +1,7 @@
 import { createConnection } from "node:net";
 import type { Socket } from "node:net";
 
-import {
-  errorCodeToString,
-  isJsonRpcResponse,
-  parseFrames,
-  serializeFrame,
-} from "./protocol.js";
+import { errorCodeToString, isJsonRpcResponse, parseFrames, serializeFrame } from "./protocol.js";
 import type { JsonRpcRequest, JsonRpcResponse } from "./protocol.js";
 
 const SOCKET_PATH = "/tmp/balatro-mcp.sock";
@@ -48,7 +43,10 @@ interface PendingRequest {
 }
 
 export class BridgeError extends Error {
-  constructor(public code: string, message: string) {
+  constructor(
+    public code: string,
+    message: string,
+  ) {
     super(message);
     this.name = "BridgeError";
   }
@@ -85,6 +83,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function extractAppliedStateSeq(value: unknown): number | undefined {
   if (!isRecord(value)) return undefined;
   return typeof value.applied_state_seq === "number" ? value.applied_state_seq : undefined;
+}
+
+function unwrapActionResultData(value: unknown): unknown {
+  if (!isRecord(value) || value.ok !== true || !("data" in value)) return value;
+  return value.data;
 }
 
 function jsonRpcErrorCode(error: JsonRpcResponse["error"]): string {
@@ -125,8 +128,7 @@ export class BridgeClient {
   private lastDisconnectError?: BridgeError;
   private readonly pendingRequests = new Map<number, PendingRequest>();
 
-  constructor() {
-  }
+  constructor() {}
 
   get dir(): string {
     return SOCKET_PATH;
@@ -234,10 +236,7 @@ export class BridgeClient {
     }
   }
 
-  async awaitResponse(
-    seq: number,
-    options?: { timeoutMs?: number },
-  ): Promise<ResponseEnvelope> {
+  async awaitResponse(seq: number, options?: { timeoutMs?: number }): Promise<ResponseEnvelope> {
     this.assertConnected();
 
     const pending = this.pendingRequests.get(seq);
@@ -262,7 +261,7 @@ export class BridgeClient {
 
     return {
       ok: true,
-      data: response.result,
+      data: unwrapActionResultData(response.result),
       seq,
       applied_state_seq: extractAppliedStateSeq(response.result),
     };
@@ -364,16 +363,20 @@ export class BridgeClient {
   }
 
   private errorForSocketClose(socket: Socket): BridgeError {
-    const connectedForMs = this.connectedAtMs === undefined ? undefined : Date.now() - this.connectedAtMs;
+    const connectedForMs =
+      this.connectedAtMs === undefined ? undefined : Date.now() - this.connectedAtMs;
     this.connectedAtMs = undefined;
 
-    return socket.bytesRead === 0 && connectedForMs !== undefined && connectedForMs < RECONNECT_DELAY_MS
+    return socket.bytesRead === 0 &&
+      connectedForMs !== undefined &&
+      connectedForMs < RECONNECT_DELAY_MS
       ? instanceBusyError()
       : gameNotRunningError("Balatro is not running");
   }
 
   private errorForConnectionInterrupted(): BridgeError {
-    const connectedForMs = this.connectedAtMs === undefined ? undefined : Date.now() - this.connectedAtMs;
+    const connectedForMs =
+      this.connectedAtMs === undefined ? undefined : Date.now() - this.connectedAtMs;
     return connectedForMs !== undefined && connectedForMs < RECONNECT_DELAY_MS
       ? instanceBusyError()
       : gameNotRunningError("Balatro is not running");

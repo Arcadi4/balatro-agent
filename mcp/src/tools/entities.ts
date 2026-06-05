@@ -28,17 +28,25 @@ const gameIdSchema = z
     /^(?:[jcvpmeb]_|bl_|tag_|stake_|seal_)[a-z0-9]+(?:_[a-z0-9]+)*$/,
     "Use an in-game entity key such as 'j_odd_todd', not a bare slug, display name, or type/slug alias.",
   )
-  .describe("In-game entity key, e.g. 'j_odd_todd', 'c_strength', 'v_overstock_norm', or 'tag_coupon'.");
+  .describe(
+    "In-game entity key, e.g. 'j_odd_todd', 'c_strength', 'v_overstock_norm', or 'tag_coupon'.",
+  );
 
 const listInputSchema = z
   .object({
-    id: gameIdSchema.optional().describe("Optional in-game entity key for a single runtime entity, e.g. 'j_odd_todd' or 'c_strength'."),
+    id: gameIdSchema
+      .optional()
+      .describe(
+        "Optional in-game entity key for a single runtime entity, e.g. 'j_odd_todd' or 'c_strength'.",
+      ),
     limit: z
       .number()
       .min(1)
       .max(100)
       .default(20)
-      .describe("Maximum number of runtime entities to return per page. Min 1, max 100, default 20."),
+      .describe(
+        "Maximum number of runtime entities to return per page. Min 1, max 100, default 20.",
+      ),
     offset: z
       .number()
       .min(0)
@@ -53,11 +61,15 @@ const wikiInputSchema = z
       .string()
       .min(1)
       .max(120)
-      .describe("Exact Balatro Wiki article title, e.g. 'Blueprint', 'The Hook', 'Booster Packs', 'Poker hands', or 'The Shop'. Do not pass entity IDs like 'j_blueprint'."),
+      .describe(
+        "Exact Balatro Wiki article title, e.g. 'Blueprint', 'The Hook', 'Booster Packs', 'Poker hands', or 'The Shop'. Do not pass entity IDs like 'j_blueprint'.",
+      ),
     content_scope: z
       .enum(["intro", "full"])
       .default("intro")
-      .describe("Wiki body scope. 'intro' returns the concise page lead; 'full' includes strategy, synergies, trivia, and other article sections up to max_chars."),
+      .describe(
+        "Wiki body scope. 'intro' returns the concise page lead; 'full' includes strategy, synergies, trivia, and other article sections up to max_chars.",
+      ),
     max_chars: z
       .number()
       .min(500)
@@ -117,7 +129,10 @@ function cleanWikiText(text: string): string {
 
   for (let i = 0; i < 6; i++) {
     cleaned = cleaned.replace(/\{\{([^{}]*)\}\}/g, (_, body: string) => {
-      const parts = body.split("|").map((part) => part.trim()).filter(Boolean);
+      const parts = body
+        .split("|")
+        .map((part) => part.trim())
+        .filter(Boolean);
       if (parts.length <= 1) return "";
       return parts[parts.length - 1];
     });
@@ -141,7 +156,11 @@ function normalizeWikiTitle(title: string): string {
   return title.trim().normalize("NFKC").replace(/\s+/g, " ");
 }
 
-async function fetchWikiExtract(title: string, contentScope: WikiContentScope, maxChars: number): Promise<Record<string, unknown>> {
+async function fetchWikiExtract(
+  title: string,
+  contentScope: WikiContentScope,
+  maxChars: number,
+): Promise<Record<string, unknown>> {
   const normalizedTitle = normalizeWikiTitle(title);
   const params = new URLSearchParams({
     action: "query",
@@ -160,7 +179,7 @@ async function fetchWikiExtract(title: string, contentScope: WikiContentScope, m
   });
   if (!response.ok) throw new Error(`HTTP ${response.status} from Balatro Wiki`);
 
-  const body = await response.json() as {
+  const body = (await response.json()) as {
     query?: {
       pages?: Array<{ title?: string; missing?: boolean; extract?: string }>;
       redirects?: Array<{ from: string; to: string }>;
@@ -168,7 +187,9 @@ async function fetchWikiExtract(title: string, contentScope: WikiContentScope, m
   };
   const page = body.query?.pages?.[0];
   if (!page || page.missing || !page.extract) {
-    throw new Error(`No Balatro Wiki page content found for "${normalizedTitle}". Pass an exact article title such as "Blueprint", "The Hook", "Booster Packs", or "Poker hands". If starting from an entity ID, call balatro_list_game_entities and use the returned name field.`);
+    throw new Error(
+      `No Balatro Wiki page content found for "${normalizedTitle}". Pass an exact article title such as "Blueprint", "The Hook", "Booster Packs", or "Poker hands". If starting from an entity ID, call balatro_list_game_entities and use the returned name field.`,
+    );
   }
 
   const cleaned = cleanWikiText(page.extract);
@@ -184,7 +205,9 @@ async function fetchWikiExtract(title: string, contentScope: WikiContentScope, m
     redirects: body.query?.redirects ?? [],
     truncated,
     max_chars: maxChars,
-    truncation_message: truncated ? `Wiki extract exceeded ${maxChars} cleaned characters; raise max_chars or use content_scope='intro'.` : undefined,
+    truncation_message: truncated
+      ? `Wiki extract exceeded ${maxChars} cleaned characters; raise max_chars or use content_scope='intro'.`
+      : undefined,
   };
 }
 
@@ -206,11 +229,15 @@ async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSch
 
   const response = await deps.bridgeClient.awaitResponse(seq, { timeoutMs: 5_000 });
   if (!response.ok) {
-    return { ...toolError(response.error_code ?? "BRIDGE_ERROR", response.error_message ?? "Runtime entity query failed") };
+    return {
+      ...toolError(
+        response.error_code ?? "BRIDGE_ERROR",
+        response.error_message ?? "Runtime entity query failed",
+      ),
+    };
   }
 
-  const bridgePayload = (response.data ?? {}) as Record<string, unknown>;
-  const structured = ((bridgePayload.data ?? bridgePayload) as Record<string, unknown>);
+  const structured = (response.data ?? {}) as Record<string, unknown>;
   const envelope = formatResponse(structured, {
     toMarkdown: listToMarkdown,
     truncation: {
