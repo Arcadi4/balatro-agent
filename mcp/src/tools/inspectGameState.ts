@@ -168,7 +168,7 @@ function displayHandCard(card: Record<string, unknown>): string {
   const isStone = card.enhancement === "stone";
   const enhancement = isStone ? undefined : displayCardModifier(card.enhancement, enhancements);
   const seal = displayCardModifier(card.seal, seals);
-  const edition = displayCardModifier(card.edition, editions);
+  const edition = displayCardModifier(card.edition, EDITION_NAMES);
   const modifiers = [enhancement, seal, edition].filter(
     (value): value is string => value !== undefined,
   );
