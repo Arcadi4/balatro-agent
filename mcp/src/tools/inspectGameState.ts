@@ -12,6 +12,8 @@ const DESCRIPTION =
   "Returns all information visible to the player: hand cards, jokers, consumables, money, blind info, " +
   "round progress, deck composition summary, shop contents (when in shop), and booster pack contents (when open). " +
   "This is the primary observation tool — call it before making any strategic decision to understand the current situation. " +
+  "Joker markdown uses compact strategic notation: the section header shows occupied/maximum slots like Jokers (2/5), rarity is appended to the Joker name as stars (* common, ** uncommon, *** rare, **** legendary), prices are $cost/$sell, and debuffed Jokers include (x). " +
+  "Consumable markdown uses compact notation with the section header showing occupied/maximum slots like Consumables (1/2), and type prefixes T=Tarot, P=Planet, S=Spectral. " +
   "Output includes legal_actions[] indicating valid moves. " +
   "Do NOT poll faster than 1 Hz; prefer calling once per decision point rather than repeatedly.";
 
@@ -33,6 +35,14 @@ const inspectCardInstanceSchema = z
       ),
   })
   .strict();
+
+const EDITION_NAMES: Record<string, string> = {
+  foil: "Foil",
+  holo: "Holographic",
+  holographic: "Holographic",
+  polychrome: "Polychrome",
+  negative: "Negative",
+};
 
 function normalizeCardId(value: string | number): string {
   return String(value);
@@ -94,6 +104,22 @@ function cardInstanceToMarkdown(data: object): string {
   const d = data as Record<string, unknown>;
   const instance = (d.instance ?? {}) as Record<string, unknown>;
   const lines: string[] = [];
+
+  if (isJokerCard(instance)) {
+    lines.push(`# ${displayJokerName(instance)}\n`);
+    lines.push(`**Location:** ${d.location}  `);
+    lines.push("");
+    lines.push("## Joker\n");
+    lines.push(displayJokerLine(instance, 1));
+    appendLiveDescription(lines, instance);
+    lines.push("");
+    lines.push("## Live Instance\n");
+    lines.push("```json");
+    lines.push(JSON.stringify(instance, null, 2));
+    lines.push("```");
+
+    return lines.join("\n");
+  }
 
   lines.push(`# ${instance.name ?? instance.display ?? instance.card_id ?? "Card Instance"}\n`);
   lines.push(`**Location:** ${d.location}  `);
@@ -157,14 +183,6 @@ function displayHandCard(card: Record<string, unknown>): string {
     purple: "Purple Seal",
     gold: "Gold Seal",
   };
-  const editions: Record<string, string> = {
-    foil: "Foil",
-    holo: "Holographic",
-    holographic: "Holographic",
-    polychrome: "Polychrome",
-    negative: "Negative",
-  };
-
   const isStone = card.enhancement === "stone";
   const enhancement = isStone ? undefined : displayCardModifier(card.enhancement, enhancements);
   const seal = displayCardModifier(card.seal, seals);
@@ -176,7 +194,7 @@ function displayHandCard(card: Record<string, unknown>): string {
 
   const base = isStone
     ? "Stone Card"
-    : `${displayCardSuit(card.suit)}${displayCardRank(card.rank)}`;
+    : `${displayCardRank(card.rank)}${displayCardSuit(card.suit)}`;
   return modifiers.length > 0 ? `${base} (${modifiers.join(", ")})` : base;
 }
 
@@ -184,12 +202,135 @@ function displayHandCardLine(card: Record<string, unknown>): string {
   return `[${String(card.card_id ?? "?")}] ${displayHandCard(card)}`;
 }
 
+function displayJokerName(card: Record<string, unknown>): string {
+  return String(card.name ?? card.entity_id ?? card.card_id ?? "Unknown Joker");
+}
+
+function displayJokerRarity(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  const rarity = String(value).toLowerCase();
+  const stars: Record<string, string> = {
+    "1": "*",
+    common: "*",
+    "2": "**",
+    uncommon: "**",
+    "3": "***",
+    rare: "***",
+    "4": "****",
+    legendary: "****",
+  };
+  return stars[rarity] ?? "";
+}
+
+function displayJokerPrice(card: Record<string, unknown>): string | undefined {
+  if (card.cost === undefined && card.sell_value === undefined) return undefined;
+  return `$${String(card.cost ?? "?")}/$${String(card.sell_value ?? "?")}`;
+}
+
+function displayJokerLine(card: Record<string, unknown>, index: number): string {
+  const rarity = displayJokerRarity(card.rarity);
+  const price = displayJokerPrice(card);
+  const edition = displayCardModifier(card.edition, EDITION_NAMES);
+  const status = [edition, card.debuffed !== undefined ? "(x)" : undefined].filter(
+    (value): value is string => value !== undefined,
+  );
+  const parts = [
+    `${index}. [${String(card.card_id ?? "?")}]`,
+    `${displayJokerName(card)}${rarity}`,
+    price,
+    ...status,
+  ].filter((value): value is string => value !== undefined);
+  return parts.join(" ");
+}
+
+function appendLiveDescription(lines: string[], card: Record<string, unknown>): void {
+  const description = card.live_description ?? card.description ?? card.effect_text;
+  if (description === undefined || description === null) return;
+  if (Array.isArray(description)) {
+    for (const line of description) {
+      if (line !== undefined && line !== null) lines.push(`   ${String(line)}`);
+    }
+    return;
+  }
+  lines.push(`   ${String(description)}`);
+}
+
+function displayConsumableType(value: unknown): string {
+  const kind = String(value ?? "").toLowerCase();
+  const prefixes: Record<string, string> = {
+    tarot: "T",
+    planet: "P",
+    spectral: "S",
+  };
+  return prefixes[kind] ?? "?";
+}
+
+function displayConsumableLine(card: Record<string, unknown>, index: number): string {
+  const edition = displayCardModifier(card.edition, EDITION_NAMES);
+  const suffix = edition !== undefined ? ` (${edition})` : "";
+  return `${index}. [${String(card.card_id ?? "?")}] ${displayConsumableType(card.kind)} ${String(card.name ?? card.entity_id ?? "Unknown Consumable")}${suffix}`;
+}
+
+function displayConsumableSectionTitle(payload: Record<string, unknown>): string {
+  const consumableCount = Array.isArray(payload.consumables) ? payload.consumables.length : 0;
+  if (payload.consumable_slots === undefined) return "## Consumables\n";
+  return `## Consumables (${consumableCount}/${String(payload.consumable_slots)})\n`;
+}
+
+function displayJokerSectionTitle(payload: Record<string, unknown>): string {
+  const jokerCount = Array.isArray(payload.jokers) ? payload.jokers.length : 0;
+  if (payload.joker_slots === undefined) return "## Jokers\n";
+  return `## Jokers (${jokerCount}/${String(payload.joker_slots)})\n`;
+}
+
+function isJokerCard(card: Record<string, unknown>): boolean {
+  return (
+    card.kind === "joker" || (typeof card.entity_id === "string" && card.entity_id.startsWith("j_"))
+  );
+}
+
+function isConsumableCard(card: Record<string, unknown>): boolean {
+  return card.kind === "tarot" || card.kind === "planet" || card.kind === "spectral";
+}
+
 function displayShopCardLine(card: Record<string, unknown>): string {
+  if (isJokerCard(card)) return displayJokerLine(card, 1);
+  if (isConsumableCard(card)) return displayConsumableLine(card, 1);
+
   const label = card.name ?? card.entity_id ?? "Unknown Card";
-  const details = [card.kind, card.edition].filter((value) => value !== undefined).map(String);
+  const details = [card.kind, displayCardModifier(card.edition, EDITION_NAMES)].filter(
+    (value): value is string => value !== undefined,
+  );
   const suffix = details.length > 0 ? ` (${details.join(", ")})` : "";
   const cost = card.cost !== undefined ? ` — $${String(card.cost)}` : "";
   return `[${String(card.card_id ?? "?")}] ${String(label)}${suffix}${cost}`;
+}
+
+function displayPackCardLine(card: Record<string, unknown>): string {
+  if (card.kind === "playing_card") return displayHandCardLine(card);
+  if (isJokerCard(card)) return displayJokerLine(card, 1);
+  if (isConsumableCard(card)) return displayConsumableLine(card, 1);
+
+  const label = card.name ?? card.entity_id ?? "Unknown Card";
+  const details = [card.kind, displayCardModifier(card.edition, EDITION_NAMES)].filter(
+    (value): value is string => value !== undefined,
+  );
+  const suffix = details.length > 0 ? ` (${details.join(", ")})` : "";
+  return `[${String(card.card_id ?? "?")}] ${String(label)}${suffix}`;
+}
+
+function appendCompactCardLine(lines: string[], card: Record<string, unknown>, index: number): void {
+  if (isJokerCard(card)) {
+    lines.push(displayJokerLine(card, index));
+    appendLiveDescription(lines, card);
+    return;
+  }
+  if (isConsumableCard(card)) {
+    lines.push(displayConsumableLine(card, index));
+    appendLiveDescription(lines, card);
+    return;
+  }
+  lines.push(`- ${displayPackCardLine(card)}`);
 }
 
 function appendShopSection(lines: string[], shop: Record<string, unknown>): void {
@@ -199,18 +340,43 @@ function appendShopSection(lines: string[], shop: Record<string, unknown>): void
   appendField(lines, "Joker Slots", shop.slots);
 
   const sections = [
-    ["Jokers", shop.jokers],
+    ["Cards", shop.cards ?? shop.jokers],
     ["Vouchers", shop.vouchers],
     ["Boosters", shop.boosters],
-    ["Cards", shop.cards],
   ] as const;
 
   for (const [label, items] of sections) {
     if (!Array.isArray(items) || items.length === 0) continue;
     lines.push(`\n### ${label}\n`);
+    let index = 1;
     for (const item of items) {
       const card = cloneRecord(item);
-      if (card) lines.push(`- ${displayShopCardLine(card)}`);
+      if (!card) continue;
+      if (isJokerCard(card) || isConsumableCard(card)) {
+        appendCompactCardLine(lines, card, index);
+      } else {
+        lines.push(`- ${displayShopCardLine(card)}`);
+      }
+      index += 1;
+    }
+  }
+
+  lines.push("");
+}
+
+function appendPackSection(lines: string[], pack: Record<string, unknown>): void {
+  lines.push("## Booster Pack\n");
+  appendField(lines, "Kind", pack.kind);
+  appendField(lines, "Picks Remaining", pack.picks_remaining);
+
+  if (Array.isArray(pack.options) && pack.options.length > 0) {
+    lines.push("\n### Options\n");
+    let index = 1;
+    for (const item of pack.options) {
+      const card = cloneRecord(item);
+      if (!card) continue;
+      appendCompactCardLine(lines, card, index);
+      index += 1;
     }
   }
 
@@ -237,13 +403,34 @@ function appendCurrentRound(lines: string[], value: unknown): void {
   appendField(lines, "Free Rerolls", round.free_rerolls);
 }
 
+function displayPhase(
+  payload: Record<string, unknown>,
+  pack: Record<string, unknown> | null,
+): string | undefined {
+  const phase = payload.phase;
+  if (typeof phase !== "string") return phase !== undefined ? String(phase) : undefined;
+  if (!/^STATE_\d+$/.test(phase) || !pack) return phase;
+
+  const packPhases: Record<string, string> = {
+    tarot: "TAROT_PACK",
+    planet: "PLANET_PACK",
+    spectral: "SPECTRAL_PACK",
+    standard: "STANDARD_PACK",
+    buffoon: "BUFFOON_PACK",
+    modded: "SMODS_BOOSTER_OPENED",
+  };
+  return typeof pack.kind === "string" ? (packPhases[pack.kind] ?? phase) : phase;
+}
+
 function stateToMarkdown(data: object): string {
   const payload = ((data as Record<string, unknown>).payload ?? {}) as Record<string, unknown>;
+  const pack = cloneRecord(payload.pack);
 
   const lines: string[] = [];
   lines.push("# Balatro Game State\n");
 
-  if (payload.phase) lines.push(`**Phase:** ${String(payload.phase)}  `);
+  const phase = displayPhase(payload, pack);
+  if (phase) lines.push(`**Phase:** ${phase}  `);
   if (payload.g_state) lines.push(`**G.STATE:** ${String(payload.g_state)}  `);
   if (payload.money !== undefined) lines.push(`**Money:** $${payload.money}  `);
   lines.push("");
@@ -281,26 +468,44 @@ function stateToMarkdown(data: object): string {
     lines.push("");
   }
 
-  if (Array.isArray(payload.jokers) && payload.jokers.length > 0) {
-    lines.push("## Jokers\n");
-    for (const j of payload.jokers) {
-      const joker = j as Record<string, unknown>;
-      lines.push(`- **${joker.name ?? joker.card_id ?? "?"}** — ${joker.effect_text ?? ""}`);
+  if (
+    (Array.isArray(payload.jokers) && payload.jokers.length > 0) ||
+    payload.joker_slots !== undefined
+  ) {
+    lines.push(displayJokerSectionTitle(payload));
+    let index = 1;
+    if (Array.isArray(payload.jokers)) {
+      for (const j of payload.jokers) {
+        const joker = cloneRecord(j);
+        if (!joker) continue;
+        appendCompactCardLine(lines, joker, index);
+        index += 1;
+      }
     }
     lines.push("");
   }
 
-  if (Array.isArray(payload.consumables) && payload.consumables.length > 0) {
-    lines.push("## Consumables\n");
-    for (const c of payload.consumables) {
-      const con = c as Record<string, unknown>;
-      lines.push(`- **${con.name ?? con.card_id ?? "?"}** — ${con.effect_text ?? ""}`);
+  if (
+    (Array.isArray(payload.consumables) && payload.consumables.length > 0) ||
+    payload.consumable_slots !== undefined
+  ) {
+    lines.push(displayConsumableSectionTitle(payload));
+    let index = 1;
+    if (Array.isArray(payload.consumables)) {
+      for (const c of payload.consumables) {
+        const consumable = cloneRecord(c);
+        if (!consumable) continue;
+        appendCompactCardLine(lines, consumable, index);
+        index += 1;
+      }
     }
     lines.push("");
   }
 
   const shop = cloneRecord(payload.shop);
   if (shop) appendShopSection(lines, shop);
+
+  if (pack) appendPackSection(lines, pack);
 
   return lines.join("\n");
 }

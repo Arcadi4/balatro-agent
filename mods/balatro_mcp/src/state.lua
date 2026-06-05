@@ -150,6 +150,108 @@ local function get_card_enhancement(card)
   return enhancements[name]
 end
 
+local function clean_description_text(text)
+  if type(text) ~= 'string' then return nil end
+  return text
+    :gsub('{C:[^}]+}', '')
+    :gsub('{X:[^}]+}', '')
+    :gsub('{V:[^}]+}', '')
+    :gsub('{s:[^}]+}', '')
+    :gsub('{}', '')
+end
+
+local function trim_text(text)
+  if type(text) ~= 'string' then return nil end
+  local trimmed = text:gsub('^%s+', ''):gsub('%s+$', '')
+  if trimmed == '' then return nil end
+  return trimmed
+end
+
+local function append_plain_text(parts, value)
+  if type(value) == 'string' or type(value) == 'number' or type(value) == 'boolean' then
+    parts[#parts + 1] = tostring(value)
+  elseif type(value) == 'table' then
+    if value.ref_table and value.ref_value and value.ref_table[value.ref_value] ~= nil then
+      append_plain_text(parts, value.prefix)
+      append_plain_text(parts, value.ref_table[value.ref_value])
+      append_plain_text(parts, value.suffix)
+    elseif value.string ~= nil then
+      append_plain_text(parts, value.string)
+    else
+      for _, item in ipairs(value) do
+        append_plain_text(parts, item)
+      end
+    end
+  end
+end
+
+local function collect_node_text(node, parts)
+  if type(node) ~= 'table' then return end
+  local config = node.config
+  if type(config) == 'table' then
+    append_plain_text(parts, config.text)
+    if type(config.object) == 'table' then
+      append_plain_text(parts, config.object.string)
+      if type(config.object.config) == 'table' then
+        append_plain_text(parts, config.object.config.string)
+        append_plain_text(parts, config.object.config.text)
+      end
+    end
+  end
+  if type(node.nodes) == 'table' then
+    for _, child in ipairs(node.nodes) do
+      collect_node_text(child, parts)
+    end
+  end
+  for _, child in ipairs(node) do
+    collect_node_text(child, parts)
+  end
+end
+
+local function rendered_rows_to_description(rows)
+  if type(rows) ~= 'table' then return nil end
+  local lines = {}
+  for _, row in ipairs(rows) do
+    local parts = {}
+    collect_node_text(row, parts)
+    local line = trim_text(table.concat(parts, ''))
+    if line then lines[#lines + 1] = line end
+  end
+  if #lines == 0 then return nil end
+  return table.concat(lines, ' ')
+end
+
+local function get_rendered_card_description(card)
+  if not card or type(card.generate_UIBox_ability_table) ~= 'function' then return nil end
+  local ok, ui = pcall(function()
+    return card:generate_UIBox_ability_table()
+  end)
+  if not ok or type(ui) ~= 'table' then return nil end
+  return rendered_rows_to_description(ui.main)
+end
+
+local function get_card_description(card)
+  local rendered = get_rendered_card_description(card)
+  if rendered then return rendered end
+
+  local center = card and card.config and card.config.center
+
+  local loc_txt = center and center.loc_txt
+  local text = loc_txt and loc_txt.text
+  if type(text) == 'string' then return clean_description_text(text) end
+  if type(text) ~= 'table' then return nil end
+
+  local lines = {}
+  for _, line in ipairs(text) do
+    if type(line) == 'string' then
+      local clean = clean_description_text(line)
+      if clean then lines[#lines + 1] = clean end
+    end
+  end
+  if #lines == 0 then return nil end
+  return table.concat(lines, ' ')
+end
+
 local function serialize_playing_card(card)
   if not card then return nil end
   local obj = {
@@ -173,8 +275,11 @@ local function serialize_joker(card)
   if not card then return nil end
   local obj = {
     card_id = card.sort_id or (card.config and card.config.card_id),
+    kind = 'joker',
     name = card.ability and card.ability.name,
     entity_id = card.config and card.config.center and card.config.center.key,
+    rarity = card.config and card.config.center and card.config.center.rarity,
+    live_description = get_card_description(card),
     sell_value = card.sell_cost,
     edition = get_card_edition(card),
     stickers = get_card_stickers(card),
@@ -209,6 +314,7 @@ local function serialize_consumable(card)
     kind = kind,
     name = card.ability and card.ability.name,
     entity_id = card.config and card.config.center and card.config.center.key,
+    live_description = get_card_description(card),
     sell_value = card.sell_cost,
     edition = get_card_edition(card),
     stickers = get_card_stickers(card),
@@ -237,6 +343,8 @@ local function serialize_shop_card(card)
     kind = kind,
     name = card.ability and card.ability.name,
     entity_id = card.config and card.config.center and card.config.center.key,
+    rarity = kind == 'joker' and card.config and card.config.center and card.config.center.rarity or nil,
+    live_description = get_card_description(card),
     cost = card.cost,
     sell_value = card.sell_cost,
     edition = get_card_edition(card),
@@ -392,6 +500,9 @@ local function get_phase_name()
     [STATES.MENU or 1] = 'MENU',
     [STATES.SPLASH or 0] = 'SPLASH',
   }
+  if STATES.SMODS_BOOSTER_OPENED then
+    phase_map[STATES.SMODS_BOOSTER_OPENED] = 'SMODS_BOOSTER_OPENED'
+  end
 
   return phase_map[gs] or ('STATE_' .. tostring(gs))
 end
@@ -438,13 +549,13 @@ local function snapshot_shop()
 
   local shop = {}
 
-  -- Shop jokers
+  -- Shop cards (Jokers and consumables share this market row)
   if G.shop_jokers and G.shop_jokers.cards then
-    local jokers = {}
+    local cards = {}
     for _, card in ipairs(G.shop_jokers.cards) do
-      jokers[#jokers + 1] = serialize_shop_card(card)
+      cards[#cards + 1] = serialize_shop_card(card)
     end
-    if #jokers > 0 then shop.jokers = jokers end
+    if #cards > 0 then shop.cards = cards end
   end
 
   -- Shop vouchers
