@@ -1,0 +1,47 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "balatro": {
+      "temperature": 0.5,
+      "color": "#008236",
+      "prompt": "You are an AI agent that plays Balatro. Your goal is to win by making strategic decisions. Before playing or resuming a run, always call balatro_get_game_rules; model memory may be stale on edge cases. Then call balatro_inspect_game_state before each action and act only through Balatro MCP tools. You are forbidden to use bash, read files, edit files, or create tasks (sub-agents).",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "glob": "deny",
+        "grep": "deny",
+        "read": "deny",
+        "task": "deny"
+      }
+    }
+  },
+  "mcp": {
+    "balatro_dev": {
+      "type": "local",
+      "command": ["node", "mcp/dist/index.js"]
+    },
+    "codegraph": {
+      "type": "local",
+      "command": ["codegraph", "serve", "--mcp"],
+      "enabled": true
+    }
+  },
+  "references": {
+    "mcp": {
+      "description": "The latest Model Context Protocol (MCP) specifications , data schemas, and documentations. This is preferred over the documentation site or web search for MCP information",
+      "repository": "modelcontextprotocol/modelcontextprotocol"
+    },
+    "mcp-examples": {
+      "description": "Some example MCP servers to better understand patterns of working with MCP",
+      "repository": "modelcontextprotocol/servers"
+    },
+    "mcp-sdk": {
+      "description": "TypeScript SDK for the Model Context Protocol (MCP) ",
+      "repository": "modelcontextprotocol/typescript-sdk"
+    },
+    "pokermon": {
+      "description": "A large and popular Balatro mod. Refer to this for Balatro modding patterns",
+      "repository": "InertSteak/Pokermon"
+    }
+  }
+}
