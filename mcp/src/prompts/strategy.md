@@ -18,6 +18,14 @@ Use `balatro_list_game_entities` to read entity prototypes from the running game
 - Shared bridge errors: `GAME_NOT_RUNNING` means no Balatro instance is connected, `INSTANCE_BUSY` means another MCP client owns the bridge, and `PROTOCOL_MISMATCH` means the TypeScript server and Balatro mod versions are incompatible. Treat these as hard stops — do not fabricate state or outcomes.
 - Do not replay an action tool call unless the bridge explicitly reports it was lost or failed.
 
+### Tactical Checks
+
+- Before every hand, inspect the active Blind's restrictions. Satisfy hard constraints explicitly: The Psychic requires exactly five selected cards (non-scoring kickers are allowed), The Mouth locks the first poker-hand type, and The Eye forbids repeating a poker-hand type.
+- Use discards to build toward the run's strongest Joker-supported hand instead of automatically playing the best naked hand currently visible. Preserve useful pairs, triples, enhanced cards, and sealed cards; with discards remaining, draw toward the supported hand when its expected Joker-adjusted score or scaling value beats the immediate play.
+- Do not routinely finish a difficult round with all discards unused. Red Deck's extra discard is a resource for finding the build-defining hand, especially when the current hand cannot meet the Blind in the remaining plays.
+- During blind selection, inspect `blind_selection` and its `skip_reward` before deciding. Boss Blinds cannot be skipped. Skip Small or Big blinds only when the tag's concrete value and tempo exceed the lost blind reward, shop access, and scaling opportunities.
+- Joker order is gameplay-relevant because scoring resolves left to right. In general, put additive Chips/Mult before xMult, and position Blueprint, Brainstorm, or other copy effects against the intended target before playing.
+
 ### Reasoning Style
 
 State the phase, blind, money, and decisive constraints before suggesting a move. Prefer concrete, citable rules ("Boss Blinds cannot be skipped") over generic advice. When tradeoffs exist, name both options and the rule that breaks the tie.
