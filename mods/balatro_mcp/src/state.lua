@@ -103,6 +103,22 @@ do
   end
 end
 
+local function compact_table(value, depth)
+  if type(value) ~= 'table' or depth <= 0 then return nil end
+  local out = {}
+  for key, item in pairs(value) do
+    if type(key) == 'string' or type(key) == 'number' then
+      local item_type = type(item)
+      if item_type == 'string' or item_type == 'number' or item_type == 'boolean' then
+        out[key] = item
+      elseif item_type == 'table' then
+        out[key] = compact_table(item, depth - 1)
+      end
+    end
+  end
+  return next(out) and out or nil
+end
+
 -- Card serialization helpers
 -------------------------------------------------------------------------------
 
@@ -657,6 +673,63 @@ local function snapshot_tags()
   return tags
 end
 
+local function snapshot_skip_reward(tag_key, blind_key)
+  local tag = G.P_TAGS and G.P_TAGS[tag_key]
+  local config = tag and tag.config or {}
+  local reward = {
+    entity_id = tag_key,
+    name = tag and tag.name or tag_key,
+    config = compact_table(config, 3),
+  }
+
+  if tag_key == 'tag_investment' then
+    reward.dollars = config.dollars
+  elseif tag_key == 'tag_handy' then
+    reward.dollars = (config.dollars_per_hand or 0) * (G.GAME.hands_played or 0)
+  elseif tag_key == 'tag_garbage' then
+    reward.dollars = (config.dollars_per_discard or 0) * (G.GAME.unused_discards or 0)
+  elseif tag_key == 'tag_skip' then
+    reward.dollars = (config.skip_bonus or 0) * ((G.GAME.skips or 0) + 1)
+  elseif tag_key == 'tag_economy' then
+    reward.dollars = math.min(config.max or 0, math.max(0, G.GAME.dollars or 0))
+  elseif tag_key == 'tag_orbital' then
+    local ante = G.GAME.round_resets and G.GAME.round_resets.ante
+    local choices = G.GAME.orbital_choices
+    reward.poker_hand = ante and choices and choices[ante] and choices[ante][blind_key] or nil
+  end
+
+  return reward
+end
+
+local function snapshot_blind_selection()
+  local round_resets = G and G.GAME and G.GAME.round_resets
+  if not round_resets or not round_resets.blind_choices then return nil end
+
+  local selection = { current = G.GAME.blind_on_deck }
+  local has_choice = false
+  for _, blind_key in ipairs({ 'Small', 'Big', 'Boss' }) do
+    local blind_id = round_resets.blind_choices[blind_key]
+    if blind_id then
+      local blind = G.P_BLINDS and G.P_BLINDS[blind_id]
+      local choice = {
+        blind_id = blind_id,
+        name = blind and blind.name or blind_id,
+        state = round_resets.blind_states and round_resets.blind_states[blind_key] or nil,
+      }
+
+      local tag_key = round_resets.blind_tags and round_resets.blind_tags[blind_key]
+      if (blind_key == 'Small' or blind_key == 'Big') and tag_key then
+        choice.skip_reward = snapshot_skip_reward(tag_key, blind_key)
+      end
+
+      selection[blind_key] = choice
+      has_choice = true
+    end
+  end
+
+  return has_choice and selection or nil
+end
+
 -------------------------------------------------------------------------------
 -- Hand levels snapshot
 -------------------------------------------------------------------------------
@@ -788,6 +861,9 @@ function state.snapshot()
 
   -- Tags
   payload.tags = snapshot_tags()
+
+  -- Current blind choices and the rewards offered for skipping Small/Big blinds
+  payload.blind_selection = snapshot_blind_selection()
 
   -- Used vouchers
   if G.GAME and G.GAME.used_vouchers then
