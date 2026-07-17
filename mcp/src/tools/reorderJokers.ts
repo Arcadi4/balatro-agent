@@ -16,7 +16,7 @@ const reorderJokersSchema = z
       .min(0)
       .max(50)
       .describe(
-        "Array of Joker card IDs in the desired left-to-right display order. Each ID must reference a Joker currently in the player's Joker area. The array should contain exactly the Jokers held to fully reorder them.",
+        "Array of Joker card IDs in the desired left-to-right scoring order. Each ID must reference a Joker currently in the player's Joker area. The array should contain exactly the Jokers held to fully reorder them.",
       ),
   })
   .strict();
