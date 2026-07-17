@@ -434,12 +434,18 @@ local function compute_legal_actions()
     local blind_key = G.GAME and G.GAME.blind_on_deck
     local blind_ui = blind_key and G.blind_select_opts and G.blind_select_opts[string.lower(blind_key)]
     local select_button = blind_ui and blind_ui.get_UIE_by_ID and blind_ui:get_UIE_by_ID('select_blind_button')
+    local round_resets = G.GAME and G.GAME.round_resets
     if G.GAME and G.GAME.round_resets and G.GAME.round_resets.blind_choices
         and (blind_key == 'Small' or blind_key == 'Big' or blind_key == 'Boss')
         and G.GAME.round_resets.blind_choices[blind_key]
         and select_button and select_button.UIBox and select_button.config and select_button.config.ref_table then
       actions[#actions + 1] = 'select_blind'
-      actions[#actions + 1] = 'skip_blind'
+      local tag_key = round_resets.blind_tags and round_resets.blind_tags[blind_key]
+      local tag_container = select_button.UIBox.get_UIE_by_ID
+          and select_button.UIBox:get_UIE_by_ID('tag_container')
+      if (blind_key == 'Small' or blind_key == 'Big') and tag_key and tag_container then
+        actions[#actions + 1] = 'skip_blind'
+      end
     end
     -- Reroll in blind select requires Retcon voucher
     if G.GAME and G.GAME.used_vouchers and G.GAME.used_vouchers.v_retcon then

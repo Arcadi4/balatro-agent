@@ -1,4 +1,4 @@
---- actions.lua — Action dispatcher for the Balatro MCP bridge.
+--- actions.lua ? Action dispatcher for the Balatro MCP bridge.
 -- Maps each command kind to the correct Balatro G.FUNCS call with phase guards
 -- and sticker rules. Defense-in-depth: re-checks G.STATE before every action.
 
@@ -341,20 +341,37 @@ handlers.skip_blind = function(args)
   local phase_err = check_phase({ S("BLIND_SELECT") })
   if phase_err then return phase_err end
 
-  -- Boss blind cannot be skipped
-  if G.GAME and G.GAME.blind and G.GAME.blind.boss then
-    -- Check if this is the final ante in non-endless mode
-    if G.GAME.round_resets and G.GAME.round_resets.ante and G.GAME.round_resets.ante >= 8
-        and not (G.GAME.round_resets.ante > 8) then
-      -- Only block if it's actually the boss blind being presented
-    end
+  local round_resets = G.GAME and G.GAME.round_resets
+  local blind_key = G.GAME and G.GAME.blind_on_deck
+  if blind_key ~= "Small" and blind_key ~= "Big" then
+    return err("INVALID_TARGET", "Only Small and Big blinds can be skipped; blind_on_deck=" .. tostring(blind_key))
   end
 
-  if G.FUNCS and G.FUNCS.skip_blind then
-    G.FUNCS.skip_blind()
+  local tag_key = round_resets and round_resets.blind_tags and round_resets.blind_tags[blind_key]
+  if not tag_key then
+    return err("INVALID_TARGET", "No skip tag is available for blind slot: " .. tostring(blind_key))
   end
 
-  return ok({ skipped = true })
+  local blind_ui = G.blind_select_opts and G.blind_select_opts[string.lower(blind_key)]
+  local select_button = blind_ui and blind_ui.get_UIE_by_ID and blind_ui:get_UIE_by_ID("select_blind_button")
+  local tag_container = select_button and select_button.UIBox and select_button.UIBox.get_UIE_by_ID
+      and select_button.UIBox:get_UIE_by_ID("tag_container")
+  if not select_button or not select_button.UIBox or not tag_container then
+    return err("INVALID_TARGET", "Blind skip UI is not ready for slot: " .. tostring(blind_key))
+  end
+
+  if not G.FUNCS or not G.FUNCS.skip_blind then
+    return err("INVALID_TARGET", "Blind skip callback is unavailable")
+  end
+
+  -- The base-game callback reads e.UIBox to resolve the tag reward.
+  G.FUNCS.skip_blind(select_button)
+
+  return ok({
+    skipped = true,
+    blind = string.lower(blind_key),
+    tag = tag_key,
+  })
 end
 
 ---------------------------------------------------------------------------
