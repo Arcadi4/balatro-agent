@@ -13,6 +13,7 @@ import INSTRUCTION_BLOCK from "./strategy.md" with { type: "text" };
 
 const PROMPT_NAME = "balatro_strategy_context";
 
+
 export function registerStrategyPrompt(server: McpServer): void {
   server.registerPrompt(
     PROMPT_NAME,
