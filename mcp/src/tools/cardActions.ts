@@ -15,6 +15,10 @@ const useConsumableSchema = z
     card_id: z
       .union([z.string(), z.number().int()])
       .describe("The ID of the consumable card to use from your consumable slots."),
+    targets: z
+      .array(cardIdSchema)
+      .optional()
+      .describe("Ordered target hand card IDs. Required for targeted consumables; for Death, pass [source_card_id, destination_card_id]."),
   })
   .strict();
 
@@ -37,10 +41,11 @@ async function executeCardAction(
   deps: Deps,
   kind: "use_consumable" | "sell_card",
   cardId: string,
+  targets?: string[],
 ) {
   let response;
   try {
-    const seq = await deps.bridgeClient.sendCommand({ kind, args: { card_id: cardId } });
+    const seq = await deps.bridgeClient.sendCommand({ kind, args: { card_id: cardId, targets } });
     response = await deps.bridgeClient.awaitResponse(seq);
   } catch (err) {
     if (err instanceof BridgeError) {
@@ -72,7 +77,8 @@ export function registerCardActionTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const envelope = await executeCardAction(deps, "use_consumable", normalizeCardId(args.card_id));
+      const targets = args.targets ? normalizeCardIds(args.targets) : undefined;
+      const envelope = await executeCardAction(deps, "use_consumable", normalizeCardId(args.card_id), targets);
       return { ...envelope };
     },
   );
