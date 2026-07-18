@@ -27,7 +27,7 @@ const selectBoosterCardSchema = z
     targets: z
       .array(cardIdSchema)
       .optional()
-      .describe("Optional array of target card IDs for consumables that operate on specific cards (e.g. Tarots that enhance hand cards). Omit for cards that take no targets."),
+      .describe("Ordered target hand card IDs. Required for targeted consumables; for Death, pass [source_card_id, destination_card_id] so the source becomes a copy of the destination. Omit only for cards that take no targets."),
   })
   .strict();
 
