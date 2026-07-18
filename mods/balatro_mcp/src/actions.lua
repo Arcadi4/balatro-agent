@@ -1,4 +1,4 @@
---- actions.lua ? Action dispatcher for the Balatro MCP bridge.
+--- actions.lua — Action dispatcher for the Balatro MCP bridge.
 -- Maps each command kind to the correct Balatro G.FUNCS call with phase guards
 -- and sticker rules. Defense-in-depth: re-checks G.STATE before every action.
 
@@ -197,6 +197,37 @@ end
 
 local function find_card_in_pack(card_id)
   return find_card_in(G.pack_cards, card_id)
+end
+
+local function prepare_consumable_targets(card, args)
+  local target_card_ids = args.target_card_ids or args.targets or {}
+  if type(target_card_ids) ~= "table" then
+    return err("INVALID_TARGET", "targets must be an array of hand card IDs")
+  end
+
+  -- Do not reuse highlights left by a previous play or discard.
+  if G.hand and G.hand.unhighlight_all then
+    G.hand:unhighlight_all()
+  end
+
+  for _, target_id in ipairs(target_card_ids) do
+    local target = find_card_in_hand(target_id)
+    if not target then
+      return err("INVALID_TARGET", "Target card not found in hand: " .. tostring(target_id))
+    end
+    if G.hand and G.hand.add_to_highlighted then
+      G.hand:add_to_highlighted(target)
+    end
+  end
+
+  -- Balatro owns the exact target-count rules for each consumable. Validate
+  -- only after the requested cards have been highlighted.
+  if card.can_use_consumeable and not card:can_use_consumeable() then
+    local hint = #target_card_ids == 0 and "; provide targets for targeted consumables" or ""
+    return err("INVALID_TARGET", "Consumable cannot be used with the supplied targets" .. hint)
+  end
+
+  return nil
 end
 
 ---------------------------------------------------------------------------
@@ -591,28 +622,8 @@ handlers.use_consumable = function(args)
     return err("INVALID_TARGET", "Consumable not found: " .. tostring(card_id))
   end
 
-  -- Check can_use_consumeable
-  if card.can_use_consumeable and not card:can_use_consumeable() then
-    return err("INVALID_TARGET", "Consumable cannot be used in current context")
-  end
-
-  -- If target_card_ids provided, highlight those cards first
-  if args.target_card_ids and type(args.target_card_ids) == "table" and #args.target_card_ids > 0 then
-    -- Unhighlight all first
-    if G.hand and G.hand.unhighlight_all then
-      G.hand:unhighlight_all()
-    end
-    -- Highlight targets
-    for _, tid in ipairs(args.target_card_ids) do
-      local target = find_card_in_hand(tid)
-      if not target then
-        return err("INVALID_TARGET", "Target card not found in hand: " .. tostring(tid))
-      end
-      if G.hand and G.hand.add_to_highlighted then
-        G.hand:add_to_highlighted(target)
-      end
-    end
-  end
+  local target_err = prepare_consumable_targets(card, args)
+  if target_err then return target_err end
 
   -- Use the consumable
   if G.FUNCS and G.FUNCS.use_card then
@@ -771,26 +782,8 @@ handlers.buy_and_use_card = function(args)
     return err("INSUFFICIENT_FUNDS", "Cannot afford card (cost=" .. tostring(cost) .. ", available=" .. tostring(available_funds()) .. ")")
   end
 
-  -- Check can_use
-  if card.can_use_consumeable and not card:can_use_consumeable() then
-    return err("INVALID_TARGET", "Consumable cannot be used in current context")
-  end
-
-  -- If target_card_ids provided, highlight those cards first
-  if args.target_card_ids and type(args.target_card_ids) == "table" and #args.target_card_ids > 0 then
-    if G.hand and G.hand.unhighlight_all then
-      G.hand:unhighlight_all()
-    end
-    for _, tid in ipairs(args.target_card_ids) do
-      local target = find_card_in_hand(tid)
-      if not target then
-        return err("INVALID_TARGET", "Target card not found in hand: " .. tostring(tid))
-      end
-      if G.hand and G.hand.add_to_highlighted then
-        G.hand:add_to_highlighted(target)
-      end
-    end
-  end
+  local target_err = prepare_consumable_targets(card, args)
+  if target_err then return target_err end
 
   -- Native Balatro buy-and-use is a single delayed buy_from_shop flow. Passing
   -- id='buy_and_use' makes buy_from_shop skip slot placement and call use_card
@@ -926,6 +919,12 @@ handlers.select_booster_card = function(args)
     return err("INVALID_TARGET", "Card not found in pack: " .. tostring(card_id))
   end
 
+  local set = card.config and card.config.center and card.config.center.set
+  if set == "Tarot" or set == "Planet" or set == "Spectral" then
+    local target_err = prepare_consumable_targets(card, args)
+    if target_err then return target_err end
+  end
+
   -- Check destination slots
   if card.config and card.config.center then
     local set = card.config.center.set
@@ -934,12 +933,6 @@ handlers.select_booster_card = function(args)
       local joker_limit = G.jokers and G.jokers.config and G.jokers.config.card_limit or 5
       if joker_count >= joker_limit then
         return err("SLOTS_FULL", "No available joker slots")
-      end
-    elseif set == "Tarot" or set == "Planet" or set == "Spectral" then
-      local cons_count = G.consumeables and G.consumeables.cards and #G.consumeables.cards or 0
-      local cons_limit = G.consumeables and G.consumeables.config and G.consumeables.config.card_limit or 2
-      if cons_count >= cons_limit then
-        return err("SLOTS_FULL", "No available consumable slots")
       end
     end
   end
