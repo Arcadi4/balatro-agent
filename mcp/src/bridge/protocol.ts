@@ -182,3 +182,18 @@ export function isJsonRpcResponse(obj: unknown): obj is JsonRpcResponse {
   if (r.result !== undefined && r.error !== undefined) return false;
   return r.result !== undefined || r.error !== undefined;
 }
+
+/**
+ * Default TCP port used by the Windows (Winsock) bridge backend.
+ *
+ * macOS/Linux use a Unix domain socket at /tmp/balatro-mcp.sock; Windows does
+ * not support AF_UNIX, so the Lua mod listens on a TCP loopback socket instead.
+ * The Lua side (mods/balatro_mcp/src/socket_server.lua) hard-codes the same
+ * default. Keep these in sync.
+ */
+export const DEFAULT_BRIDGE_PORT = 37651;
+
+/**
+ * Loopback host used by the TCP bridge backend on Windows.
+ */
+export const DEFAULT_BRIDGE_HOST = "127.0.0.1";

@@ -1,7 +1,14 @@
 import { createConnection } from "node:net";
 import type { Socket } from "node:net";
 
-import { errorCodeToString, isJsonRpcResponse, parseFrames, serializeFrame } from "./protocol.js";
+import {
+  DEFAULT_BRIDGE_HOST,
+  DEFAULT_BRIDGE_PORT,
+  errorCodeToString,
+  isJsonRpcResponse,
+  parseFrames,
+  serializeFrame,
+} from "./protocol.js";
 import type { JsonRpcRequest, JsonRpcResponse } from "./protocol.js";
 
 const SOCKET_PATH = "/tmp/balatro-mcp.sock";
@@ -9,6 +16,9 @@ const PROTOCOL_VERSION = 1;
 const DEFAULT_RESPONSE_TIMEOUT_MS = 10_000;
 const DEFAULT_STATE_TIMEOUT_MS = 5_000;
 const RECONNECT_DELAY_MS = 500;
+
+// Windows does not support AF_UNIX, so the bridge connects over TCP loopback.
+const IS_WINDOWS = process.platform === "win32";
 
 export interface StateEnvelope {
   protocol_version: number;
@@ -127,11 +137,18 @@ export class BridgeClient {
   private connectedAtMs?: number;
   private lastDisconnectError?: BridgeError;
   private readonly pendingRequests = new Map<number, PendingRequest>();
+  private readonly port: number;
 
-  constructor() {}
+  /**
+   * @param options.port TCP port for the Windows bridge backend. Defaults to
+   *   DEFAULT_BRIDGE_PORT. Ignored on non-Windows platforms (Unix socket used).
+   */
+  constructor(options?: { port?: number }) {
+    this.port = options?.port ?? DEFAULT_BRIDGE_PORT;
+  }
 
   get dir(): string {
-    return SOCKET_PATH;
+    return IS_WINDOWS ? `${DEFAULT_BRIDGE_HOST}:${this.port}` : SOCKET_PATH;
   }
 
   connect(): Promise<void> {
@@ -292,7 +309,9 @@ export class BridgeClient {
     this.clearReconnectTimer();
     this.buffer = "";
 
-    const socket = createConnection({ path: SOCKET_PATH });
+    const socket = IS_WINDOWS
+      ? createConnection({ host: DEFAULT_BRIDGE_HOST, port: this.port })
+      : createConnection({ path: SOCKET_PATH });
     this.socket = socket;
     socket.setEncoding("utf8");
 
