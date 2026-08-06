@@ -5,7 +5,16 @@ import { runServer } from "./server.js";
 
 async function main(): Promise<void> {
   const bridgeClient = new BridgeClient();
-  await bridgeClient.connect();
+
+  // Kick off the bridge connection in the background. If Balatro is not yet
+  // running, connect() rejects and the client keeps retrying in the background
+  // (see BridgeClient.scheduleReconnect). We must NOT exit here — the MCP
+  // server should stay up so a later-started Balatro is picked up automatically.
+  bridgeClient.connect().catch((err: unknown) => {
+    process.stderr.write(
+      `[balatro-mcp-server] bridge not connected yet: ${(err as Error).message}\n`,
+    );
+  });
 
   const deps: Deps = {
     bridgeClient,
