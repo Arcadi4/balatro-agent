@@ -1,3 +1,5 @@
+
+
 <div align="center">
 
 # Balatro Agent
@@ -38,9 +40,9 @@ mcp/dist/index.js
           |
           | JSON commands, responses, state snapshots
           v
-~/Library/Application Support/Balatro/Mods/balatro_mcp/bridge/
-    a socket or HTTP server is considered for
-    performance and reliability in the future.
+~/Library/Application Support/Balatro/Mods/balatro_mcp/
+    communicates via Unix socket at /tmp/balatro-mcp.sock
+    using JSON-RPC 2.0 framed messages.
           |
           | love.update hook
           v
