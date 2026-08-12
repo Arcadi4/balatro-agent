@@ -1,5 +1,7 @@
-import type { CallToolResult, TextContent } from "@modelcontextprotocol/sdk/types.js"
+import type { CallToolResult } from "@modelcontextprotocol/server"
+import type { CallToolResult as LegacyCallToolResult, TextContent } from "@modelcontextprotocol/sdk/types.js"
 
+import { BridgeError, type BridgeClient } from "./bridge/socket-client.js"
 import { CHARACTER_LIMIT } from "./constants.js"
 
 export interface TruncationContext {
@@ -17,55 +19,47 @@ export interface FormatResponseContext {
   toMarkdown?: (data: object) => string
 }
 
-export type ToolResponseEnvelope = CallToolResult & {
+export type ToolResponseEnvelope = LegacyCallToolResult & {
   content: [TextContent]
   structuredContent: Record<string, unknown>
 }
 
-function defaultMarkdown(data: object): string {
+export type MarkdownFormatter = (data: Record<string, unknown>) => string
+
+export interface CommandResultOptions {
+  timeoutMs?: number
+  toMarkdown?: MarkdownFormatter
+}
+
+function defaultMarkdown(data: Record<string, unknown>): string {
   return "```json\n" + JSON.stringify(data, null, 2) + "\n```"
 }
 
 function withTruncationFlag(
   structured: Record<string, unknown>,
-  ctx?: TruncationContext,
+  context?: TruncationContext,
 ): Record<string, unknown> {
-  if (!ctx) return structured
-  const merged: Record<string, unknown> = { ...structured }
-  if (ctx.truncated !== undefined) merged.truncated = ctx.truncated
-  if (ctx.truncation_message !== undefined) merged.truncation_message = ctx.truncation_message
-  if (ctx.total !== undefined) merged.total = ctx.total
-  if (ctx.count !== undefined) merged.count = ctx.count
-  if (ctx.offset !== undefined) merged.offset = ctx.offset
-  if (ctx.has_more !== undefined) merged.has_more = ctx.has_more
-  if (ctx.next_offset !== undefined) merged.next_offset = ctx.next_offset
-  return merged
+  if (!context) return structured
+  return {
+    ...structured,
+    ...Object.fromEntries(
+      Object.entries(context).filter(([, value]) => value !== undefined),
+    ),
+  }
 }
 
 function enforceCharacterLimit(
   text: string,
   structured: Record<string, unknown>,
-): {
-  text: string
-  structured: Record<string, unknown>
-} {
-  if (text.length <= CHARACTER_LIMIT) {
-    return { text, structured }
-  }
-
+): { text: string; structured: Record<string, unknown> } {
+  if (text.length <= CHARACTER_LIMIT) return { text, structured }
   const truncationMessage =
     `Response exceeded ${CHARACTER_LIMIT} characters and was truncated. ` +
-    `Re-issue the call with a smaller \`limit\`, a more specific filter, or a non-zero \`offset\` to continue.`
-
-  const truncatedText = text.slice(0, CHARACTER_LIMIT)
-
-  const truncatedStructured: Record<string, unknown> = {
-    ...structured,
-    truncated: true,
-    truncation_message: truncationMessage,
+    "Re-issue the call with a smaller `limit`, a more specific filter, or a non-zero `offset` to continue."
+  return {
+    text: text.slice(0, CHARACTER_LIMIT),
+    structured: { ...structured, truncated: true, truncation_message: truncationMessage },
   }
-
-  return { text: truncatedText, structured: truncatedStructured }
 }
 
 export function formatResponse(
@@ -73,12 +67,63 @@ export function formatResponse(
   context?: FormatResponseContext,
 ): ToolResponseEnvelope {
   const structured = withTruncationFlag(data, context?.truncation)
-  const text = (context?.toMarkdown ?? defaultMarkdown)(structured)
-
-  const enforced = enforceCharacterLimit(text, structured)
-
+  const rendered = (context?.toMarkdown ?? defaultMarkdown)(structured)
+  const enforced = enforceCharacterLimit(rendered, structured)
   return {
     content: [{ type: "text", text: enforced.text }],
     structuredContent: enforced.structured,
   }
+}
+
+export function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+export function toolResult(
+  data: Record<string, unknown>,
+  toMarkdown: MarkdownFormatter = defaultMarkdown,
+): CallToolResult {
+  return {
+    content: [{ type: "text", text: toMarkdown(data) }],
+    structuredContent: data,
+  }
+}
+
+export function toolError(
+  errorCode: string,
+  message: string,
+  details: Record<string, unknown> = {},
+): CallToolResult {
+  const structuredContent = { error_code: errorCode, message, ...details }
+  return {
+    content: [{ type: "text", text: JSON.stringify(structuredContent, null, 2) }],
+    structuredContent,
+    isError: true,
+  }
+}
+
+export async function withBridgeErrors<T>(
+  operation: () => Promise<T>,
+  render: (value: T) => CallToolResult,
+): Promise<CallToolResult> {
+  try {
+    return render(await operation())
+  } catch (error) {
+    if (error instanceof BridgeError) return toolError(error.code, error.message)
+    throw error
+  }
+}
+
+export async function commandResult(
+  bridge: BridgeClient,
+  kind: string,
+  args?: Record<string, unknown>,
+  options: CommandResultOptions = {},
+): Promise<CallToolResult> {
+  return withBridgeErrors(
+    () => bridge.command(kind, args, options.timeoutMs),
+    (data) => toolResult({ ok: true, data: data ?? {} }, options.toMarkdown),
+  )
 }
