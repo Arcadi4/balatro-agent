@@ -30,6 +30,32 @@ import type {
   JSONRPCResultResponse,
 } from "@modelcontextprotocol/sdk/types.js"
 
+// Bun routes `\\.\pipe\...` paths to its named-pipe transport on Windows
+// and every other path to AF_UNIX, so one client serves both platforms.
+
+export const DEFAULT_BRIDGE_SOCKET_POSIX = "/tmp/balatro-mcp.sock"
+export const DEFAULT_BRIDGE_SOCKET_WIN32 = "\\\\.\\pipe\\balatro-mcp"
+export const BRIDGE_SOCKET_ENV_VAR = "BALATRO_BRIDGE_SOCKET"
+
+/**
+ * Resolve the bridge endpoint address for the current platform.
+ *
+ * Honors the `BALATRO_BRIDGE_SOCKET` environment variable override so the
+ * mod and the server can agree on a custom endpoint (e.g. a per-user pipe
+ * name or a non-default socket path) without code changes.
+ *
+ * @param platform - `process.platform` value; overridable for tests
+ * @param env - environment variables; overridable for tests
+ */
+export function resolveBridgeSocketPath(
+  platform: string = process.platform,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const override = env[BRIDGE_SOCKET_ENV_VAR]
+  if (override !== undefined && override.length > 0) return override
+  return platform === "win32" ? DEFAULT_BRIDGE_SOCKET_WIN32 : DEFAULT_BRIDGE_SOCKET_POSIX
+}
+
 export type JsonRpcRequest = Omit<JSONRPCRequest, "id" | "params"> & {
   id: number
   params?: Record<string, unknown>

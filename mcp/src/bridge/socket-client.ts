@@ -1,11 +1,12 @@
 /**
- * socket-client.ts — Unix socket bridge client (Bun native sockets).
+ * socket-client.ts — Bridge socket client (Bun native sockets).
  *
- * Talks to the Balatro mod's JSON-RPC server over the Unix socket at
- * `/tmp/balatro-mcp.sock` using newline-delimited JSON frames (see
- * protocol.ts). Built on `Bun.connect` with `binaryType: "uint8array"`;
- * incoming bytes are decoded incrementally with a streaming `TextDecoder`
- * so multi-byte UTF-8 code points split across socket reads stay intact.
+ * Talks to the Balatro mod's JSON-RPC server over a local byte-stream socket
+ * using newline-delimited JSON frames (see protocol.ts). The endpoint address
+ * is platform-specific (`resolveBridgeSocketPath`); framing is identical.
+ * Built with `binaryType: "uint8array"`; incoming bytes are decoded
+ * incrementally with a streaming `TextDecoder` so multi-byte UTF-8 code
+ * points split across socket reads stay intact.
  *
  * Wire behavior mirrors the previous `node:net` implementation:
  * - `GAME_NOT_RUNNING` when the socket is unavailable or the peer closed the
@@ -17,10 +18,16 @@
  */
 import type { Socket } from "bun"
 
-import { errorCodeToString, isJsonRpcResponse, parseFrames, serializeFrame } from "./protocol.js"
+import {
+  errorCodeToString,
+  isJsonRpcResponse,
+  parseFrames,
+  resolveBridgeSocketPath,
+  serializeFrame,
+} from "./protocol.js"
 import type { JsonRpcRequest, JsonRpcResponse } from "./protocol.js"
 
-const SOCKET_PATH = "/tmp/balatro-mcp.sock"
+const DEFAULT_SOCKET_PATH = resolveBridgeSocketPath()
 const PROTOCOL_VERSION = 1
 const DEFAULT_RESPONSE_TIMEOUT_MS = 10_000
 const DEFAULT_STATE_TIMEOUT_MS = 5_000
@@ -82,6 +89,9 @@ function isConnectionSevered(err: Error): boolean {
   return code === "EPIPE" || code === "ECONNRESET"
 }
 
+// Bun normalizes connect failures to `ENOENT`/`ECONNREFUSED` on every
+// platform, so these checks also hold for Windows named pipes.
+
 function gameNotRunningError(message = "Balatro is not running"): BridgeError {
   return new BridgeError("GAME_NOT_RUNNING", message)
 }
@@ -131,6 +141,7 @@ function hasPayload(value: unknown): boolean {
 }
 
 export class BridgeClient {
+  private readonly socketPath: string
   private socket?: Socket
   private decoder = new TextDecoder()
   private bytesRead = 0
@@ -153,10 +164,12 @@ export class BridgeClient {
   // corrupting the NDJSON stream. Every frame is written atomically.
   private writeQueue: Promise<void> = Promise.resolve()
 
-  constructor() {}
+  constructor(options: { socketPath?: string } = {}) {
+    this.socketPath = options.socketPath ?? DEFAULT_SOCKET_PATH
+  }
 
   get dir(): string {
-    return SOCKET_PATH
+    return this.socketPath
   }
 
   connect(): Promise<void> {
@@ -325,7 +338,7 @@ export class BridgeClient {
     this.bytesRead = 0
 
     void Bun.connect({
-      unix: SOCKET_PATH,
+      unix: this.socketPath,
       socket: {
         open: (socket) => {
           this.socket = socket
