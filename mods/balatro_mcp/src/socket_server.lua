@@ -1,364 +1,252 @@
---- socket_server.lua — Non-blocking Unix domain socket server for Balatro MCP.
---- Protocol: newline-delimited JSON messages over /tmp/balatro-mcp.sock.
-
-local ffi = require("ffi")
+local ffi = require('ffi')
+local bit = require('bit')
 local C = ffi.C
 
-ffi.cdef[[
+ffi.cdef([[
   struct sockaddr;
-  // Socket creation and management
   int socket(int domain, int type, int protocol);
   int bind(int sockfd, const struct sockaddr *addr, unsigned int addrlen);
   int listen(int sockfd, int backlog);
   int accept(int sockfd, struct sockaddr *addr, unsigned int *addrlen);
   int close(int fd);
-
-  // I/O
   long read(int fd, void *buf, unsigned long count);
   long write(int fd, const void *buf, unsigned long count);
-
-  // Non-blocking
   int fcntl(int fd, int cmd, ...);
 
-  // Poll for readiness without blocking the game loop
-  typedef unsigned int nfds_t;
   typedef struct pollfd {
     int fd;
     short events;
     short revents;
   } pollfd;
-  int poll(struct pollfd *fds, nfds_t nfds, int timeout);
 
-  // macOS Unix socket address
   typedef struct {
     unsigned char sun_len;
     unsigned char sun_family;
     char sun_path[104];
-  } sockaddr_un;
+  } sockaddr_un_macos;
 
-  // Constants
-  static const int AF_UNIX = 1;
-  static const int SOCK_STREAM = 1;
-  static const int O_NONBLOCK = 0x0004;  // macOS value
-  static const int F_SETFL = 4;          // macOS value
-  static const int F_GETFL = 3;          // macOS value
-  static const int SOL_SOCKET = 1;       // macOS value
-  static const int SO_REUSEADDR = 2;     // macOS value
-  static const short POLLIN = 0x0001;    // macOS/Linux value
-  static const short POLLHUP = 0x0010;   // macOS/Linux value
-  static const short POLLERR = 0x0008;   // macOS/Linux value
-]]
+  typedef struct {
+    unsigned short sun_family;
+    char sun_path[108];
+  } sockaddr_un_linux;
+]])
+
+if ffi.os == 'OSX' then
+  ffi.cdef('int poll(struct pollfd *fds, unsigned int nfds, int timeout);')
+else
+  ffi.cdef('int poll(struct pollfd *fds, unsigned long nfds, int timeout);')
+end
 
 local SocketServer = {}
 
-local SOCKET_PATH = "/tmp/balatro-mcp.sock"
+local SOCKET_PATH = os.getenv('BALATRO_BRIDGE_SOCKET') or '/tmp/balatro-mcp.sock'
 local READ_BUFFER_SIZE = 4096
-local EAGAIN = ffi.os == "OSX" and 35 or 11
-local EWOULDBLOCK = EAGAIN
+local AF_UNIX = 1
+local SOCK_STREAM = 1
+local F_GETFL = 3
+local F_SETFL = 4
+local O_NONBLOCK = ffi.os == 'OSX' and 0x0004 or 0x0800
+local POLLIN = 0x0001
+local POLLHUP = 0x0010
+local POLLERR = 0x0008
+local EAGAIN = ffi.os == 'OSX' and 35 or 11
 
 local server_fd = -1
 local client_fd = -1
-local initialized = false
-local has_client = false
-local line_buffer = ""
-local read_buffer = ffi.new("char[?]", READ_BUFFER_SIZE)
-local poll_fds = ffi.new("pollfd[1]")
-
-SocketServer.on_request_callback = nil
+local codec
+local on_disconnect
+local read_buffer = ffi.new('char[?]', READ_BUFFER_SIZE)
+local poll_fds = ffi.new('pollfd[1]')
 
 local function log(message)
   if sendDebugMessage then
-    pcall(sendDebugMessage, "MCP: " .. tostring(message))
+    sendDebugMessage('MCP: ' .. tostring(message), 'balatro_mcp')
   end
-end
-
-local function errno_is_would_block(errno)
-  return errno == EAGAIN or errno == EWOULDBLOCK
 end
 
 local function errno_message(prefix)
-  return prefix .. " (errno " .. tostring(ffi.errno()) .. ")"
+  return prefix .. ' (errno ' .. tostring(ffi.errno()) .. ')'
 end
 
 local function set_nonblocking(fd)
-  local flags = C.fcntl(fd, C.F_GETFL, 0)
-  if flags < 0 then
-    return false, errno_message("fcntl(F_GETFL) failed")
+  local flags = C.fcntl(fd, F_GETFL)
+  if flags < 0 then return false, errno_message('fcntl(F_GETFL) failed') end
+  local nonblocking_flags = ffi.cast('int', bit.bor(tonumber(flags), O_NONBLOCK))
+  if C.fcntl(fd, F_SETFL, nonblocking_flags) < 0 then
+    return false, errno_message('fcntl(F_SETFL) failed')
   end
-
-  flags = tonumber(flags) or 0
-  local nonblock = tonumber(C.O_NONBLOCK)
-  local has_nonblock = math.floor(flags / nonblock) % 2 == 1
-  local new_flags = has_nonblock and flags or (flags + nonblock)
-
-  if C.fcntl(fd, C.F_SETFL, new_flags) < 0 then
-    return false, errno_message("fcntl(F_SETFL) failed")
-  end
-
   return true
 end
 
 local function poll_readable(fd)
   poll_fds[0].fd = fd
-  poll_fds[0].events = C.POLLIN
+  poll_fds[0].events = POLLIN
   poll_fds[0].revents = 0
 
   local ready = C.poll(poll_fds, 1, 0)
   if ready < 0 then
     local errno = ffi.errno()
-    if not errno_is_would_block(errno) then
-      return false, true, errno
-    end
-    return false, false, errno
+    return false, errno ~= EAGAIN, errno
   end
+  if ready == 0 then return false, false end
 
-  if ready == 0 then
-    return false, false, nil
+  local revents = tonumber(poll_fds[0].revents)
+  if bit.band(revents, bit.bor(POLLERR, POLLHUP)) ~= 0 then
+    return false, true
   end
-
-  local revents = tonumber(poll_fds[0].revents) or 0
-  if math.floor(revents / tonumber(C.POLLERR)) % 2 == 1 then
-    return false, true, nil
-  end
-  if math.floor(revents / tonumber(C.POLLHUP)) % 2 == 1 then
-    return false, true, nil
-  end
-
-  return math.floor(revents / tonumber(C.POLLIN)) % 2 == 1, false, nil
+  return bit.band(revents, POLLIN) ~= 0, false
 end
 
 local function close_client(reason)
-  if has_client and client_fd >= 0 then
-    C.close(client_fd)
-    if reason then
-      log("Socket client closed: " .. tostring(reason))
-    else
-      log("Socket client disconnected")
-    end
-  end
-
+  if client_fd < 0 then return end
+  C.close(client_fd)
   client_fd = -1
-  has_client = false
-  line_buffer = ""
+  codec.reset()
+  on_disconnect()
+  log(reason and ('Socket client closed: ' .. reason) or 'Socket client disconnected')
 end
 
-local function dispatch_line(line)
-  if line == "" then return end
-  if line:sub(-1) == "\r" then
-    line = line:sub(1, -2)
-  end
-  if line == "" then return end
-
-  if not JSON or not JSON.decode then
-    log("Cannot decode socket request: JSON.decode unavailable")
-    return
-  end
-
-  local decode_ok, decoded = pcall(JSON.decode, line)
-  if not decode_ok or decoded == nil then
-    log("Invalid JSON socket request: " .. tostring(decoded))
-    return
-  end
-
-  local callback = SocketServer.on_request_callback
-  if callback then
-    local callback_ok, callback_err = pcall(callback, decoded)
-    if not callback_ok then
-      log("Socket request callback failed: " .. tostring(callback_err))
-    end
-  else
-    log("Socket request received before callback was registered")
-  end
-end
-
-local function process_line_buffer()
-  while true do
-    local newline_at = line_buffer:find("\n", 1, true)
-    if not newline_at then return end
-
-    local line = line_buffer:sub(1, newline_at - 1)
-    line_buffer = line_buffer:sub(newline_at + 1)
-    dispatch_line(line)
-  end
-end
-
-local function accept_pending_client()
+local function accept_client()
   if server_fd < 0 then return end
-
   local readable, failed, errno = poll_readable(server_fd)
   if failed then
-    log("Socket accept poll failed" .. (errno and (" (errno " .. tostring(errno) .. ")") or ""))
+    log('Socket accept poll failed' .. (errno and (' (errno ' .. errno .. ')') or ''))
     return
   end
   if not readable then return end
 
   local accepted_fd = C.accept(server_fd, nil, nil)
   if accepted_fd < 0 then
-    local errno = ffi.errno()
-    if not errno_is_would_block(errno) then
-      log("Socket accept failed (errno " .. tostring(errno) .. ")")
-    end
+    local accept_errno = ffi.errno()
+    if accept_errno ~= EAGAIN then log('Socket accept failed (errno ' .. accept_errno .. ')') end
     return
   end
-
-  if has_client then
+  if client_fd >= 0 then
     C.close(accepted_fd)
-    log("Rejected extra socket client; one client is already connected")
+    log('Rejected extra socket client; one client is already connected')
     return
   end
 
   local ok, err = set_nonblocking(accepted_fd)
   if not ok then
     C.close(accepted_fd)
-    log("Accepted socket client but failed to make it non-blocking: " .. tostring(err))
+    log('Failed to configure socket client: ' .. err)
     return
   end
 
   client_fd = accepted_fd
-  has_client = true
-  line_buffer = ""
-  log("Socket client connected")
+  codec.reset()
+  log('Socket client connected')
 end
 
-local MAX_LINE_BUFFER_SIZE = 65536
-
-local function read_from_client()
-  if not has_client or client_fd < 0 then return end
-
+local function read_client()
+  if client_fd < 0 then return end
   local readable, failed, errno = poll_readable(client_fd)
   if failed then
-    log("Socket client poll failed" .. (errno and (" (errno " .. tostring(errno) .. ")") or ""))
-    close_client("poll failed")
+    close_client('poll failed' .. (errno and (' (errno ' .. errno .. ')') or ''))
     return
   end
   if not readable then return end
 
   local bytes_read = C.read(client_fd, read_buffer, READ_BUFFER_SIZE)
   if bytes_read > 0 then
-    line_buffer = line_buffer .. ffi.string(read_buffer, bytes_read)
-    if #line_buffer > MAX_LINE_BUFFER_SIZE then
-      log("Client exceeded max frame size, disconnecting")
-      close_client("buffer overflow")
-      return
-    end
-    process_line_buffer()
-    return
-  end
-
-  if bytes_read == 0 then
-    close_client("peer disconnected")
-    return
-  end
-
-  local errno = ffi.errno()
-  if not errno_is_would_block(errno) then
-    log("Socket read failed (errno " .. tostring(errno) .. ")")
-    close_client("read failed")
+    local ok, err = codec.feed(ffi.string(read_buffer, bytes_read))
+    if not ok then close_client(err) end
+  elseif bytes_read == 0 then
+    close_client('peer disconnected')
+  elseif ffi.errno() ~= EAGAIN then
+    close_client(errno_message('read failed'))
   end
 end
 
-function SocketServer.init()
-  if initialized then return true end
+local function flush_client()
+  if client_fd < 0 then return false end
+  local payload = codec.pending()
+  if payload == '' then return true end
 
+  local bytes_written = C.write(client_fd, payload, #payload)
+  if bytes_written > 0 then
+    codec.consume(tonumber(bytes_written))
+  elseif bytes_written < 0 and ffi.errno() ~= EAGAIN then
+    close_client(errno_message('write failed'))
+    return false
+  end
+  return true
+end
+
+function SocketServer.init(on_request, socket_codec, disconnect_callback)
+  if server_fd >= 0 then return true end
+  codec = socket_codec.new(on_request, log)
+  on_disconnect = disconnect_callback
   os.remove(SOCKET_PATH)
 
-  local fd = C.socket(C.AF_UNIX, C.SOCK_STREAM, 0)
+  local fd = C.socket(AF_UNIX, SOCK_STREAM, 0)
   if fd < 0 then
-    log(errno_message("Socket creation failed"))
+    log(errno_message('Socket creation failed'))
     return false
   end
 
   local ok, err = set_nonblocking(fd)
   if not ok then
     C.close(fd)
-    log("Socket server non-blocking setup failed: " .. tostring(err))
+    log(err)
     return false
   end
 
-  local addr = ffi.new("sockaddr_un")
-  addr.sun_len = ffi.sizeof(addr)
-  addr.sun_family = C.AF_UNIX
-  ffi.copy(addr.sun_path, SOCKET_PATH, #SOCKET_PATH)
+  local address_type = ffi.os == 'OSX' and 'sockaddr_un_macos' or 'sockaddr_un_linux'
+  local address = ffi.new(address_type)
+  if #SOCKET_PATH >= ffi.sizeof(address.sun_path) then
+    C.close(fd)
+    log('Socket path is too long: ' .. SOCKET_PATH)
+    return false
+  end
+  if ffi.os == 'OSX' then address.sun_len = ffi.sizeof(address) end
+  address.sun_family = AF_UNIX
+  ffi.copy(address.sun_path, SOCKET_PATH, #SOCKET_PATH)
 
-  local bind_ok = C.bind(fd, ffi.cast("const struct sockaddr *", addr), ffi.sizeof(addr))
-  if bind_ok < 0 then
-    log(errno_message("Socket bind failed"))
+  if C.bind(fd, ffi.cast('const struct sockaddr *', address), ffi.sizeof(address)) < 0 then
+    log(errno_message('Socket bind failed'))
     C.close(fd)
     os.remove(SOCKET_PATH)
     return false
   end
-
   if C.listen(fd, 1) < 0 then
-    log(errno_message("Socket listen failed"))
+    log(errno_message('Socket listen failed'))
     C.close(fd)
     os.remove(SOCKET_PATH)
     return false
   end
 
   server_fd = fd
-  initialized = true
-  log("Socket server listening on " .. SOCKET_PATH)
+  log('Socket server listening on ' .. SOCKET_PATH)
   return true
 end
 
-function SocketServer.update(dt)
-  if not initialized then return end
-
-  accept_pending_client()
-  read_from_client()
+function SocketServer.update()
+  accept_client()
+  flush_client()
+  read_client()
+  flush_client()
 end
 
-function SocketServer.send_response(response_json)
-  if not has_client or client_fd < 0 then
-    log("Cannot send socket response: no client connected")
+function SocketServer.send_response(response)
+  if client_fd < 0 then return false end
+  local queued, encode_error = codec.queue(response)
+  if not queued then
+    close_client(encode_error)
     return false
   end
-
-  local payload = response_json
-  if type(payload) ~= "string" then
-    if not JSON or not JSON.encode then
-      log("Cannot encode socket response: JSON.encode unavailable")
-      close_client("response encode failed")
-      return false
-    end
-
-    local encode_ok, encoded = pcall(JSON.encode, payload)
-    if not encode_ok or type(encoded) ~= "string" then
-      log("Failed to encode socket response: " .. tostring(encoded))
-      close_client("response encode failed")
-      return false
-    end
-    payload = encoded
-  end
-
-  payload = payload .. "\n"
-  local bytes_written = C.write(client_fd, payload, #payload)
-  if bytes_written < 0 then
-    log("Socket response write failed (errno " .. tostring(ffi.errno()) .. ")")
-    close_client("write failed")
-    return false
-  end
-
-  if bytes_written < #payload then
-    log("Socket response write was partial; closing client")
-    close_client("partial write")
-    return false
-  end
-
-  return true
+  return flush_client()
 end
 
 function SocketServer.close()
-  close_client(nil)
-
+  close_client()
   if server_fd >= 0 then
     C.close(server_fd)
     server_fd = -1
   end
-
   os.remove(SOCKET_PATH)
-  initialized = false
-  log("Socket server closed")
+  log('Socket server closed')
 end
 
 return SocketServer
