@@ -12,11 +12,16 @@
 
 </div>
 
-Balatro Agent combines a Bun MCP server with a Steamodded/Lovely mod. Agents receive structured game state and invoke typed actions without screenshots or screen scraping.
+Balatro Agent lets you connect an MCP-compatible AI agent to Balatro. The agent reads the live game state and plays the game for you. It can select blinds, play and discard hands, buy and use cards, reroll the shop, and arrange jokers. It works from textual interfaces, no model vision needed at all.
 
-The runtime bridge supports macOS and Linux through Unix sockets and Windows through a named pipe. Development has only been exercised locally on macOS Apple Silicon; the root `make` workflow remains macOS-specific.
+## How it works
 
-## Architecture
+The project contains two components:
+
+- A Bun MCP server in `mcp/`. Your MCP client launches it and talks to it over stdio.
+- A Steamodded mod in `mods/balatro_mcp/`. It runs inside Balatro and executes game actions.
+
+The server and the mod communicate over newline-delimited JSON-RPC 2.0:
 
 ```text
 MCP client ── stdio ──> Bun server ── JSON-RPC 2.0 / NDJSON ──> Balatro mod
@@ -24,64 +29,72 @@ MCP client ── stdio ──> Bun server ── JSON-RPC 2.0 / NDJSON ──> 
                               named pipe  (Windows)
 ```
 
-The bridge endpoint defaults to `/tmp/balatro-mcp.sock` on macOS/Linux and `\\.\pipe\balatro-mcp` on Windows. Set `BALATRO_BRIDGE_SOCKET` for both processes to override it.
-
-## Requirements
+## Prerequisites
 
 - Balatro from Steam
 - [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
-- [Steamodded / SMODS](https://github.com/Steamodded/smods)
-- [Bun](https://bun.sh) 1.3.14 or newer
-- `luac` for Lua syntax validation
+- [Steamodded (SMODS)](https://github.com/Steamodded/smods)
+- [Bun](https://bun.sh) 1.3.14 or later
 
-## Setup
+## Get started
 
-Install the server dependencies and validate the source:
+1. Install Lovely Injector and Steamodded.
+2. Install the mod by copying `mods/balatro_mcp` to the Balatro `Mods` directory.
+   - On macOS, run `make install-mods` from the repository root.
+   - On Windows, copy the directory to `%AppData%\Balatro\Mods\balatro_mcp`.
+3. Install the server dependencies and validate the source:
 
-```sh
-cd mcp
-bun install
-bun run typecheck
-bun run build
-```
+   ```sh
+   cd mcp
+   bun install
+   bun run typecheck
+   ```
 
-Install `mods/balatro_mcp` under the Balatro `Mods` directory:
+4. Add the server to your MCP client configuration:
 
-- macOS development checkout: `make install-mods`
-- Windows: copy it to `%AppData%\Balatro\Mods\balatro_mcp`
+   ```json
+   {
+     "mcpServers": {
+       "balatro": {
+         "command": "bun",
+         "args": ["/absolute/path/to/balatro-mcp/mcp/src/index.ts"]
+       }
+     }
+   }
+   ```
 
-Start Balatro with the mod enabled, then configure an MCP client to run the TypeScript source directly:
+5. Start Balatro with the mod enabled.
+6. Start your MCP client and ask the agent to play. For example: "Inspect the game state and play the next blind."
 
-```json
-{
-  "mcpServers": {
-    "balatro": {
-      "command": "bun",
-      "args": ["/absolute/path/to/balatro-mcp/mcp/src/index.ts"]
-    }
-  }
-}
-```
+## Change the bridge endpoint
 
-Bundling is optional; `bun run build` writes `mcp/dist/index.js`.
+The server and the mod find each other at `/tmp/balatro-mcp.sock` on macOS and Linux, and `\\.\pipe\balatro-mcp` on Windows. To use a different endpoint, set `BALATRO_BRIDGE_SOCKET` to the same value in both processes.
 
-## MCP surface
+## What the agent can do
 
-The server exposes 22 tools:
+The agent has 22 tools available.
 
 | Area | Tools |
 | --- | --- |
-| State | `balatro_inspect_game_state`, `balatro_inspect_card_instance` |
+| Inspect the game | `balatro_inspect_game_state`, `balatro_inspect_card_instance` |
 | Blinds | `balatro_select_blind`, `balatro_skip_blind` |
 | Hand | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand` |
 | Shop | `balatro_buy_card`, `balatro_buy_consumable`, `balatro_buy_voucher`, `balatro_buy_booster`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
 | Cards | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers` |
 | Boosters | `balatro_select_booster_card`, `balatro_skip_booster` |
-| Knowledge | `balatro_list_game_entities`, `balatro_read_wiki` |
+| Game knowledge | `balatro_list_game_entities`, `balatro_read_wiki` |
 
-Static rules are exposed once through the `balatro://rules/global` resource and included in the `balatro_strategy_context` prompt. Inspect live state before every action.
+The agent also receives the static rules of Balatro through the `balatro://rules/global` resource and the `balatro_strategy_context` prompt, so it can make decisions without external documentation.
+
+## Troubleshooting
+
+- **The agent cannot reach the game.** Make sure Balatro is running with the mod enabled, then restart your MCP client.
+- **You changed the mod.** Reinstall it and restart Balatro. The mod only loads at startup.
+- **A second client cannot connect.** The bridge accepts one client at a time. Stop the other client and retry.
 
 ## Development
+
+Development is tested on macOS Apple Silicon. The `make` targets work on macOS only. After making changes, validate both sources:
 
 ```sh
 cd mcp
@@ -90,11 +103,9 @@ bun run build
 find ../mods/balatro_mcp -name '*.lua' -print0 | xargs -0 -n1 luac -p
 ```
 
-After changing the mod, reinstall it and restart Balatro before manual MCP testing.
-
 ## References
 
 - [Model Context Protocol](https://modelcontextprotocol.io/docs/2026-07-28)
 - [Bun documentation](https://bun.sh/docs)
 - [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
-- [Steamodded / SMODS](https://github.com/Steamodded/smods)
+- [Steamodded (SMODS)](https://github.com/Steamodded/smods)
