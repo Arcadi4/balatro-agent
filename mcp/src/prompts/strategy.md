@@ -1,6 +1,6 @@
 ## How to Use This Context
 
-Before playing or resuming a Balatro run, call `balatro_get_game_rules` once. Use it as the compact source of truth for edge cases models often hallucinate, then call `balatro_inspect_game_state` before each action.
+The rules above are the static source of truth for this session. Call `balatro_inspect_game_state` before each action.
 
 When advising on a Balatro run, ground every recommendation in the rules above and the live game state available through MCP tools.
 
@@ -13,8 +13,7 @@ Use `balatro_list_game_entities` to read entity prototypes from the running game
 ### Tool Usage
 
 - Read the live state with `balatro_inspect_game_state` before recommending an action; the rules above describe phases and constraints, but only the state tells you what is actually playable right now.
-- If you have not yet retrieved this context through tools in the current gameplay session, call `balatro_get_game_rules` before making the first play decision.
-- Issue actions through the typed bridge tools (e.g. `balatro_play_hand`, `balatro_discard`, `balatro_buy_card`, `balatro_skip_blind`). Use `card_id` for live card actions, not `entity_id`.
+- Issue actions through the typed bridge tools (e.g. `balatro_play_hand`, `balatro_discard_hand`, `balatro_buy_card`, `balatro_skip_blind`). Use `card_id` for live card actions, not `entity_id`.
 - Shared bridge errors: `GAME_NOT_RUNNING` means no Balatro instance is connected, `INSTANCE_BUSY` means another MCP client owns the bridge, and `PROTOCOL_MISMATCH` means the TypeScript server and Balatro mod versions are incompatible. Treat these as hard stops — do not fabricate state or outcomes.
 - Do not replay an action tool call unless the bridge explicitly reports it was lost or failed.
 
