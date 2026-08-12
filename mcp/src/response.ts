@@ -1,28 +1,6 @@
 import type { CallToolResult } from "@modelcontextprotocol/server"
-import type { CallToolResult as LegacyCallToolResult, TextContent } from "@modelcontextprotocol/sdk/types.js"
 
 import { BridgeError, type BridgeClient } from "./bridge/socket-client.js"
-import { CHARACTER_LIMIT } from "./constants.js"
-
-export interface TruncationContext {
-  truncated?: boolean
-  truncation_message?: string
-  total?: number
-  count?: number
-  offset?: number
-  has_more?: boolean
-  next_offset?: number
-}
-
-export interface FormatResponseContext {
-  truncation?: TruncationContext
-  toMarkdown?: (data: object) => string
-}
-
-export type ToolResponseEnvelope = LegacyCallToolResult & {
-  content: [TextContent]
-  structuredContent: Record<string, unknown>
-}
 
 export type MarkdownFormatter = (data: Record<string, unknown>) => string
 
@@ -33,46 +11,6 @@ export interface CommandResultOptions {
 
 function defaultMarkdown(data: Record<string, unknown>): string {
   return "```json\n" + JSON.stringify(data, null, 2) + "\n```"
-}
-
-function withTruncationFlag(
-  structured: Record<string, unknown>,
-  context?: TruncationContext,
-): Record<string, unknown> {
-  if (!context) return structured
-  return {
-    ...structured,
-    ...Object.fromEntries(
-      Object.entries(context).filter(([, value]) => value !== undefined),
-    ),
-  }
-}
-
-function enforceCharacterLimit(
-  text: string,
-  structured: Record<string, unknown>,
-): { text: string; structured: Record<string, unknown> } {
-  if (text.length <= CHARACTER_LIMIT) return { text, structured }
-  const truncationMessage =
-    `Response exceeded ${CHARACTER_LIMIT} characters and was truncated. ` +
-    "Re-issue the call with a smaller `limit`, a more specific filter, or a non-zero `offset` to continue."
-  return {
-    text: text.slice(0, CHARACTER_LIMIT),
-    structured: { ...structured, truncated: true, truncation_message: truncationMessage },
-  }
-}
-
-export function formatResponse(
-  data: Record<string, unknown>,
-  context?: FormatResponseContext,
-): ToolResponseEnvelope {
-  const structured = withTruncationFlag(data, context?.truncation)
-  const rendered = (context?.toMarkdown ?? defaultMarkdown)(structured)
-  const enforced = enforceCharacterLimit(rendered, structured)
-  return {
-    content: [{ type: "text", text: enforced.text }],
-    structuredContent: enforced.structured,
-  }
 }
 
 export function asRecord(value: unknown): Record<string, unknown> | undefined {
