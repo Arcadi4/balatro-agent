@@ -18,7 +18,7 @@
   "mcp": {
     "balatro_dev": {
       "type": "local",
-      "command": ["node", "mcp/dist/index.js"]
+      "command": ["bun", "mcp/src/index.ts"]
     },
     "codegraph": {
       "type": "local",
