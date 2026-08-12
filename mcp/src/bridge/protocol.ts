@@ -58,6 +58,10 @@ export type JsonRpcError = JSONRPCErrorResponse["error"];
 //   -32032         — Catch-all internal error (far enough from -32000 to
 //                    reduce collision risk with future application codes)
 
+// Catch-all fallback code, kept as a named constant so `toJsonRpcError` can
+// fall back to it without an `undefined`-able index lookup.
+const INTERNAL_ERROR_CODE = -32032;
+
 export const ErrorCodeMap: Record<string, number> = Object.freeze({
   // Transport-level errors (from BridgeClient)
   GAME_NOT_RUNNING: -32001,
@@ -78,7 +82,7 @@ export const ErrorCodeMap: Record<string, number> = Object.freeze({
   VOUCHER_DEPENDENCY: -32017,
 
   // Catch-all
-  INTERNAL_ERROR: -32032,
+  INTERNAL_ERROR: INTERNAL_ERROR_CODE,
 });
 
 export const ReverseErrorMap: Record<number, string> = Object.freeze(
@@ -99,7 +103,7 @@ export const STANDARD_ERRORS = {
  * Falls back to INTERNAL_ERROR if the code is not recognized.
  */
 export function toJsonRpcError(errorCode: string, message: string, data?: unknown): JsonRpcError {
-  const code = ErrorCodeMap[errorCode] ?? ErrorCodeMap.INTERNAL_ERROR;
+  const code = ErrorCodeMap[errorCode] ?? INTERNAL_ERROR_CODE;
   return { code, message, data };
 }
 

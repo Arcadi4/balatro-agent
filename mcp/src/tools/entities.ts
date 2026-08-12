@@ -134,7 +134,7 @@ function cleanWikiText(text: string): string {
         .map((part) => part.trim())
         .filter(Boolean);
       if (parts.length <= 1) return "";
-      return parts[parts.length - 1];
+      return parts[parts.length - 1] ?? "";
     });
   }
 

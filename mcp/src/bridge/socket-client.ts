@@ -1,5 +1,21 @@
-import { createConnection } from "node:net";
-import type { Socket } from "node:net";
+/**
+ * socket-client.ts — Unix socket bridge client (Bun native sockets).
+ *
+ * Talks to the Balatro mod's JSON-RPC server over the Unix socket at
+ * `/tmp/balatro-mcp.sock` using newline-delimited JSON frames (see
+ * protocol.ts). Built on `Bun.connect` with `binaryType: "uint8array"`;
+ * incoming bytes are decoded incrementally with a streaming `TextDecoder`
+ * so multi-byte UTF-8 code points split across socket reads stay intact.
+ *
+ * Wire behavior mirrors the previous `node:net` implementation:
+ * - `GAME_NOT_RUNNING` when the socket is unavailable or the peer closed the
+ *   connection with no data exchanged after a healthy connection.
+ * - `INSTANCE_BUSY` when the peer closes a freshly established connection
+ *   before any data was exchanged (the Lua bridge rejects extra clients).
+ * - Transparent background reconnection: after an unexpected close the client
+ *   retries every RECONNECT_DELAY_MS until reconnected or disposed.
+ */
+import type { Socket } from "bun";
 
 import { errorCodeToString, isJsonRpcResponse, parseFrames, serializeFrame } from "./protocol.js";
 import type { JsonRpcRequest, JsonRpcResponse } from "./protocol.js";
@@ -39,7 +55,7 @@ interface PendingRequest {
   promise: Promise<JsonRpcResponse>;
   resolve: (response: JsonRpcResponse) => void;
   reject: (error: Error) => void;
-  timeout?: ReturnType<typeof setTimeout>;
+  timeout?: Timer;
 }
 
 export class BridgeError extends Error {
@@ -53,7 +69,7 @@ export class BridgeError extends Error {
 }
 
 function errnoCode(err: Error): string | undefined {
-  return (err as NodeJS.ErrnoException).code;
+  return (err as ErrnoException).code;
 }
 
 function isConnectionUnavailable(err: Error): boolean {
@@ -116,6 +132,8 @@ function hasPayload(value: unknown): boolean {
 
 export class BridgeClient {
   private socket?: Socket;
+  private decoder = new TextDecoder();
+  private bytesRead = 0;
   private commandSeq = 0;
   private connected = false;
   private disposed = false;
@@ -123,10 +141,17 @@ export class BridgeClient {
   private connectPromise?: Promise<void>;
   private connectResolve?: () => void;
   private connectReject?: (error: Error) => void;
-  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private reconnectTimer?: Timer;
   private connectedAtMs?: number;
   private lastDisconnectError?: BridgeError;
   private readonly pendingRequests = new Map<number, PendingRequest>();
+  private drainWaiters: Array<() => void> = [];
+  private drainRejecters: Array<(error: Error) => void> = [];
+  // Serializes outbound frames: Bun socket writes are unbuffered, so a
+  // partial write resumes after `drain`. Without a queue, a concurrent call
+  // could interleave its own frame between the partial write and the resume,
+  // corrupting the NDJSON stream. Every frame is written atomically.
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor() {}
 
@@ -141,13 +166,16 @@ export class BridgeClient {
     }
     if (this.connectPromise) return this.connectPromise;
 
-    this.connectPromise = new Promise((resolve, reject) => {
-      this.connectResolve = resolve;
-      this.connectReject = reject;
-      this.openSocket();
-    });
-
-    return this.connectPromise;
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    this.connectPromise = promise;
+    this.connectResolve = resolve;
+    this.connectReject = reject;
+    this.openSocket();
+    // Return the local, not `this.connectPromise`: Bun fires `connectError`
+    // synchronously during `openSocket()`, and the error path clears the
+    // field before this line runs. Returning the field would hand the caller
+    // `undefined` (await resolves) and orphan the rejected promise.
+    return promise;
   }
 
   async getState(options?: { maxAgeMs?: number }): Promise<StateEnvelope> {
@@ -271,6 +299,7 @@ export class BridgeClient {
     this.disposed = true;
     this.clearReconnectTimer();
     this.rejectAllPending(gameNotRunningError("Balatro is not running"));
+    this.rejectDrainWaiters(gameNotRunningError("Balatro is not running"));
 
     if (this.connectReject) {
       this.connectReject(gameNotRunningError("Balatro is not running"));
@@ -281,9 +310,10 @@ export class BridgeClient {
     this.connectedAtMs = undefined;
     this.lastDisconnectError = undefined;
     this.buffer = "";
+    this.bytesRead = 0;
 
     if (this.socket) {
-      this.socket.destroy();
+      this.socket.terminate();
       this.socket = undefined;
     }
   }
@@ -291,55 +321,90 @@ export class BridgeClient {
   private openSocket(): void {
     this.clearReconnectTimer();
     this.buffer = "";
+    this.decoder = new TextDecoder();
+    this.bytesRead = 0;
 
-    const socket = createConnection({ path: SOCKET_PATH });
-    this.socket = socket;
-    socket.setEncoding("utf8");
-
-    socket.on("connect", () => {
-      if (this.socket !== socket) return;
-
-      this.connected = true;
-      this.connectedAtMs = Date.now();
-      this.lastDisconnectError = undefined;
-      this.commandSeq = 0;
-      this.connectResolve?.();
-      this.clearConnectPromise();
-    });
-
-    socket.on("data", (chunk: string | Buffer) => {
-      this.handleData(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
-    });
-
-    socket.on("error", (err: Error) => {
-      this.handleSocketError(err);
-    });
-
-    socket.on("close", () => {
-      this.handleSocketClose(socket);
-    });
+    void Bun.connect({
+      unix: SOCKET_PATH,
+      socket: {
+        open: (socket) => {
+          this.socket = socket;
+          this.connected = true;
+          this.connectedAtMs = Date.now();
+          this.lastDisconnectError = undefined;
+          this.commandSeq = 0;
+          this.connectResolve?.();
+          this.clearConnectPromise();
+        },
+        data: (_socket, data) => {
+          this.bytesRead += data.byteLength;
+          this.handleData(this.decoder.decode(data, { stream: true }));
+        },
+        drain: () => {
+          this.handleDrain();
+        },
+        close: (socket, error) => {
+          if (this.socket !== socket) return;
+          this.handleSocketClose(error);
+        },
+        error: (_socket, error) => {
+          this.handleSocketError(error);
+        },
+        connectError: (_socket, error) => {
+          this.handleConnectError(error);
+        },
+      },
+    })
+      .then((socket) => {
+        // `connectError` already ran; the rejected promise is only for
+        // reporting. If we were disposed while connecting, close the socket.
+        if (this.disposed) socket.terminate();
+      })
+      .catch((error: unknown) => {
+        this.handleConnectError(error instanceof Error ? error : new Error(String(error)));
+      });
   }
 
-  private handleSocketError(err: Error): void {
-    if (this.connectReject && isConnectionUnavailable(err)) {
-      this.connectReject(gameNotRunningError("Balatro is not running"));
+  private handleConnectError(error: Error): void {
+    const bridgeError = this.normalizeConnectError(error);
+
+    if (this.connectReject) {
+      this.connectReject(bridgeError);
       this.clearConnectPromise();
-      return;
     }
 
-    process.stderr.write(`Balatro MCP bridge socket error: ${err.message}\n`);
+    if (!this.disposed && !this.connected) {
+      this.lastDisconnectError = bridgeError;
+      this.scheduleReconnect();
+    }
   }
 
-  private handleSocketClose(socket: Socket): void {
-    if (this.socket !== socket) return;
+  private normalizeConnectError(error: Error): BridgeError {
+    if (error instanceof BridgeError) return error;
+    if (isConnectionUnavailable(error)) return gameNotRunningError("Balatro is not running");
+    return new BridgeError("GAME_NOT_RUNNING", `Connection failed: ${error.message}`);
+  }
 
-    const error = this.errorForSocketClose(socket);
+  private handleSocketError(error: Error): void {
+    // Reject in-flight write waits so they fail fast instead of hanging;
+    // the close handler follows and tears down pending requests.
+    this.rejectDrainWaiters(error);
+    process.stderr.write(`Balatro MCP bridge socket error: ${error.message}\n`);
+  }
 
+  private handleSocketClose(closeError?: Error): void {
+    const socket = this.socket;
+    const bytesRead = this.bytesRead;
     this.socket = undefined;
     this.connected = false;
     this.buffer = "";
+    this.bytesRead = 0;
+
+    const error = closeError ? this.errorForClose(closeError) : this.errorForSocketClose(socket, bytesRead);
+
     this.lastDisconnectError = error;
     this.rejectAllPending(error);
+    this.rejectDrainWaiters(error);
 
     if (this.connectReject) {
       this.connectReject(error);
@@ -349,6 +414,14 @@ export class BridgeClient {
     if (!this.disposed && error.code !== "INSTANCE_BUSY") {
       this.scheduleReconnect();
     }
+  }
+
+  private errorForClose(closeError: Error): BridgeError {
+    if (closeError instanceof BridgeError) return closeError;
+    if (isConnectionUnavailable(closeError) || isConnectionSevered(closeError)) {
+      return gameNotRunningError("Balatro is not running");
+    }
+    return gameNotRunningError(`Connection closed: ${closeError.message}`);
   }
 
   private scheduleReconnect(): void {
@@ -362,12 +435,12 @@ export class BridgeClient {
     }, RECONNECT_DELAY_MS);
   }
 
-  private errorForSocketClose(socket: Socket): BridgeError {
+  private errorForSocketClose(socket: Socket | undefined, bytesRead: number): BridgeError {
     const connectedForMs =
       this.connectedAtMs === undefined ? undefined : Date.now() - this.connectedAtMs;
     this.connectedAtMs = undefined;
 
-    return socket.bytesRead === 0 &&
+    return bytesRead === 0 &&
       connectedForMs !== undefined &&
       connectedForMs < RECONNECT_DELAY_MS
       ? instanceBusyError()
@@ -396,34 +469,60 @@ export class BridgeClient {
     }
   }
 
-  private async writeFrame(request: JsonRpcRequest): Promise<void> {
+  private handleDrain(): void {
+    const waiters = this.drainWaiters;
+    this.drainWaiters = [];
+    this.drainRejecters = [];
+    for (const resolve of waiters) resolve();
+  }
+
+  private rejectDrainWaiters(error: Error): void {
+    const rejecters = this.drainRejecters;
+    this.drainWaiters = [];
+    this.drainRejecters = [];
+    for (const reject of rejecters) reject(error);
+  }
+
+  private writeFrame(request: JsonRpcRequest): Promise<void> {
+    const write = this.writeQueue.then(() => this.writeFrameNow(request));
+    // Keep the chain alive across failures so a closed socket doesn't wedge
+    // every later write; callers still observe the rejection via `write`.
+    this.writeQueue = write.then(
+      () => undefined,
+      () => undefined,
+    );
+    return write;
+  }
+
+  private async writeFrameNow(request: JsonRpcRequest): Promise<void> {
     const socket = this.socket;
-    if (!this.connected || !socket || socket.destroyed) {
+    // readyState <= 0 means Shutdown/Detached/Closed; only positive values
+    // indicate an open, usable socket.
+    if (!this.connected || !socket || socket.readyState <= 0) {
       if (this.lastDisconnectError) throw this.lastDisconnectError;
       throw gameNotRunningError("Balatro is not running");
     }
 
     const frame = serializeFrame(request);
-    const wroteImmediately = socket.write(frame);
-    if (wroteImmediately) return;
+    let offset = 0;
+    while (offset < frame.length) {
+      const written = socket.write(frame.slice(offset));
+      if (written === -1) {
+        if (this.lastDisconnectError) throw this.lastDisconnectError;
+        throw gameNotRunningError("Balatro is not running");
+      }
+      offset += written;
+      if (offset < frame.length) {
+        await this.waitForDrain();
+      }
+    }
+  }
 
-    await new Promise<void>((resolve, reject) => {
-      const cleanup = (): void => {
-        socket.off("drain", onDrain);
-        socket.off("error", onError);
-      };
-      const onDrain = (): void => {
-        cleanup();
-        resolve();
-      };
-      const onError = (err: Error): void => {
-        cleanup();
-        reject(err);
-      };
-
-      socket.once("drain", onDrain);
-      socket.once("error", onError);
-    });
+  private waitForDrain(): Promise<void> {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    this.drainWaiters.push(resolve);
+    this.drainRejecters.push(reject);
+    return promise;
   }
 
   private nextId(): number {
@@ -432,19 +531,10 @@ export class BridgeClient {
   }
 
   private createPendingRequest(id: number): PendingRequest {
-    let resolvePending: (response: JsonRpcResponse) => void = () => undefined;
-    let rejectPending: (error: Error) => void = () => undefined;
-    const promise = new Promise<JsonRpcResponse>((resolve, reject) => {
-      resolvePending = resolve;
-      rejectPending = reject;
-    });
+    const { promise, resolve, reject } = Promise.withResolvers<JsonRpcResponse>();
     void promise.catch(() => undefined);
 
-    const pending: PendingRequest = {
-      promise,
-      resolve: resolvePending,
-      reject: rejectPending,
-    };
+    const pending: PendingRequest = { promise, resolve, reject };
     this.pendingRequests.set(id, pending);
     return pending;
   }
@@ -454,7 +544,7 @@ export class BridgeClient {
     pending: PendingRequest,
     timeoutMs: number,
   ): Promise<JsonRpcResponse> {
-    if (pending.timeout) clearTimeout(pending.timeout);
+    clearTimeout(pending.timeout);
 
     pending.timeout = setTimeout(() => {
       this.pendingRequests.delete(id);
@@ -464,7 +554,7 @@ export class BridgeClient {
     try {
       return await pending.promise;
     } finally {
-      if (pending.timeout) clearTimeout(pending.timeout);
+      clearTimeout(pending.timeout);
       this.pendingRequests.delete(id);
     }
   }
@@ -473,22 +563,20 @@ export class BridgeClient {
     const pending = this.pendingRequests.get(id);
     if (!pending) return;
 
-    if (pending.timeout) clearTimeout(pending.timeout);
+    clearTimeout(pending.timeout);
     pending.reject(error);
     this.pendingRequests.delete(id);
   }
 
   private rejectAllPending(error: Error): void {
     for (const [id, pending] of this.pendingRequests) {
-      if (pending.timeout) clearTimeout(pending.timeout);
+      clearTimeout(pending.timeout);
       pending.reject(error);
       this.pendingRequests.delete(id);
     }
   }
 
   private clearReconnectTimer(): void {
-    if (!this.reconnectTimer) return;
-
     clearTimeout(this.reconnectTimer);
     this.reconnectTimer = undefined;
   }

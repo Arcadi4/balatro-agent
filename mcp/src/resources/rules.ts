@@ -2,32 +2,45 @@
  * Global rules resource: registers `balatro://rules/global` as a static MCP
  * resource backed by `mcp/data/rules/global.md`. Content loads once at module
  * init so the resource works without a bridge connection.
+ *
+ * Uses Bun-native file APIs: `Bun.file` for the lazy file reference and
+ * `Bun.CryptoHasher` for the content-addressed version.
  */
-import { readFileSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
+import { resolve } from "node:path";
+import type { BunFile } from "bun";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 const RULES_URI = "balatro://rules/global";
 const RULES_MIME = "text/markdown";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Path math: this file lives at src/resources/ when run from source, and the
+// whole package is flattened into dist/index.js when bundled with `bun build`.
+//   - src/resources/rules.ts          → ../../data = mcp/data ✓
+//   - dist/index.js (flat bundle)     → ../data    = mcp/data ✓
+//   - dist/resources/rules.js (tsc)   → ../../data = mcp/data ✓
+const RULES_CANDIDATES = [
+  resolve(import.meta.dir, "../../data/rules/global.md"), // src/resources/ layout
+  resolve(import.meta.dir, "../data/rules/global.md"), // flat bundle layout
+] as const;
 
-// Path math: this file lives at src/resources/ (or dist/resources/ when built),
-// so `../../data/rules/global.md` lands at the package root in both cases.
-const RULES_PATH = resolve(__dirname, "../../data/rules/global.md");
+async function resolveRulesFile(): Promise<BunFile> {
+  for (const candidate of RULES_CANDIDATES) {
+    const file = Bun.file(candidate);
+    if (await file.exists()) return file;
+  }
+  // No candidate exists; let text() surface the error with a real path.
+  return Bun.file(RULES_CANDIDATES[0]);
+}
 
-const RULES_CONTENT = readFileSync(RULES_PATH, "utf-8");
-const RULES_STAT = statSync(RULES_PATH);
+const RULES_FILE = await resolveRulesFile();
+const RULES_CONTENT = await RULES_FILE.text();
 
-const RULES_VERSION = createHash("sha256")
+const RULES_VERSION = new Bun.CryptoHasher("sha256")
   .update(RULES_CONTENT)
   .digest("hex")
   .substring(0, 8);
 
-const RULES_LAST_UPDATED = RULES_STAT.mtime.toISOString();
+const RULES_LAST_UPDATED = new Date(RULES_FILE.lastModified).toISOString();
 
 /**
  * Register the global rules resource on an `McpServer`.
