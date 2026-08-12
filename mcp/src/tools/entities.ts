@@ -1,11 +1,8 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js"
+import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
-import { BridgeError } from "../bridge/socket-client.js"
-import type { Deps } from "../deps.js"
-import { toolError } from "../errors.js"
-import { formatResponse } from "../response.js"
+import type { BridgeClient } from "../bridge/socket-client.js"
+import { asRecord, toolError, toolResult, withBridgeErrors } from "../response.js"
 import LIST_DESCRIPTION from "./descriptions/list-entities.txt" with { type: "text" }
 import WIKI_DESCRIPTION from "./descriptions/read-wiki.txt" with { type: "text" }
 
@@ -30,6 +27,7 @@ const listInputSchema = z
       ),
     limit: z
       .number()
+      .int()
       .min(1)
       .max(100)
       .default(20)
@@ -38,9 +36,21 @@ const listInputSchema = z
       ),
     offset: z
       .number()
+      .int()
       .min(0)
       .default(0)
       .describe("Number of runtime entities to skip for pagination. Default 0."),
+  })
+  .strict()
+const listOutputSchema = z
+  .object({
+    items: z.array(z.record(z.string(), z.unknown())),
+    total: z.number().int(),
+    count: z.number().int(),
+    offset: z.number().int(),
+    has_more: z.boolean(),
+    next_offset: z.number().int().optional(),
+    source: z.string(),
   })
   .strict()
 
@@ -61,17 +71,37 @@ const wikiInputSchema = z
       ),
     max_chars: z
       .number()
+      .int()
       .min(500)
       .max(20000)
       .default(8000)
       .describe("Maximum cleaned wiki text characters to return. Default 8000, max 20000."),
   })
   .strict()
+const wikiOutputSchema = z
+  .object({
+    requested_title: z.string(),
+    title: z.string(),
+    content_scope: z.enum(["intro", "full"]),
+    extract: z.string(),
+    source_url: z.string(),
+    api_url: z.string(),
+    redirects: z.array(z.record(z.string(), z.unknown())),
+    truncated: z.boolean(),
+    max_chars: z.number().int(),
+    truncation_message: z.string().optional(),
+  })
+  .strict()
 
-const ANNOTATIONS = {
+const LOCAL_ANNOTATIONS = {
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
+  openWorldHint: false,
+} as const satisfies ToolAnnotations
+
+const WIKI_ANNOTATIONS = {
+  ...LOCAL_ANNOTATIONS,
   openWorldHint: true,
 } as const satisfies ToolAnnotations
 
@@ -200,85 +230,58 @@ async function fetchWikiExtract(
   }
 }
 
-async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSchema>) {
-  let seq: number
-  try {
-    seq = await deps.bridgeClient.sendCommand({
-      kind: "list_game_entities",
-      args: {
-        id: args.id,
-        limit: args.limit ?? 20,
-        offset: args.offset ?? 0,
-      },
-    })
-  } catch (err) {
-    if (err instanceof BridgeError) return { ...toolError(err.code, err.message) }
-    throw err
-  }
-
-  const response = await deps.bridgeClient.awaitResponse(seq, { timeoutMs: 5_000 })
-  if (!response.ok) {
-    return {
-      ...toolError(
-        response.error_code ?? "BRIDGE_ERROR",
-        response.error_message ?? "Runtime entity query failed",
+async function listRuntimeEntities(bridge: BridgeClient, args: z.infer<typeof listInputSchema>) {
+  return withBridgeErrors(
+    () =>
+      bridge.command(
+        "list_game_entities",
+        {
+          id: args.id,
+          limit: args.limit,
+          offset: args.offset,
+        },
+        5_000,
       ),
-    }
-  }
-
-  const structured = (response.data ?? {}) as Record<string, unknown>
-  const envelope = formatResponse(structured, {
-    toMarkdown: listToMarkdown,
-    truncation: {
-      total: typeof structured.total === "number" ? structured.total : undefined,
-      count: typeof structured.count === "number" ? structured.count : undefined,
-      offset: typeof structured.offset === "number" ? structured.offset : undefined,
-      has_more: typeof structured.has_more === "boolean" ? structured.has_more : undefined,
-      next_offset: typeof structured.next_offset === "number" ? structured.next_offset : undefined,
+    (data) => {
+      const structured = asRecord(data)
+      return structured
+        ? toolResult(structured, listToMarkdown)
+        : toolError("PROTOCOL_MISMATCH", "Runtime entity query returned invalid data")
     },
-  })
-  return { ...envelope }
+  )
 }
 
 async function readWiki(title: string, contentScope: WikiContentScope, maxChars: number) {
   try {
     const structured = await fetchWikiExtract(title, contentScope, maxChars)
-    const envelope = formatResponse(structured, { toMarkdown: wikiToMarkdown })
-    return { ...envelope }
+    return toolResult(structured, wikiToMarkdown)
   } catch (err) {
-    return { ...toolError("WIKI_FETCH_FAILED", err instanceof Error ? err.message : String(err)) }
+    return toolError("WIKI_FETCH_FAILED", err instanceof Error ? err.message : String(err))
   }
 }
 
-export function registerEntityTools(server: McpServer, deps: Deps): void {
+export function registerEntityTools(server: McpServer, bridge: BridgeClient): void {
   server.registerTool(
     "balatro_list_game_entities",
     {
+      title: "List Game Entities",
       description: LIST_DESCRIPTION,
       inputSchema: listInputSchema,
-      annotations: ANNOTATIONS,
+      outputSchema: listOutputSchema,
+      annotations: LOCAL_ANNOTATIONS,
     },
-    async (args) => {
-      const parsed = listInputSchema.safeParse(args)
-      if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) }
-
-      return listRuntimeEntities(deps, parsed.data)
-    },
+    (args) => listRuntimeEntities(bridge, args),
   )
 
   server.registerTool(
     "balatro_read_wiki",
     {
+      title: "Read Balatro Wiki",
       description: WIKI_DESCRIPTION,
       inputSchema: wikiInputSchema,
-      annotations: ANNOTATIONS,
+      outputSchema: wikiOutputSchema,
+      annotations: WIKI_ANNOTATIONS,
     },
-    async (args) => {
-      const parsed = wikiInputSchema.safeParse(args)
-      if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) }
-
-      const contentScope: WikiContentScope = parsed.data.content_scope ?? "intro"
-      return readWiki(parsed.data.title, contentScope, parsed.data.max_chars ?? 8000)
-    },
+    ({ title, content_scope, max_chars }) => readWiki(title, content_scope, max_chars),
   )
 }

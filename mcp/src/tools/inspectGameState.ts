@@ -1,11 +1,8 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js"
+import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
-import { BridgeError } from "../bridge/socket-client.js"
-import type { Deps } from "../deps.js"
-import { toolError } from "../errors.js"
-import { formatResponse } from "../response.js"
+import type { BridgeClient } from "../bridge/socket-client.js"
+import { asRecord, toolError, toolResult, withBridgeErrors } from "../response.js"
 import INSPECT_CARD_INSTANCE_DESCRIPTION from "./descriptions/inspect-card-instance.txt" with { type: "text" }
 import INSPECT_GAME_STATE_DESCRIPTION from "./descriptions/inspect-game-state.txt" with { type: "text" }
 
@@ -17,14 +14,23 @@ const READ_ONLY_ANNOTATIONS = {
 } as const satisfies ToolAnnotations
 
 const inputSchema = z.object({}).strict()
+const recordSchema = z.record(z.string(), z.unknown())
+const gameStateOutputSchema = z.object({ payload: recordSchema }).strict()
 
 const inspectCardInstanceSchema = z
   .object({
     card_id: z
-      .union([z.string(), z.number().int()])
+      .union([z.string().min(1), z.number().int()])
       .describe(
         "Live card instance ID from balatro_inspect_game_state, not an entity/prototype ID.",
       ),
+  })
+  .strict()
+const inspectCardInstanceOutputSchema = z
+  .object({
+    card_id: z.string(),
+    location: z.string(),
+    instance: recordSchema,
   })
   .strict()
 
@@ -36,34 +42,23 @@ const EDITION_NAMES: Record<string, string> = {
   negative: "Negative",
 }
 
-function normalizeCardId(value: string | number): string {
-  return String(value)
+interface FoundCard {
+  location: string
+  card: Record<string, unknown>
 }
 
-function cloneRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null
-  return { ...(value as Record<string, unknown>) }
-}
-
-function findInArray(
-  items: unknown,
-  cardId: string,
-  location: string,
-): Record<string, unknown> | null {
-  if (!Array.isArray(items)) return null
+function findInArray(items: unknown, cardId: string, location: string): FoundCard | undefined {
+  if (!Array.isArray(items)) return undefined
   for (const item of items) {
-    const record = cloneRecord(item)
-    if (record && normalizeCardId(record.card_id as string | number) === cardId) {
+    const record = asRecord(item)
+    if (record && String(record.card_id) === cardId) {
       return { location, card: record }
     }
   }
-  return null
+  return undefined
 }
 
-function findCardInstance(
-  payload: Record<string, unknown>,
-  cardId: string,
-): Record<string, unknown> | null {
+function findCardInstance(payload: Record<string, unknown>, cardId: string): FoundCard | undefined {
   const directLocations = [
     ["hand", "hand"],
     ["jokers", "jokers"],
@@ -75,7 +70,7 @@ function findCardInstance(
     if (found) return found
   }
 
-  const shop = cloneRecord(payload.shop)
+  const shop = asRecord(payload.shop)
   if (shop) {
     for (const field of ["jokers", "vouchers", "boosters", "cards"]) {
       const found = findInArray(shop[field], cardId, `shop.${field}`)
@@ -83,13 +78,13 @@ function findCardInstance(
     }
   }
 
-  const pack = cloneRecord(payload.pack)
+  const pack = asRecord(payload.pack)
   if (pack) {
     const found = findInArray(pack.options, cardId, "pack.options")
     if (found) return found
   }
 
-  return null
+  return undefined
 }
 
 function cardInstanceToMarkdown(data: object): string {
@@ -348,7 +343,7 @@ function appendShopSection(lines: string[], shop: Record<string, unknown>): void
     lines.push(`\n### ${label}\n`)
     let index = 1
     for (const item of items) {
-      const card = cloneRecord(item)
+      const card = asRecord(item)
       if (!card) continue
       if (isJokerCard(card) || isConsumableCard(card)) {
         appendCompactCardLine(lines, card, index)
@@ -371,7 +366,7 @@ function appendPackSection(lines: string[], pack: Record<string, unknown>): void
     lines.push("\n### Options\n")
     let index = 1
     for (const item of pack.options) {
-      const card = cloneRecord(item)
+      const card = asRecord(item)
       if (!card) continue
       appendCompactCardLine(lines, card, index)
       index += 1
@@ -386,7 +381,7 @@ function appendField(lines: string[], label: string, value: unknown): void {
 }
 
 function appendCurrentRound(lines: string[], value: unknown): void {
-  const round = cloneRecord(value)
+  const round = asRecord(value)
   if (!round) {
     appendField(lines, "Round", value)
     return
@@ -403,7 +398,7 @@ function appendCurrentRound(lines: string[], value: unknown): void {
 
 function displayPhase(
   payload: Record<string, unknown>,
-  pack: Record<string, unknown> | null,
+  pack: Record<string, unknown> | undefined,
 ): string | undefined {
   const phase = payload.phase
   if (typeof phase !== "string") return phase !== undefined ? String(phase) : undefined
@@ -422,7 +417,7 @@ function displayPhase(
 
 function stateToMarkdown(data: object): string {
   const payload = ((data as Record<string, unknown>).payload ?? {}) as Record<string, unknown>
-  const pack = cloneRecord(payload.pack)
+  const pack = asRecord(payload.pack)
 
   const lines: string[] = []
   lines.push("# Balatro Game State\n")
@@ -474,7 +469,7 @@ function stateToMarkdown(data: object): string {
     let index = 1
     if (Array.isArray(payload.jokers)) {
       for (const j of payload.jokers) {
-        const joker = cloneRecord(j)
+        const joker = asRecord(j)
         if (!joker) continue
         appendCompactCardLine(lines, joker, index)
         index += 1
@@ -491,7 +486,7 @@ function stateToMarkdown(data: object): string {
     let index = 1
     if (Array.isArray(payload.consumables)) {
       for (const c of payload.consumables) {
-        const consumable = cloneRecord(c)
+        const consumable = asRecord(c)
         if (!consumable) continue
         appendCompactCardLine(lines, consumable, index)
         index += 1
@@ -500,7 +495,7 @@ function stateToMarkdown(data: object): string {
     lines.push("")
   }
 
-  const shop = cloneRecord(payload.shop)
+  const shop = asRecord(payload.shop)
   if (shop) appendShopSection(lines, shop)
 
   if (pack) appendPackSection(lines, pack)
@@ -508,78 +503,50 @@ function stateToMarkdown(data: object): string {
   return lines.join("\n")
 }
 
-export function registerInspectGameState(server: McpServer, deps: Deps): void {
+export function registerInspectGameState(server: McpServer, bridge: BridgeClient): void {
   server.registerTool(
     "balatro_inspect_game_state",
     {
+      title: "Inspect Game State",
       description: INSPECT_GAME_STATE_DESCRIPTION,
       inputSchema,
+      outputSchema: gameStateOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async () => {
-      let state
-      try {
-        state = await deps.bridgeClient.getState({ maxAgeMs: 1500 })
-      } catch (err) {
-        if (err instanceof BridgeError) {
-          const envelope = toolError(err.code, err.message)
-          return { ...envelope }
-        }
-        throw err
-      }
-
-      const payload = cloneRecord(state.payload) ?? {}
-      const structured: Record<string, unknown> = {
-        payload,
-      }
-
-      const envelope = formatResponse(structured, {
-        toMarkdown: stateToMarkdown,
-      })
-      return { ...envelope }
-    },
+    () =>
+      withBridgeErrors(
+        () => bridge.getState(1_500),
+        (payload) => toolResult({ payload }, stateToMarkdown),
+      ),
   )
 
   server.registerTool(
     "balatro_inspect_card_instance",
     {
+      title: "Inspect Card Instance",
       description: INSPECT_CARD_INSTANCE_DESCRIPTION,
       inputSchema: inspectCardInstanceSchema,
+      outputSchema: inspectCardInstanceOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (args) => {
-      const cardId = normalizeCardId(args.card_id)
-
-      let state
-      try {
-        state = await deps.bridgeClient.getState({ maxAgeMs: 1500 })
-      } catch (err) {
-        if (err instanceof BridgeError) {
-          const envelope = toolError(err.code, err.message)
-          return { ...envelope }
-        }
-        throw err
-      }
-
-      const payload = cloneRecord(state.payload) ?? {}
-      const found = findCardInstance(payload, cardId)
-      if (!found) {
-        return {
-          ...toolError("INVALID_TARGET", `card_id "${cardId}" not found in current live state`),
-        }
-      }
-
-      const instance = cloneRecord(found.card) ?? (found.card as Record<string, unknown>)
-      const structured: Record<string, unknown> = {
-        card_id: cardId,
-        location: found.location,
-        instance,
-      }
-
-      const envelope = formatResponse(structured, {
-        toMarkdown: cardInstanceToMarkdown,
-      })
-      return { ...envelope }
+    ({ card_id }) => {
+      const cardId = String(card_id)
+      return withBridgeErrors(
+        () => bridge.getState(1_500),
+        (payload) => {
+          const found = findCardInstance(payload, cardId)
+          if (!found) {
+            return toolError(
+              "INVALID_TARGET",
+              `card_id "${cardId}" not found in current live state`,
+            )
+          }
+          return toolResult(
+            { card_id: cardId, location: found.location, instance: found.card },
+            cardInstanceToMarkdown,
+          )
+        },
+      )
     },
   )
 }
