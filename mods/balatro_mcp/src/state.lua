@@ -351,7 +351,17 @@ local function serialize_shop_card(card)
     elseif set == 'Tarot' then kind = 'tarot'
     elseif set == 'Planet' then kind = 'planet'
     elseif set == 'Spectral' then kind = 'spectral'
+    elseif set == 'Default' or set == 'Enhanced' then kind = 'playing_card'
     end
+  end
+
+  -- Playing cards (Magic Trick voucher shop cards) carry rank/suit fields so
+  -- the agent can identify them; they are bought with balatro_buy_card.
+  if kind == 'playing_card' then
+    local pc = serialize_playing_card(card)
+    pc.cost = card.cost
+    pc.sell_value = card.sell_cost
+    return pc
   end
 
   local obj = {
@@ -469,17 +479,35 @@ local function compute_legal_actions()
     end
 
   elseif gs == SHOP then
-    actions[#actions + 1] = 'buy_card'
+    -- Purchase tools are listed only when a matching shop item exists, so the
+    -- agent is told exactly which tool applies to the current shop.
+    local has_card = false
+    local has_consumable = false
+    if G.shop_jokers and G.shop_jokers.cards then
+      for _, card in ipairs(G.shop_jokers.cards) do
+        local set = card and card.config and card.config.center and card.config.center.set
+        if set == 'Joker' or set == 'Default' or set == 'Enhanced' then
+          has_card = true
+        elseif set == 'Tarot' or set == 'Planet' or set == 'Spectral' then
+          has_consumable = true
+        else
+          -- Modded sets fall back to the joker/playing-card buy path
+          has_card = true
+        end
+      end
+    end
+    local has_voucher = G.shop_vouchers and G.shop_vouchers.cards and #G.shop_vouchers.cards > 0
+    local has_booster = G.shop_booster and G.shop_booster.cards and #G.shop_booster.cards > 0
+
+    if has_card then actions[#actions + 1] = 'buy_card' end
+    if has_consumable then actions[#actions + 1] = 'buy_consumable' end
+    if has_voucher then actions[#actions + 1] = 'buy_voucher' end
+    if has_booster then actions[#actions + 1] = 'buy_booster' end
     actions[#actions + 1] = 'sell_card'
     actions[#actions + 1] = 'reroll_shop'
     actions[#actions + 1] = 'leave_shop'
     actions[#actions + 1] = 'use_consumable'
-    actions[#actions + 1] = 'buy_and_use_card'
     actions[#actions + 1] = 'reorder_jokers'
-    -- Open booster if boosters in shop
-    if G.shop_booster and G.shop_booster.cards and #G.shop_booster.cards > 0 then
-      actions[#actions + 1] = 'open_booster'
-    end
 
   elseif pack_states[gs] then
     actions[#actions + 1] = 'select_booster_card'

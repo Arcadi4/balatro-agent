@@ -199,7 +199,7 @@ local function find_card_in_pack(card_id)
   return find_card_in(G.pack_cards, card_id)
 end
 
-local function prepare_consumable_targets(card, args)
+local function prepare_consumable_targets(card, args, shop_context)
   local target_card_ids = args.target_card_ids or args.targets or {}
   if type(target_card_ids) ~= "table" then
     return err("INVALID_TARGET", "targets must be an array of hand card IDs")
@@ -223,6 +223,25 @@ local function prepare_consumable_targets(card, args)
   -- Balatro owns the exact target-count rules for each consumable. Validate
   -- only after the requested cards have been highlighted.
   if card.can_use_consumeable and not card:can_use_consumeable() then
+    local name = card.ability and card.ability.name or 'this consumable'
+    if shop_context then
+      -- In the shop, can_use_consumeable only passes for a special-cased set
+      -- (Planets, money Tarots, and cards whose conditions are met here);
+      -- every hand-targeting Tarot/Spectral is only usable during hand
+      -- selection or pack picking. If the highlighted count already satisfies
+      -- the card's own target range, the failure is phase-level, not a
+      -- target-count problem.
+      local count = G.hand and #G.hand.highlighted or 0
+      local cons = card.ability and card.ability.consumeable
+      local in_range = cons and cons.max_highlighted
+        and count >= (cons.min_highlighted or 1) and count <= cons.max_highlighted
+      if in_range or not (cons and cons.max_highlighted) then
+        return err(
+          "CANNOT_USE_NOW",
+          "'" .. name .. "' cannot be applied immediately from the shop: hand-targeting and special-case consumables are only usable during hand selection (SELECTING_HAND) or while a booster pack is open, and its use conditions are not met in the shop. No money was charged. Buy it with use=false to store it in a consumable slot (if one is free), then apply it with balatro_use_consumable when it becomes usable."
+        )
+      end
+    end
     local hint = #target_card_ids == 0 and "; provide targets for targeted consumables" or ""
     return err("INVALID_TARGET", "Consumable cannot be used with the supplied targets" .. hint)
   end
@@ -245,6 +264,101 @@ end
 local function available_funds()
   if not G or not G.GAME then return 0 end
   return (G.GAME.dollars or 0) - (G.GAME.bankrupt_at or 0)
+end
+
+---------------------------------------------------------------------------
+-- Shared shop-purchase helpers (buy_card / buy_consumable / buy_voucher /
+-- buy_booster). Modules are loaded as isolated chunks, so the phase-name
+-- mapping is duplicated here deliberately (see state.lua).
+---------------------------------------------------------------------------
+
+--- Human-readable current phase name, used in agent-facing error messages.
+local function get_phase_name()
+  if not G or not G.STATE then return 'UNKNOWN' end
+  local STATES = G.STATES or {}
+  local phase_map = {
+    [STATES.SELECTING_HAND or 13] = 'SELECTING_HAND',
+    [STATES.BLIND_SELECT or 11] = 'BLIND_SELECT',
+    [STATES.SHOP or 16] = 'SHOP',
+    [STATES.TAROT_PACK or 17] = 'TAROT_PACK',
+    [STATES.PLANET_PACK or 18] = 'PLANET_PACK',
+    [STATES.SPECTRAL_PACK or 19] = 'SPECTRAL_PACK',
+    [STATES.STANDARD_PACK or 20] = 'STANDARD_PACK',
+    [STATES.BUFFOON_PACK or 21] = 'BUFFOON_PACK',
+    [STATES.ROUND_EVAL or 15] = 'ROUND_EVAL',
+    [STATES.HAND_PLAYED or 14] = 'HAND_PLAYED',
+    [STATES.DRAW_TO_HAND or 12] = 'DRAW_TO_HAND',
+    [STATES.NEW_ROUND or 10] = 'NEW_ROUND',
+    [STATES.GAME_OVER or 7] = 'GAME_OVER',
+    [STATES.MENU or 1] = 'MENU',
+    [STATES.SPLASH or 0] = 'SPLASH',
+  }
+  if STATES.SMODS_BOOSTER_OPENED then
+    phase_map[STATES.SMODS_BOOSTER_OPENED] = 'SMODS_BOOSTER_OPENED'
+  end
+  return phase_map[G.STATE] or ('STATE_' .. tostring(G.STATE))
+end
+
+--- Phase guard for the shop purchase tools: requires the SHOP phase and
+--- returns an agent-readable WRONG_PHASE error (naming the current phase and
+--- how to recover) when the game is elsewhere.
+local function require_shop_phase(action_name)
+  local phase_err = check_phase({ S('SHOP') })
+  if phase_err then
+    return err(
+      'WRONG_PHASE',
+      action_name .. ' can only be used during the SHOP phase; the game is currently in '
+        .. get_phase_name() .. '. Call balatro_inspect_game_state to check the current phase before buying.'
+    )
+  end
+  return nil
+end
+
+--- Agent-readable pointer to the correct purchase tool for a shop card set.
+--- Returns '' for sets that are not part of the four-tool surface.
+local function purchase_tool_hint(set)
+  if set == 'Tarot' or set == 'Planet' or set == 'Spectral' then
+    return 'Use balatro_buy_consumable (set use=true to apply it immediately, or false to store it in a consumable slot).'
+  elseif set == 'Voucher' then
+    return 'Use balatro_buy_voucher to redeem it.'
+  elseif set == 'Booster' then
+    return 'Use balatro_buy_booster — booster packs are bought and opened in a single action.'
+  end
+  return ''
+end
+
+--- Funds check: cost must be within available dollars (dollars - bankrupt_at).
+local function check_funds(cost)
+  if cost > available_funds() then
+    return err(
+      'INSUFFICIENT_FUNDS',
+      'Cannot afford card (cost=' .. tostring(cost) .. ', available=' .. tostring(available_funds()) .. ')'
+    )
+  end
+  return nil
+end
+
+--- Invoke vanilla G.FUNCS.buy_from_shop and surface refusals. Vanilla returns
+--- false (and shows an in-game "no space" alert) when the purchase is
+--- declined; we must never report a success that did not happen.
+local function purchase_from_shop(card, buy_and_use)
+  if not G.FUNCS or not G.FUNCS.buy_from_shop then
+    return err('INTERNAL_ERROR', 'Balatro buy_from_shop callback is unavailable')
+  end
+
+  local config = { config = { ref_table = card } }
+  if buy_and_use then
+    config.config.id = 'buy_and_use'
+  end
+
+  local ok_call, result = pcall(G.FUNCS.buy_from_shop, config)
+  if not ok_call then
+    return err('INTERNAL_ERROR', 'buy_from_shop raised an error: ' .. tostring(result))
+  end
+  if result == false then
+    return err('SLOTS_FULL', 'The shop refused the purchase (no room for this card type). Free a slot or use the matching purchase tool.')
+  end
+  return nil
 end
 
 ---------------------------------------------------------------------------
@@ -670,10 +784,13 @@ end
 
 ---------------------------------------------------------------------------
 -- ACTION: buy_card
+-- Buys Jokers and regular playing cards (Magic Trick shop cards) only.
+-- Consumables / vouchers / boosters are rejected with a pointer to the
+-- matching purchase tool.
 ---------------------------------------------------------------------------
 
 handlers.buy_card = function(args)
-  local phase_err = check_phase({ S("SHOP") })
+  local phase_err = require_shop_phase('balatro_buy_card')
   if phase_err then return phase_err end
 
   local card_id = args.card_id
@@ -681,19 +798,29 @@ handlers.buy_card = function(args)
     return err("INVALID_TARGET", "card_id is required")
   end
 
-  local card, shop_area = find_card_in_shop(card_id)
+  local card = find_card_in_shop(card_id)
   if not card then
     return err("INVALID_TARGET", "Card not found in shop: " .. tostring(card_id))
   end
 
-  -- Check funds
-  local cost = card.cost or 0
-  if cost > available_funds() then
-    return err("INSUFFICIENT_FUNDS", "Cannot afford card (cost=" .. tostring(cost) .. ", available=" .. tostring(available_funds()) .. ")")
+  local set = card.config and card.config.center and card.config.center.set
+  local is_joker = set == "Joker"
+  local is_playing_card = set == "Default" or set == "Enhanced"
+  if not (is_joker or is_playing_card) then
+    return err(
+      "INVALID_TARGET",
+      "balatro_buy_card only buys Jokers and regular playing cards (shop playing cards appear once the Magic Trick voucher is active); found a "
+        .. tostring(set) .. ". " .. purchase_tool_hint(set)
+    )
   end
 
+  -- Check funds
+  local cost = card.cost or 0
+  local funds_err = check_funds(cost)
+  if funds_err then return funds_err end
+
   -- Check slots for jokers
-  if shop_area == "joker" then
+  if is_joker then
     local joker_count = G.jokers and G.jokers.cards and #G.jokers.cards or 0
     local joker_limit = G.jokers and G.jokers.config and G.jokers.config.card_limit or 5
     if joker_count >= joker_limit then
@@ -701,60 +828,91 @@ handlers.buy_card = function(args)
     end
   end
 
-  -- Check slots for consumables (if it's a consumable in shop_jokers area)
-  if card.config and card.config.center then
-    local set = card.config.center.set
-    if set == "Tarot" or set == "Planet" or set == "Spectral" then
-      local cons_count = G.consumeables and G.consumeables.cards and #G.consumeables.cards or 0
-      local cons_limit = G.consumeables and G.consumeables.config and G.consumeables.config.card_limit or 2
-      if cons_count >= cons_limit then
-        return err("SLOTS_FULL", "No available consumable slots")
-      end
-    end
-  end
+  local buy_err = purchase_from_shop(card, false)
+  if buy_err then return buy_err end
 
-  -- Voucher dependency check
-  local voucher_key = nil
-  if shop_area == "voucher" and card.config and card.config.center then
-    local center = card.config.center
-    if center.set ~= "Voucher" then
-      return err("INVALID_TARGET", "Card in voucher area is not a Voucher: " .. tostring(center.set))
-    end
-    voucher_key = center.key
-    if center.requires and G.GAME and G.GAME.used_vouchers then
-      -- Check each required voucher
-      local reqs = type(center.requires) == "table" and center.requires or { center.requires }
-      for _, req in ipairs(reqs) do
-        if not G.GAME.used_vouchers[req] then
-          return err("VOUCHER_DEPENDENCY", "Requires voucher not yet purchased: " .. tostring(req))
-        end
-      end
-    end
-  end
-
-  -- Buy/redeem the card. Balatro vouchers use the redeem/use path, not the
-  -- normal buy path; buy_from_shop routes non-consumables into G.jokers.
-  if shop_area == "voucher" then
-    if not G.FUNCS or not G.FUNCS.use_card then
-      return err("INTERNAL_ERROR", "Balatro use_card callback is unavailable")
-    end
-    G.FUNCS.use_card({ config = { ref_table = card } })
-    if voucher_key and G.GAME and G.GAME.used_vouchers and not G.GAME.used_vouchers[voucher_key] then
-      return err("INTERNAL_ERROR", "Voucher was not redeemed: " .. tostring(voucher_key))
-    end
-  elseif G.FUNCS and G.FUNCS.buy_from_shop then
-    G.FUNCS.buy_from_shop({ config = { ref_table = card } })
-  end
-
-  return ok({ bought = card_id, cost = cost, shop_area = shop_area, voucher_key = voucher_key })
+  return ok({ bought = card_id, cost = cost, kind = is_joker and "joker" or "playing_card" })
 end
 
 ---------------------------------------------------------------------------
--- ACTION: buy_and_use_card
+-- ACTION: buy_consumable
+-- Buys a Tarot / Planet / Spectral card. use=true buys and immediately
+-- applies the card (bypassing the consumable slot); use=false buys and
+-- stores it in a consumable slot.
 ---------------------------------------------------------------------------
 
-handlers.buy_and_use_card = function(args)
-  local phase_err = check_phase({ S("SHOP") })
+handlers.buy_consumable = function(args)
+  local phase_err = require_shop_phase('balatro_buy_consumable')
+  if phase_err then return phase_err end
+
+  local card_id = args.card_id
+  if not card_id then
+    return err("INVALID_TARGET", "card_id is required")
+  end
+
+  -- use is required: the agent must explicitly choose between storing the
+  -- card and applying it immediately.
+  if type(args.use) ~= "boolean" then
+    return err(
+      "INVALID_TARGET",
+      "use is required and must be true (buy and apply the card immediately) or false (buy and store it in a consumable slot)"
+    )
+  end
+
+  local card = find_card_in_shop(card_id)
+  if not card then
+    return err("INVALID_TARGET", "Card not found in shop: " .. tostring(card_id))
+  end
+
+  local set = card.config and card.config.center and card.config.center.set
+  if set ~= "Tarot" and set ~= "Planet" and set ~= "Spectral" then
+    return err(
+      "INVALID_TARGET",
+      "balatro_buy_consumable only buys Tarot, Planet, and Spectral cards; found a "
+        .. tostring(set) .. ". " .. purchase_tool_hint(set)
+    )
+  end
+
+  if not args.use and args.targets then
+    return err("INVALID_TARGET", "targets is only valid when use=true")
+  end
+
+  -- Check funds
+  local cost = card.cost or 0
+  local funds_err = check_funds(cost)
+  if funds_err then return funds_err end
+
+  if not args.use then
+    local cons_count = G.consumeables and G.consumeables.cards and #G.consumeables.cards or 0
+    local cons_limit = G.consumeables and G.consumeables.config and G.consumeables.config.card_limit or 2
+    if cons_count >= cons_limit then
+      return err(
+        "SLOTS_FULL",
+        "No available consumable slots; set use=true to buy and apply the card immediately instead"
+      )
+    end
+  else
+    local target_err = prepare_consumable_targets(card, args, true)
+    if target_err then return target_err end
+  end
+
+  -- Native Balatro buy-and-use is a single delayed buy_from_shop flow. Passing
+  -- id='buy_and_use' makes buy_from_shop skip slot placement and call use_card
+  -- after it removes the card from the shop; calling use_card immediately races
+  -- that delayed removal and leaves c1.area nil in button_callbacks.lua.
+  local buy_err = purchase_from_shop(card, args.use)
+  if buy_err then return buy_err end
+
+  return ok({ bought = card_id, cost = cost, used = args.use })
+end
+
+---------------------------------------------------------------------------
+-- ACTION: buy_voucher
+-- Buys and immediately redeems a Voucher (permanent run effect).
+---------------------------------------------------------------------------
+
+handlers.buy_voucher = function(args)
+  local phase_err = require_shop_phase('balatro_buy_voucher')
   if phase_err then return phase_err end
 
   local card_id = args.card_id
@@ -764,36 +922,43 @@ handlers.buy_and_use_card = function(args)
 
   local card, shop_area = find_card_in_shop(card_id)
   if not card then
-    return err("INVALID_TARGET", "Card not found in shop: " .. tostring(card_id))
+    return err("INVALID_TARGET", "Voucher not found in shop: " .. tostring(card_id))
   end
 
-  -- Must be a consumable
-  if not card.config or not card.config.center then
-    return err("INVALID_TARGET", "Card is not a consumable")
+  local set = card.config and card.config.center and card.config.center.set
+  if shop_area ~= "voucher" or set ~= "Voucher" then
+    return err(
+      "INVALID_TARGET",
+      "balatro_buy_voucher only buys Vouchers; found a " .. tostring(set) .. ". " .. purchase_tool_hint(set)
+    )
   end
-  local set = card.config.center.set
-  if set ~= "Tarot" and set ~= "Planet" and set ~= "Spectral" then
-    return err("INVALID_TARGET", "Only consumables (Tarot/Planet/Spectral) can be bought and used immediately")
+
+  -- Voucher dependency check
+  local voucher_key = card.config.center.key
+  if card.config.center.requires and G.GAME and G.GAME.used_vouchers then
+    local reqs = type(card.config.center.requires) == "table" and card.config.center.requires or { card.config.center.requires }
+    for _, req in ipairs(reqs) do
+      if not G.GAME.used_vouchers[req] then
+        return err("VOUCHER_DEPENDENCY", "Requires voucher not yet purchased: " .. tostring(req))
+      end
+    end
   end
 
   -- Check funds
   local cost = card.cost or 0
-  if cost > available_funds() then
-    return err("INSUFFICIENT_FUNDS", "Cannot afford card (cost=" .. tostring(cost) .. ", available=" .. tostring(available_funds()) .. ")")
+  local funds_err = check_funds(cost)
+  if funds_err then return funds_err end
+
+  -- Redeem through vanilla use_card → Card:redeem(), which deducts the cost.
+  if not G.FUNCS or not G.FUNCS.use_card then
+    return err("INTERNAL_ERROR", "Balatro use_card callback is unavailable")
+  end
+  G.FUNCS.use_card({ config = { ref_table = card } })
+  if G.GAME and G.GAME.used_vouchers and not G.GAME.used_vouchers[voucher_key] then
+    return err("INTERNAL_ERROR", "Voucher was not redeemed: " .. tostring(voucher_key))
   end
 
-  local target_err = prepare_consumable_targets(card, args)
-  if target_err then return target_err end
-
-  -- Native Balatro buy-and-use is a single delayed buy_from_shop flow. Passing
-  -- id='buy_and_use' makes buy_from_shop skip slot placement and call use_card
-  -- after it removes the card from the shop; calling use_card immediately races
-  -- that delayed removal and leaves c1.area nil in button_callbacks.lua.
-  if G.FUNCS and G.FUNCS.buy_from_shop then
-    G.FUNCS.buy_from_shop({ config = { id = "buy_and_use", ref_table = card } })
-  end
-
-  return ok({ bought_and_used = card_id, cost = cost })
+  return ok({ redeemed = card_id, cost = cost, voucher_key = voucher_key })
 end
 
 ---------------------------------------------------------------------------
@@ -862,11 +1027,14 @@ handlers.cash_out = function(args)
 end
 
 ---------------------------------------------------------------------------
--- ACTION: open_booster
+-- ACTION: buy_booster
+-- Buys a Booster Pack from the shop and opens it in a single action.
+-- Vanilla deducts the cost inside Card:open() and transitions to the pack
+-- phase; card picks continue with select_booster_card / skip_booster.
 ---------------------------------------------------------------------------
 
-handlers.open_booster = function(args)
-  local phase_err = check_phase({ S("SHOP") })
+handlers.buy_booster = function(args)
+  local phase_err = require_shop_phase('balatro_buy_booster')
   if phase_err then return phase_err end
 
   local card_id = args.card_id
@@ -881,16 +1049,22 @@ handlers.open_booster = function(args)
 
   -- Check funds
   local cost = card.cost or 0
-  if cost > available_funds() then
-    return err("INSUFFICIENT_FUNDS", "Cannot afford booster (cost=" .. tostring(cost) .. ", available=" .. tostring(available_funds()) .. ")")
-  end
+  local funds_err = check_funds(cost)
+  if funds_err then return funds_err end
 
-  -- Open the booster (buy + open)
-  if G.FUNCS and G.FUNCS.use_card then
-    G.FUNCS.use_card({ config = { ref_table = card } })
+  -- Buy + open via vanilla use_card → Card:open(), which deducts the cost
+  -- (ease_dollars(-cost)) and moves G.STATE into the pack phase.
+  if not G.FUNCS or not G.FUNCS.use_card then
+    return err("INTERNAL_ERROR", "Balatro use_card callback is unavailable")
   end
+  G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return ok({ opened = card_id })
+  return ok({
+    opened = card_id,
+    cost = cost,
+    pack = card.ability and card.ability.name,
+    phase = get_phase_name(),
+  })
 end
 
 ---------------------------------------------------------------------------
