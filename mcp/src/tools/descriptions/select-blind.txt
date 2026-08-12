@@ -1,0 +1,1 @@
+Selects the currently presented blind to face it for the round, transitioning the game from BLIND_SELECT into SELECTING_HAND so cards are dealt. Use this when you want to commit to playing the upcoming blind rather than skipping it for the Tag reward. Requires BLIND_SELECT and a selectable blind; use balatro_skip_blind instead when your intent is to skip.

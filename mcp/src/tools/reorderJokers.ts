@@ -7,11 +7,7 @@ import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { cardIdSchema, normalizeCardIds } from "./cardIds.js";
-
-const REORDER_JOKERS_DESCRIPTION =
-  "Reorders the Jokers in the player's Joker area to the explicit left-to-right order specified by an array of Joker card IDs, where the first ID becomes the leftmost Joker and the last ID becomes the rightmost. " +
-  "This is a visual/organizational action that does not consume any game resources and does not alter Joker abilities, editions, or any gameplay-relevant state beyond display order; Joker scoring order is determined by the game engine independently of this visual arrangement. " +
-  "Use this to reorganize Jokers for better visibility or mental bookkeeping. Requires a stable Joker-management phase and an order array containing exactly the current Joker IDs.";
+import REORDER_JOKERS_DESCRIPTION from "./reorder-jokers.txt" with { type: "text" };
 
 const reorderJokersSchema = z
   .object({

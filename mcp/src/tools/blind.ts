@@ -6,16 +6,8 @@ import type { Deps } from "../deps.js";
 import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
-
-const SELECT_BLIND_DESCRIPTION =
-  "Selects the currently presented blind to face it for the round, transitioning the game from BLIND_SELECT into SELECTING_HAND so cards are dealt. " +
-  "Use this when you want to commit to playing the upcoming blind rather than skipping it for the Tag reward. " +
-  "Requires BLIND_SELECT and a selectable blind; use balatro_skip_blind instead when your intent is to skip.";
-
-const SKIP_BLIND_DESCRIPTION =
-  "Skips the currently presented blind, forfeiting its cash reward in exchange for a Tag reward redeemed in the shop or later rounds. " +
-  "Use this when the blind's chip target is too risky for your current build, or when the Tag reward outweighs the cash payout. " +
-  "Requires BLIND_SELECT and a skippable non-Boss Blind; do NOT confuse it with balatro_skip_booster, which forfeits Booster Pack picks.";
+import SELECT_BLIND_DESCRIPTION from "./select-blind.txt" with { type: "text" };
+import SKIP_BLIND_DESCRIPTION from "./skip-blind.txt" with { type: "text" };
 
 const inputSchema = z.object({}).strict();
 

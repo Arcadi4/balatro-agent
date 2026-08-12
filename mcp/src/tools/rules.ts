@@ -5,10 +5,7 @@ import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { Deps } from "../deps.js";
 import { getRulesLastUpdated, getRulesVersion } from "../resources/rules.js";
 import { formatResponse } from "../response.js";
-
-const DESCRIPTION =
-  "Retrieves the compact Balatro game rules prompt. Call this before starting or resuming gameplay because model memory may be stale on edge cases like debuffed cards, secret poker hands, stakes, and shop rules. " +
-  "This is read-only and does not require a running Balatro instance.";
+import GET_GAME_RULES_DESCRIPTION from "./get-game-rules.txt" with { type: "text" };
 
 const inputSchema = z.object({}).strict();
 
@@ -28,7 +25,7 @@ export function registerRulesTool(server: McpServer, deps: Deps): void {
   server.registerTool(
     "balatro_get_game_rules",
     {
-      description: DESCRIPTION,
+      description: GET_GAME_RULES_DESCRIPTION,
       inputSchema,
       annotations: ANNOTATIONS,
     },

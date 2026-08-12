@@ -1,0 +1,1 @@
+Retrieves the compact Balatro game rules prompt. Call this before starting or resuming gameplay because model memory may be stale on edge cases like debuffed cards, secret poker hands, stakes, and shop rules. This is read-only and does not require a running Balatro instance.

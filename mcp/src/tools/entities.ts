@@ -6,21 +6,10 @@ import type { Deps } from "../deps.js";
 import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
+import LIST_DESCRIPTION from "./list-entities.txt" with { type: "text" };
+import WIKI_DESCRIPTION from "./read-wiki.txt" with { type: "text" };
 
 const WIKI_API_URL = "https://balatrowiki.org/api.php";
-
-const LIST_DESCRIPTION =
-  "Reads Balatro entity prototypes from the running game runtime, not the local wiki catalog. " +
-  "Use this to inspect in-game descriptions, prototype config, wiki-ready display names, and any live card instances matching an entity. " +
-  "Pass id for one known in-game entity key (e.g. 'j_odd_todd' or 'c_strength'), or omit id and use pagination for discovery. " +
-  "Use each entity's name field as the article title for balatro_read_wiki.";
-
-const WIKI_DESCRIPTION =
-  "Fetches one Balatro Wiki article by exact article title and returns clean, compact, model-readable text. " +
-  "Use a game entity's `name` field as the title to pass here. " +
-  "General topic articles include 'Gameplay loop', 'Poker hands', 'The Shop', 'Money', 'Booster Packs', 'Card modifiers', 'Stickers', 'Blinds and Antes', 'Score', 'Chips', 'Jokers', 'Tags', 'Vouchers', 'Decks', 'Editions', 'Enhancements', 'Stakes', and 'Challenges'. They can be helpful if you want to further clarify game rules." +
-  "For Boss Blind articles use natural titles such as 'The Hook', 'The Wall', 'The Psychic', 'Amber Acorn', 'Verdant Leaf', 'Violet Vessel', 'Crimson Heart', and 'Cerulean Bell'. " +
-  "Use content_scope='intro' for concise summaries or content_scope='full' for strategy, synergy, trivia, and full article context.";
 
 const gameIdSchema = z
   .string()

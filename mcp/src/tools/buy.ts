@@ -7,16 +7,8 @@ import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { cardIdSchema, normalizeCardId, normalizeCardIds } from "./cardIds.js";
-
-const BUY_CARD_DESCRIPTION =
-  "Purchases a card from the shop. Jokers are placed into Joker slots, Tarot/Planet/Spectral cards are placed into consumable slots, and Vouchers are redeemed immediately as permanent run effects. " +
-  "Use this when you have enough dollars and an open slot for the card type, or when you want to redeem the shop Voucher. " +
-  "Requires SHOP, a current shop card_id, enough dollars, and any needed slot capacity; use balatro_buy_and_use_card to buy and immediately apply a consumable.";
-
-const BUY_AND_USE_CARD_DESCRIPTION =
-  "Purchases a consumable card (Tarot, Planet, or Spectral) from the shop and immediately uses it in a single atomic action, applying its effect to the game state and bypassing the consumable slot entirely. " +
-  "Use this when you want to spend dollars on a consumable purely for its immediate effect — for example, buying a Tarot to enhance specific hand cards via the optional targets array, or buying a Planet to upgrade a poker hand level. " +
-  "Requires SHOP, an affordable Tarot/Planet/Spectral shop card, and valid targets only when that consumable operates on specific cards.";
+import BUY_CARD_DESCRIPTION from "./buy-card.txt" with { type: "text" };
+import BUY_AND_USE_CARD_DESCRIPTION from "./buy-and-use-card.txt" with { type: "text" };
 
 const buyCardSchema = z
   .object({
