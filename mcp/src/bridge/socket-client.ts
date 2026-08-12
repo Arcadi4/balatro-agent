@@ -32,6 +32,11 @@ const PROTOCOL_VERSION = 1
 const DEFAULT_RESPONSE_TIMEOUT_MS = 10_000
 const DEFAULT_STATE_TIMEOUT_MS = 5_000
 const RECONNECT_DELAY_MS = 500
+// The Lua bridge admits a single client; while another client holds it our
+// connection is rejected with INSTANCE_BUSY. Poll more slowly in that state
+// (a rejection costs one syscall on each side) and self-heal as soon as the
+// competing client disconnects.
+const INSTANCE_BUSY_RECONNECT_DELAY_MS = 2_000
 
 export interface StateEnvelope {
   protocol_version: number
@@ -426,7 +431,11 @@ export class BridgeClient {
       this.clearConnectPromise()
     }
 
-    if (!this.disposed && error.code !== "INSTANCE_BUSY") {
+    // INSTANCE_BUSY is transient: the bridge is held by another client and
+    // will free up. Without a reconnect the client would stay wedged on the
+    // sticky error forever, reporting INSTANCE_BUSY on every call even after
+    // the competitor disconnects.
+    if (!this.disposed) {
       this.scheduleReconnect()
     }
   }
@@ -442,12 +451,17 @@ export class BridgeClient {
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return
 
+    const delay =
+      this.lastDisconnectError?.code === "INSTANCE_BUSY"
+        ? INSTANCE_BUSY_RECONNECT_DELAY_MS
+        : RECONNECT_DELAY_MS
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined
       if (!this.disposed && !this.connected) {
         this.openSocket()
       }
-    }, RECONNECT_DELAY_MS)
+    }, delay)
   }
 
   private errorForSocketClose(socket: Socket | undefined, bytesRead: number): BridgeError {
