@@ -7,12 +7,12 @@
  * `type: "text"` import attribute (raw markdown in both the runtime and the
  * bundler), so the prompt stays editable markdown.
  */
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { getRulesContent, getRulesVersion, getRulesLastUpdated } from "../resources/rules.js";
-import INSTRUCTION_BLOCK from "./strategy.md" with { type: "text" };
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 
-const PROMPT_NAME = "balatro_strategy_context";
+import { getRulesContent, getRulesVersion, getRulesLastUpdated } from "../resources/rules.js"
+import INSTRUCTION_BLOCK from "./strategy.md" with { type: "text" }
 
+const PROMPT_NAME = "balatro_strategy_context"
 
 export function registerStrategyPrompt(server: McpServer): void {
   server.registerPrompt(
@@ -34,5 +34,5 @@ export function registerStrategyPrompt(server: McpServer): void {
         },
       ],
     }),
-  );
+  )
 }

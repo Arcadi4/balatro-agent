@@ -1,16 +1,16 @@
-import type { CallToolResult, TextContent } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, TextContent } from "@modelcontextprotocol/sdk/types.js"
 
 type ToolErrorStructuredContent = {
-  error_code: string;
-  message: string;
-  [key: string]: unknown;
-};
+  error_code: string
+  message: string
+  [key: string]: unknown
+}
 
 export type ToolErrorEnvelope = CallToolResult & {
-  content: [TextContent];
-  structuredContent: ToolErrorStructuredContent;
-  isError: true;
-};
+  content: [TextContent]
+  structuredContent: ToolErrorStructuredContent
+  isError: true
+}
 
 export function toolError(
   errorCode: string,
@@ -21,13 +21,13 @@ export function toolError(
     error_code: errorCode,
     message,
     ...(details ?? {}),
-  };
+  }
 
-  const text = JSON.stringify(structuredContent, null, 2);
+  const text = JSON.stringify(structuredContent, null, 2)
 
   return {
     content: [{ type: "text", text }],
     structuredContent,
     isError: true,
-  };
+  }
 }

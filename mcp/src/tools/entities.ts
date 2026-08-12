@@ -1,15 +1,15 @@
-import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js"
+import { z } from "zod"
 
-import type { Deps } from "../deps.js";
-import { formatResponse } from "../response.js";
-import { toolError } from "../errors.js";
-import { BridgeError } from "../bridge/socket-client.js";
-import LIST_DESCRIPTION from "./descriptions/list-entities.txt" with { type: "text" };
-import WIKI_DESCRIPTION from "./descriptions/read-wiki.txt" with { type: "text" };
+import { BridgeError } from "../bridge/socket-client.js"
+import type { Deps } from "../deps.js"
+import { toolError } from "../errors.js"
+import { formatResponse } from "../response.js"
+import LIST_DESCRIPTION from "./descriptions/list-entities.txt" with { type: "text" }
+import WIKI_DESCRIPTION from "./descriptions/read-wiki.txt" with { type: "text" }
 
-const WIKI_API_URL = "https://balatrowiki.org/api.php";
+const WIKI_API_URL = "https://balatrowiki.org/api.php"
 
 const gameIdSchema = z
   .string()
@@ -19,7 +19,7 @@ const gameIdSchema = z
   )
   .describe(
     "In-game entity key, e.g. 'j_odd_todd', 'c_strength', 'v_overstock_norm', or 'tag_coupon'.",
-  );
+  )
 
 const listInputSchema = z
   .object({
@@ -42,7 +42,7 @@ const listInputSchema = z
       .default(0)
       .describe("Number of runtime entities to skip for pagination. Default 0."),
   })
-  .strict();
+  .strict()
 
 const wikiInputSchema = z
   .object({
@@ -66,65 +66,65 @@ const wikiInputSchema = z
       .default(8000)
       .describe("Maximum cleaned wiki text characters to return. Default 8000, max 20000."),
   })
-  .strict();
+  .strict()
 
 const ANNOTATIONS = {
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: true,
-} as const satisfies ToolAnnotations;
+} as const satisfies ToolAnnotations
 
 function listToMarkdown(data: object): string {
-  const d = data as Record<string, unknown>;
-  const items = (d.items ?? []) as Array<Record<string, unknown>>;
-  const lines: string[] = [];
+  const d = data as Record<string, unknown>
+  const items = (d.items ?? []) as Array<Record<string, unknown>>
+  const lines: string[] = []
 
-  lines.push("# Runtime Game Entities\n");
-  lines.push(`**Source:** ${d.source ?? "runtime"}`);
-  lines.push(`**Total:** ${d.total} | **Showing:** ${d.count} | **Offset:** ${d.offset}`);
-  if (d.has_more) lines.push(`**Next offset:** ${d.next_offset}`);
-  lines.push("");
+  lines.push("# Runtime Game Entities\n")
+  lines.push(`**Source:** ${d.source ?? "runtime"}`)
+  lines.push(`**Total:** ${d.total} | **Showing:** ${d.count} | **Offset:** ${d.offset}`)
+  if (d.has_more) lines.push(`**Next offset:** ${d.next_offset}`)
+  lines.push("")
 
   if (items.length > 0) {
-    lines.push("| ID | Type | Name | Cost | Live | Description |");
-    lines.push("|---|---|---|---:|---:|---|");
+    lines.push("| ID | Type | Name | Cost | Live | Description |")
+    lines.push("|---|---|---|---:|---:|---|")
   }
 
   for (const item of items) {
-    const description = Array.isArray(item.description) ? item.description.join(" ") : "";
-    const liveCount = Array.isArray(item.live_instances) ? item.live_instances.length : 0;
+    const description = Array.isArray(item.description) ? item.description.join(" ") : ""
+    const liveCount = Array.isArray(item.live_instances) ? item.live_instances.length : 0
     lines.push(
       `| \`${item.id}\` | ${item.type ?? ""} | ${item.name ?? "?"} | ${item.cost ?? ""} | ${liveCount} | ${description} |`,
-    );
+    )
   }
 
-  return lines.join("\n");
+  return lines.join("\n")
 }
 
 function wikiToMarkdown(data: object): string {
-  const d = data as Record<string, unknown>;
-  const lines: string[] = [];
-  lines.push(`# ${d.title}\n`);
-  lines.push(`**Source:** ${d.source_url}`);
-  if (d.truncated) lines.push(`**Truncated:** ${d.truncation_message}`);
-  lines.push("");
-  lines.push(String(d.extract ?? ""));
-  return lines.join("\n");
+  const d = data as Record<string, unknown>
+  const lines: string[] = []
+  lines.push(`# ${d.title}\n`)
+  lines.push(`**Source:** ${d.source_url}`)
+  if (d.truncated) lines.push(`**Truncated:** ${d.truncation_message}`)
+  lines.push("")
+  lines.push(String(d.extract ?? ""))
+  return lines.join("\n")
 }
 
 function cleanWikiText(text: string): string {
-  let cleaned = text.replace(/<br\s*\/?\s*>/gi, "\n");
+  let cleaned = text.replace(/<br\s*\/?\s*>/gi, "\n")
 
   for (let i = 0; i < 6; i++) {
     cleaned = cleaned.replace(/\{\{([^{}]*)\}\}/g, (_, body: string) => {
       const parts = body
         .split("|")
         .map((part) => part.trim())
-        .filter(Boolean);
-      if (parts.length <= 1) return "";
-      return parts[parts.length - 1] ?? "";
-    });
+        .filter(Boolean)
+      if (parts.length <= 1) return ""
+      return parts[parts.length - 1] ?? ""
+    })
   }
 
   return cleaned
@@ -136,13 +136,13 @@ function cleanWikiText(text: string): string {
     .replace(/\s+\.png\b/gi, "")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .trim()
 }
 
-type WikiContentScope = "intro" | "full";
+type WikiContentScope = "intro" | "full"
 
 function normalizeWikiTitle(title: string): string {
-  return title.trim().normalize("NFKC").replace(/\s+/g, " ");
+  return title.trim().normalize("NFKC").replace(/\s+/g, " ")
 }
 
 async function fetchWikiExtract(
@@ -150,7 +150,7 @@ async function fetchWikiExtract(
   contentScope: WikiContentScope,
   maxChars: number,
 ): Promise<Record<string, unknown>> {
-  const normalizedTitle = normalizeWikiTitle(title);
+  const normalizedTitle = normalizeWikiTitle(title)
   const params = new URLSearchParams({
     action: "query",
     prop: "extracts",
@@ -160,30 +160,30 @@ async function fetchWikiExtract(
     format: "json",
     formatversion: "2",
     redirects: "1",
-  });
-  if (contentScope === "intro") params.set("exintro", "1");
+  })
+  if (contentScope === "intro") params.set("exintro", "1")
 
   const response = await fetch(`${WIKI_API_URL}?${params.toString()}`, {
     headers: { "User-Agent": "balatro-mcp/0.0.0" },
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status} from Balatro Wiki`);
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status} from Balatro Wiki`)
 
   const body = (await response.json()) as {
     query?: {
-      pages?: Array<{ title?: string; missing?: boolean; extract?: string }>;
-      redirects?: Array<{ from: string; to: string }>;
-    };
-  };
-  const page = body.query?.pages?.[0];
+      pages?: Array<{ title?: string; missing?: boolean; extract?: string }>
+      redirects?: Array<{ from: string; to: string }>
+    }
+  }
+  const page = body.query?.pages?.[0]
   if (!page || page.missing || !page.extract) {
     throw new Error(
       `No Balatro Wiki page content found for "${normalizedTitle}". Pass an exact article title such as "Blueprint", "The Hook", "Booster Packs", or "Poker hands". If starting from an entity ID, call balatro_list_game_entities and use the returned name field.`,
-    );
+    )
   }
 
-  const cleaned = cleanWikiText(page.extract);
-  const truncated = cleaned.length > maxChars;
-  const extract = truncated ? cleaned.slice(0, maxChars).trimEnd() : cleaned;
+  const cleaned = cleanWikiText(page.extract)
+  const truncated = cleaned.length > maxChars
+  const extract = truncated ? cleaned.slice(0, maxChars).trimEnd() : cleaned
   return {
     requested_title: normalizedTitle,
     title: page.title ?? title,
@@ -197,11 +197,11 @@ async function fetchWikiExtract(
     truncation_message: truncated
       ? `Wiki extract exceeded ${maxChars} cleaned characters; raise max_chars or use content_scope='intro'.`
       : undefined,
-  };
+  }
 }
 
 async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSchema>) {
-  let seq: number;
+  let seq: number
   try {
     seq = await deps.bridgeClient.sendCommand({
       kind: "list_game_entities",
@@ -210,23 +210,23 @@ async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSch
         limit: args.limit ?? 20,
         offset: args.offset ?? 0,
       },
-    });
+    })
   } catch (err) {
-    if (err instanceof BridgeError) return { ...toolError(err.code, err.message) };
-    throw err;
+    if (err instanceof BridgeError) return { ...toolError(err.code, err.message) }
+    throw err
   }
 
-  const response = await deps.bridgeClient.awaitResponse(seq, { timeoutMs: 5_000 });
+  const response = await deps.bridgeClient.awaitResponse(seq, { timeoutMs: 5_000 })
   if (!response.ok) {
     return {
       ...toolError(
         response.error_code ?? "BRIDGE_ERROR",
         response.error_message ?? "Runtime entity query failed",
       ),
-    };
+    }
   }
 
-  const structured = (response.data ?? {}) as Record<string, unknown>;
+  const structured = (response.data ?? {}) as Record<string, unknown>
   const envelope = formatResponse(structured, {
     toMarkdown: listToMarkdown,
     truncation: {
@@ -236,17 +236,17 @@ async function listRuntimeEntities(deps: Deps, args: z.infer<typeof listInputSch
       has_more: typeof structured.has_more === "boolean" ? structured.has_more : undefined,
       next_offset: typeof structured.next_offset === "number" ? structured.next_offset : undefined,
     },
-  });
-  return { ...envelope };
+  })
+  return { ...envelope }
 }
 
 async function readWiki(title: string, contentScope: WikiContentScope, maxChars: number) {
   try {
-    const structured = await fetchWikiExtract(title, contentScope, maxChars);
-    const envelope = formatResponse(structured, { toMarkdown: wikiToMarkdown });
-    return { ...envelope };
+    const structured = await fetchWikiExtract(title, contentScope, maxChars)
+    const envelope = formatResponse(structured, { toMarkdown: wikiToMarkdown })
+    return { ...envelope }
   } catch (err) {
-    return { ...toolError("WIKI_FETCH_FAILED", err instanceof Error ? err.message : String(err)) };
+    return { ...toolError("WIKI_FETCH_FAILED", err instanceof Error ? err.message : String(err)) }
   }
 }
 
@@ -259,12 +259,12 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const parsed = listInputSchema.safeParse(args);
-      if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) };
+      const parsed = listInputSchema.safeParse(args)
+      if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) }
 
-      return listRuntimeEntities(deps, parsed.data);
+      return listRuntimeEntities(deps, parsed.data)
     },
-  );
+  )
 
   server.registerTool(
     "balatro_read_wiki",
@@ -274,11 +274,11 @@ export function registerEntityTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const parsed = wikiInputSchema.safeParse(args);
-      if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) };
+      const parsed = wikiInputSchema.safeParse(args)
+      if (!parsed.success) return { ...toolError("INVALID_INPUT", z.prettifyError(parsed.error)) }
 
-      const contentScope: WikiContentScope = parsed.data.content_scope ?? "intro";
-      return readWiki(parsed.data.title, contentScope, parsed.data.max_chars ?? 8000);
+      const contentScope: WikiContentScope = parsed.data.content_scope ?? "intro"
+      return readWiki(parsed.data.title, contentScope, parsed.data.max_chars ?? 8000)
     },
-  );
+  )
 }

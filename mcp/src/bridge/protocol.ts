@@ -28,25 +28,25 @@ import type {
   JSONRPCErrorResponse,
   JSONRPCRequest,
   JSONRPCResultResponse,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/sdk/types.js"
 
 export type JsonRpcRequest = Omit<JSONRPCRequest, "id" | "params"> & {
-  id: number;
-  params?: Record<string, unknown>;
-};
+  id: number
+  params?: Record<string, unknown>
+}
 
 export type JsonRpcResponse =
   | (Omit<JSONRPCResultResponse, "id" | "result"> & {
-    id: number;
-    result: unknown;
-    error?: never;
-  })
+      id: number
+      result: unknown
+      error?: never
+    })
   | (Omit<JSONRPCErrorResponse, "id"> & {
-    id: number;
-    result?: never;
-  });
+      id: number
+      result?: never
+    })
 
-export type JsonRpcError = JSONRPCErrorResponse["error"];
+export type JsonRpcError = JSONRPCErrorResponse["error"]
 
 // Error Code Mapping
 // Application-level string codes → JSON-RPC integer codes.
@@ -60,7 +60,7 @@ export type JsonRpcError = JSONRPCErrorResponse["error"];
 
 // Catch-all fallback code, kept as a named constant so `toJsonRpcError` can
 // fall back to it without an `undefined`-able index lookup.
-const INTERNAL_ERROR_CODE = -32032;
+const INTERNAL_ERROR_CODE = -32032
 
 export const ErrorCodeMap: Record<string, number> = Object.freeze({
   // Transport-level errors (from BridgeClient)
@@ -83,11 +83,11 @@ export const ErrorCodeMap: Record<string, number> = Object.freeze({
 
   // Catch-all
   INTERNAL_ERROR: INTERNAL_ERROR_CODE,
-});
+})
 
 export const ReverseErrorMap: Record<number, string> = Object.freeze(
   Object.fromEntries(Object.entries(ErrorCodeMap).map(([key, value]) => [value, key])),
-);
+)
 
 /**
  * Standard JSON-RPC 2.0 error codes (per spec §5.1).
@@ -96,15 +96,15 @@ export const STANDARD_ERRORS = {
   PARSE_ERROR: { code: -32700, message: "Parse error" },
   INVALID_REQUEST: { code: -32600, message: "Invalid Request" },
   METHOD_NOT_FOUND: { code: -32601, message: "Method not found" },
-} as const;
+} as const
 
 /**
  * Create a JsonRpcError from a string error code.
  * Falls back to INTERNAL_ERROR if the code is not recognized.
  */
 export function toJsonRpcError(errorCode: string, message: string, data?: unknown): JsonRpcError {
-  const code = ErrorCodeMap[errorCode] ?? INTERNAL_ERROR_CODE;
-  return { code, message, data };
+  const code = ErrorCodeMap[errorCode] ?? INTERNAL_ERROR_CODE
+  return { code, message, data }
 }
 
 /**
@@ -112,10 +112,10 @@ export function toJsonRpcError(errorCode: string, message: string, data?: unknow
  * Returns "UNKNOWN" if not found.
  */
 export function errorCodeToString(code: number): string {
-  if (code === STANDARD_ERRORS.PARSE_ERROR.code) return "PARSE_ERROR";
-  if (code === STANDARD_ERRORS.INVALID_REQUEST.code) return "INVALID_REQUEST";
-  if (code === STANDARD_ERRORS.METHOD_NOT_FOUND.code) return "UNKNOWN_METHOD";
-  return ReverseErrorMap[code] ?? "UNKNOWN";
+  if (code === STANDARD_ERRORS.PARSE_ERROR.code) return "PARSE_ERROR"
+  if (code === STANDARD_ERRORS.INVALID_REQUEST.code) return "INVALID_REQUEST"
+  if (code === STANDARD_ERRORS.METHOD_NOT_FOUND.code) return "UNKNOWN_METHOD"
+  return ReverseErrorMap[code] ?? "UNKNOWN"
 }
 
 /**
@@ -123,7 +123,7 @@ export function errorCodeToString(code: number): string {
  * Appends `\n` as the message delimiter.
  */
 export function serializeFrame(obj: JsonRpcRequest | JsonRpcResponse): string {
-  return JSON.stringify(obj) + "\n";
+  return JSON.stringify(obj) + "\n"
 }
 
 /**
@@ -137,52 +137,52 @@ export function serializeFrame(obj: JsonRpcRequest | JsonRpcResponse): string {
  * - An empty buffer or buffer with no `\n` returns remainder as-is
  */
 export function parseFrames(buffer: string): {
-  messages: (JsonRpcRequest | JsonRpcResponse)[];
-  remainder: string;
+  messages: (JsonRpcRequest | JsonRpcResponse)[]
+  remainder: string
 } {
-  const messages: (JsonRpcRequest | JsonRpcResponse)[] = [];
+  const messages: (JsonRpcRequest | JsonRpcResponse)[] = []
 
-  const lastNewline = buffer.lastIndexOf("\n");
+  const lastNewline = buffer.lastIndexOf("\n")
   if (lastNewline === -1) {
-    return { messages, remainder: buffer };
+    return { messages, remainder: buffer }
   }
 
-  const complete = buffer.slice(0, lastNewline);
-  const remainder = buffer.slice(lastNewline + 1);
+  const complete = buffer.slice(0, lastNewline)
+  const remainder = buffer.slice(lastNewline + 1)
 
   for (const line of complete.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
+    const trimmed = line.trim()
+    if (trimmed.length === 0) continue
     try {
-      const parsed = JSON.parse(trimmed) as unknown;
+      const parsed = JSON.parse(trimmed) as unknown
       if (typeof parsed === "object" && parsed !== null) {
-        messages.push(parsed as JsonRpcRequest | JsonRpcResponse);
+        messages.push(parsed as JsonRpcRequest | JsonRpcResponse)
       }
     } catch {
       // Malformed JSON — skip (caller may log at debug level)
     }
   }
 
-  return { messages, remainder };
+  return { messages, remainder }
 }
 
 /**
  * Check if an unknown value is a structurally valid JSON-RPC 2.0 request.
  */
 export function isJsonRpcRequest(obj: unknown): obj is JsonRpcRequest {
-  if (typeof obj !== "object" || obj === null) return false;
-  const r = obj as Record<string, unknown>;
-  return r.jsonrpc === "2.0" && typeof r.id === "number" && typeof r.method === "string";
+  if (typeof obj !== "object" || obj === null) return false
+  const r = obj as Record<string, unknown>
+  return r.jsonrpc === "2.0" && typeof r.id === "number" && typeof r.method === "string"
 }
 
 /**
  * Check if an unknown value is a structurally valid JSON-RPC 2.0 response.
  */
 export function isJsonRpcResponse(obj: unknown): obj is JsonRpcResponse {
-  if (typeof obj !== "object" || obj === null) return false;
-  const r = obj as Record<string, unknown>;
-  if (r.jsonrpc !== "2.0" || typeof r.id !== "number") return false;
+  if (typeof obj !== "object" || obj === null) return false
+  const r = obj as Record<string, unknown>
+  if (r.jsonrpc !== "2.0" || typeof r.id !== "number") return false
   // result and error are mutually exclusive per JSON-RPC 2.0 spec
-  if (r.result !== undefined && r.error !== undefined) return false;
-  return r.result !== undefined || r.error !== undefined;
+  if (r.result !== undefined && r.error !== undefined) return false
+  return r.result !== undefined || r.error !== undefined
 }

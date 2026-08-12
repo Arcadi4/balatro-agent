@@ -1,4 +1,5 @@
 <!-- oxfmt-ignore-start -->
+
 # Balatro Game Rules Reference
 
 ## Run Loop
@@ -31,6 +32,7 @@ The final score of a played hand is always **Score = Chips × Mult**.
 **Example**: Playing `7♥ 7♦ 3♠ 2♥` produces a Pair. Only the two 7s are **scored**; the 3♠ and 2♥ are merely **played**. They contribute **no chips, no Mult, and trigger no effects of any kind** (card enhancements, seals, editions, or "on scored" Jokers).
 
 The only exceptions that let non-scoring cards count:
+
 - **Splash** Joker: all played cards become scored
 - **Stone cards**: always score regardless of hand type
 - **Four Fingers**: can admit extra cards into Straights and Flushes
@@ -162,8 +164,10 @@ Content summarized from Balatro Wiki, licensed under CC BY-NC-SA 3.0.
 This reference is for AI agent use in the Balatro MCP Bridge project.
 
 Wiki lookup guide:
+
 - Wiki article lookup: call `balatro_read_wiki` with exact article titles. When starting from an entity ID, call `balatro_list_game_entities`, read the returned `name`, and pass that title to `balatro_read_wiki`.
 - Special high-value article titles summarized here: "Gameplay loop", "Poker hands", "The Shop", "Money", "Booster Packs", "Card modifiers", "Stickers", "Blinds and Antes", "Score", "Chips", "Stakes", "Jokers", "Tags", "Vouchers", "Decks", "Editions", "Enhancements", and "Challenge Decks".
 - Boss Blind article titles are natural names, not entity IDs: "The Hook", "The Wall", "The Psychic", "Amber Acorn", "Verdant Leaf", "Violet Vessel", "Crimson Heart", and "Cerulean Bell".
 - External non-Balatro-Wiki references summarized here but not addressable by MCP tools: the activation-sequence guide and the score-calculation guide. Use the summaries in this bundled resource; do not browse the web from a game-playing agent.
+
 <!-- oxfmt-ignore-end -->

@@ -1,14 +1,14 @@
-import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js"
+import { z } from "zod"
 
-import type { Deps } from "../deps.js";
-import { formatResponse } from "../response.js";
-import { toolError } from "../errors.js";
-import { BridgeError } from "../bridge/socket-client.js";
-import { normalizeCardId } from "./cardIds.js";
-import USE_CONSUMABLE_DESCRIPTION from "./descriptions/use-consumable.txt" with { type: "text" };
-import SELL_CARD_DESCRIPTION from "./descriptions/sell-card.txt" with { type: "text" };
+import { BridgeError } from "../bridge/socket-client.js"
+import type { Deps } from "../deps.js"
+import { toolError } from "../errors.js"
+import { formatResponse } from "../response.js"
+import { cardIdSchema, normalizeCardId, normalizeCardIds } from "./cardIds.js"
+import SELL_CARD_DESCRIPTION from "./descriptions/sell-card.txt" with { type: "text" }
+import USE_CONSUMABLE_DESCRIPTION from "./descriptions/use-consumable.txt" with { type: "text" }
 
 const useConsumableSchema = z
   .object({
@@ -18,9 +18,11 @@ const useConsumableSchema = z
     targets: z
       .array(cardIdSchema)
       .optional()
-      .describe("Ordered target hand card IDs. Required for targeted consumables; for Death, pass [source_card_id, destination_card_id]."),
+      .describe(
+        "Ordered target hand card IDs. Required for targeted consumables; for Death, pass [source_card_id, destination_card_id].",
+      ),
   })
-  .strict();
+  .strict()
 
 const sellCardSchema = z
   .object({
@@ -28,14 +30,14 @@ const sellCardSchema = z
       .union([z.string(), z.number().int()])
       .describe("The ID of the card to sell — must be a Joker or consumable in your slots."),
   })
-  .strict();
+  .strict()
 
 const ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: true,
   idempotentHint: false,
   openWorldHint: false,
-} as const satisfies ToolAnnotations;
+} as const satisfies ToolAnnotations
 
 async function executeCardAction(
   deps: Deps,
@@ -43,29 +45,29 @@ async function executeCardAction(
   cardId: string,
   targets?: string[],
 ) {
-  let response;
+  let response
   try {
-    const seq = await deps.bridgeClient.sendCommand({ kind, args: { card_id: cardId, targets } });
-    response = await deps.bridgeClient.awaitResponse(seq);
+    const seq = await deps.bridgeClient.sendCommand({ kind, args: { card_id: cardId, targets } })
+    response = await deps.bridgeClient.awaitResponse(seq)
   } catch (err) {
     if (err instanceof BridgeError) {
-      return toolError(err.code, err.message);
+      return toolError(err.code, err.message)
     }
-    throw err;
+    throw err
   }
 
   if (!response.ok) {
-    const code = response.error_code ?? "UNKNOWN_ERROR";
-    const message = response.error_message ?? `Command ${kind} failed`;
-    return toolError(code, message);
+    const code = response.error_code ?? "UNKNOWN_ERROR"
+    const message = response.error_message ?? `Command ${kind} failed`
+    return toolError(code, message)
   }
 
   const structured: Record<string, unknown> = {
     ok: response.ok,
     data: response.data,
-  };
+  }
 
-  return formatResponse(structured);
+  return formatResponse(structured)
 }
 
 export function registerCardActionTools(server: McpServer, deps: Deps): void {
@@ -77,11 +79,16 @@ export function registerCardActionTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const targets = args.targets ? normalizeCardIds(args.targets) : undefined;
-      const envelope = await executeCardAction(deps, "use_consumable", normalizeCardId(args.card_id), targets);
-      return { ...envelope };
+      const targets = args.targets ? normalizeCardIds(args.targets) : undefined
+      const envelope = await executeCardAction(
+        deps,
+        "use_consumable",
+        normalizeCardId(args.card_id),
+        targets,
+      )
+      return { ...envelope }
     },
-  );
+  )
 
   server.registerTool(
     "balatro_sell_card",
@@ -91,8 +98,8 @@ export function registerCardActionTools(server: McpServer, deps: Deps): void {
       annotations: ANNOTATIONS,
     },
     async (args) => {
-      const envelope = await executeCardAction(deps, "sell_card", normalizeCardId(args.card_id));
-      return { ...envelope };
+      const envelope = await executeCardAction(deps, "sell_card", normalizeCardId(args.card_id))
+      return { ...envelope }
     },
-  );
+  )
 }

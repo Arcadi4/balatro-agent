@@ -7,6 +7,6 @@
  * - LIST_LIMIT: default page size for list-style tools.
  * - LIST_LIMIT_MAX: hard ceiling for the `limit` parameter on list-style tools.
  */
-export const CHARACTER_LIMIT = 25_000;
-export const LIST_LIMIT = 20;
-export const LIST_LIMIT_MAX = 100;
+export const CHARACTER_LIMIT = 25_000
+export const LIST_LIMIT = 20
+export const LIST_LIMIT_MAX = 100

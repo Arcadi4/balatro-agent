@@ -6,12 +6,13 @@
  * Uses Bun-native file APIs: `Bun.file` for the lazy file reference and
  * `Bun.CryptoHasher` for the content-addressed version.
  */
-import { resolve } from "node:path";
-import type { BunFile } from "bun";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { resolve } from "node:path"
 
-const RULES_URI = "balatro://rules/global";
-const RULES_MIME = "text/markdown";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import type { BunFile } from "bun"
+
+const RULES_URI = "balatro://rules/global"
+const RULES_MIME = "text/markdown"
 
 // Path math: this file lives at src/resources/ when run from source, and the
 // whole package is flattened into dist/index.js when bundled with `bun build`.
@@ -21,26 +22,26 @@ const RULES_MIME = "text/markdown";
 const RULES_CANDIDATES = [
   resolve(import.meta.dir, "../../data/rules/global.md"), // src/resources/ layout
   resolve(import.meta.dir, "../data/rules/global.md"), // flat bundle layout
-] as const;
+] as const
 
 async function resolveRulesFile(): Promise<BunFile> {
   for (const candidate of RULES_CANDIDATES) {
-    const file = Bun.file(candidate);
-    if (await file.exists()) return file;
+    const file = Bun.file(candidate)
+    if (await file.exists()) return file
   }
   // No candidate exists; let text() surface the error with a real path.
-  return Bun.file(RULES_CANDIDATES[0]);
+  return Bun.file(RULES_CANDIDATES[0])
 }
 
-const RULES_FILE = await resolveRulesFile();
-const RULES_CONTENT = await RULES_FILE.text();
+const RULES_FILE = await resolveRulesFile()
+const RULES_CONTENT = await RULES_FILE.text()
 
 const RULES_VERSION = new Bun.CryptoHasher("sha256")
   .update(RULES_CONTENT)
   .digest("hex")
-  .substring(0, 8);
+  .substring(0, 8)
 
-const RULES_LAST_UPDATED = new Date(RULES_FILE.lastModified).toISOString();
+const RULES_LAST_UPDATED = new Date(RULES_FILE.lastModified).toISOString()
 
 /**
  * Register the global rules resource on an `McpServer`.
@@ -68,17 +69,17 @@ export function registerRulesResource(server: McpServer): void {
         },
       ],
     }),
-  );
+  )
 }
 
 export function getRulesContent(): string {
-  return RULES_CONTENT;
+  return RULES_CONTENT
 }
 
 export function getRulesVersion(): string {
-  return RULES_VERSION;
+  return RULES_VERSION
 }
 
 export function getRulesLastUpdated(): string {
-  return RULES_LAST_UPDATED;
+  return RULES_LAST_UPDATED
 }
