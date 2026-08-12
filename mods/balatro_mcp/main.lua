@@ -1,6 +1,13 @@
 local mod = SMODS.current_mod
 local mod_path = mod.path
 
+local function load_module(name)
+  return assert(load(
+    NFS.read(mod_path .. 'src/' .. name .. '.lua'),
+    ('=[SMODS %s "src/%s.lua"]'):format(mod.id, name)
+  ))()
+end
+
 SMODS.current_mod.description_loc_vars = function()
   return {
     background_colour = G.C.CLEAR,
@@ -8,13 +15,17 @@ SMODS.current_mod.description_loc_vars = function()
   }
 end
 
-local bridge_commands = assert(load(NFS.read(mod_path .. 'src/commands.lua'),
-  ('=[SMODS %s "src/commands.lua"]'):format(mod.id)))()
-
-local bridge_actions = assert(load(NFS.read(mod_path .. 'src/actions.lua'),
-  ('=[SMODS %s "src/actions.lua"]'):format(mod.id)))()
-
-bridge_actions.register_all(bridge_commands)
+local bridge_commands = load_module('commands')
+local socket_module = jit.os == 'Windows' and 'socket_server_windows' or 'socket_server'
+local actions = load_module('actions')
+actions.list_game_entities = load_module('entities')
+bridge_commands.init({
+  actions = actions,
+  state = load_module('state'),
+  jsonrpc = load_module('jsonrpc'),
+  socket = load_module(socket_module),
+  socket_codec = load_module('socket_codec'),
+})
 
 local _original_love_update = love.update
 
@@ -23,7 +34,7 @@ function love.update(dt)
     _original_love_update(dt)
   end
 
-  local commands_ok, commands_err = pcall(bridge_commands.update, dt)
+  local commands_ok, commands_err = pcall(bridge_commands.update)
   if not commands_ok then
     sendDebugMessage('MCP: Command bridge update failed: ' .. tostring(commands_err), mod.id)
   end
@@ -38,4 +49,4 @@ function love.quit()
   end
 end
 
-sendDebugMessage('Loaded Balatro MCP Dev Mod (socket bridge active)', mod.id)
+sendDebugMessage('Loaded Balatro MCP Dev Mod (bridge active)', mod.id)

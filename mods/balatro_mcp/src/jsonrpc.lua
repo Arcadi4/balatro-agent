@@ -1,168 +1,85 @@
---- jsonrpc.lua — JSON-RPC 2.0 request dispatcher for the Balatro MCP bridge.
--- Parses incoming request frames, routes methods to registered handlers, and
--- emits JSON-RPC response frames through the socket server send function.
-
 local JsonRpc = {}
 
-local ERROR_CODE_MAP = {
-  GAME_NOT_RUNNING = -32001,
-  INSTANCE_BUSY = -32002,
-  PROTOCOL_MISMATCH = -32003,
-  STATE_STALE = -32004,
-  STATE_NOT_FOUND = -32005,
+local ERROR_CODES = {
   WRONG_PHASE = -32010,
   INVALID_TARGET = -32011,
   INSUFFICIENT_FUNDS = -32012,
   SLOTS_FULL = -32013,
-  NO_SLOT = -32013,
   ETERNAL_BLOCKED = -32014,
   PACK_LIMIT_REACHED = -32015,
-  BOSS_REROLL_LOCKED = -32016,
   VOUCHER_DEPENDENCY = -32017,
-  UNKNOWN_METHOD = -32601,
+  CANNOT_USE_NOW = -32018,
   INTERNAL_ERROR = -32032,
+  GAME_NOT_RUNNING = -32001,
+  UNKNOWN_METHOD = -32601,
 }
 
-local STANDARD_ERRORS = {
-  PARSE_ERROR = -32700,
-  INVALID_REQUEST = -32600,
-  METHOD_NOT_FOUND = -32601,
-}
+local action_handler
+local state_handler
+local send
 
--- Set by commands.lua after migration (T6)
--- function(action_kind, params) -> { ok=bool, data=table, error_code=string, error_message=string }
-JsonRpc.action_handler = nil
-
--- Set by state.lua after migration (T7)
--- function() -> { protocol_version=1, seq=N, payload=table }
-JsonRpc.state_handler = nil
-
-JsonRpc._send_fn = nil
-
-local function log_debug(message)
-  if sendDebugMessage then
-    sendDebugMessage(message, "balatro_mcp")
-  end
+function JsonRpc.send_result(id, result)
+  send({ jsonrpc = '2.0', id = id, result = result })
 end
 
-function JsonRpc.dispatch(client_socket, request_str_or_table)
-  -- Accept either a raw JSON string or an already-decoded table
-  -- (socket_server dispatches decoded objects, but raw strings may also be passed)
-  local req
-  if type(request_str_or_table) == "table" then
-    req = request_str_or_table
-  else
-    local ok, decoded = pcall(JSON.decode, request_str_or_table)
-    if not ok or type(decoded) ~= "table" then
-      JsonRpc.send_error(client_socket, nil, STANDARD_ERRORS.PARSE_ERROR, "Parse error: " .. tostring(decoded))
-      return
-    end
-    req = decoded
-  end
+function JsonRpc.send_error(id, code, message, data)
+  send({
+    jsonrpc = '2.0',
+    id = id,
+    error = { code = code, message = message, data = data },
+  })
+end
 
-  -- 2. Validate jsonrpc field
-  if req.jsonrpc ~= "2.0" then
-    JsonRpc.send_error(client_socket, req.id, STANDARD_ERRORS.INVALID_REQUEST, "Missing or invalid jsonrpc field")
+function JsonRpc.dispatch(request)
+  if type(request) ~= 'table' or request.jsonrpc ~= '2.0' then
+    local request_id = type(request) == 'table' and request.id or nil
+    JsonRpc.send_error(request_id, -32600, 'Invalid JSON-RPC request')
+    return
+  end
+  if type(request.method) ~= 'string' then
+    JsonRpc.send_error(request.id, -32600, 'Missing method')
+    return
+  end
+  if request.id == nil then return end
+  if request.params ~= nil and type(request.params) ~= 'table' then
+    JsonRpc.send_error(request.id, -32602, 'params must be an object')
     return
   end
 
-  -- 3. Validate method
-  if type(req.method) ~= "string" then
-    JsonRpc.send_error(client_socket, req.id, STANDARD_ERRORS.INVALID_REQUEST, "Missing method field")
-    return
-  end
-
-  -- 4. Validate id (must be present — no notifications per scope)
-  if req.id == nil then
-    log_debug("MCP: Ignoring notification (no id): " .. tostring(req.method))
-    return
-  end
-
-  -- 5. Route method
-  local method = req.method
-  local params = req.params or {}
-  local id = req.id
-
-  if method == "get_state" then
-    -- Pull-based state
-    if not JsonRpc.state_handler then
-      JsonRpc.send_error(client_socket, id, STANDARD_ERRORS.METHOD_NOT_FOUND, "State handler not registered")
-      return
-    end
-    local state = JsonRpc.state_handler()
-    JsonRpc.send_result(client_socket, id, state)
-  elseif JsonRpc.action_handler then
-    -- Game action
-    local handler_ok, result = pcall(function()
-      return JsonRpc.action_handler(method, params, id, client_socket)
-    end)
-    if not handler_ok then
-      JsonRpc.send_error(
-        client_socket,
-        id,
-        ERROR_CODE_MAP.INTERNAL_ERROR,
-        "Action handler error: " .. tostring(result),
-        { error_code = "INTERNAL_ERROR" }
-      )
-      return
-    end
-
-    if result == nil then
-      return
-    end
-
-    if type(result) ~= "table" then
-      result = { ok = true, data = {} }
-    end
-
-    if result.ok then
-      JsonRpc.send_result(client_socket, id, { ok = true, data = result.data })
+  if request.method == 'get_state' then
+    local state = state_handler()
+    if state then
+      JsonRpc.send_result(request.id, state)
     else
-      local code = ERROR_CODE_MAP[result.error_code] or STANDARD_ERRORS.METHOD_NOT_FOUND
       JsonRpc.send_error(
-        client_socket,
-        id,
-        code,
-        result.error_message or "Action failed",
-        { error_code = result.error_code }
+        request.id,
+        -32005,
+        'Game state is unavailable',
+        { error_code = 'STATE_NOT_FOUND' }
       )
     end
-  else
-    JsonRpc.send_error(client_socket, id, STANDARD_ERRORS.METHOD_NOT_FOUND, "Unknown method: " .. method)
+    return
   end
+
+  local result = action_handler(request.method, request.params or {}, request.id)
+  if result == nil then return end
+  if result.ok then
+    JsonRpc.send_result(request.id, { ok = true, data = result.data or {} })
+    return
+  end
+
+  JsonRpc.send_error(
+    request.id,
+    ERROR_CODES[result.error_code] or ERROR_CODES.INTERNAL_ERROR,
+    result.error_message or 'Action failed',
+    { error_code = result.error_code or 'INTERNAL_ERROR' }
+  )
 end
 
-function JsonRpc.send_result(socket_fd, id, result)
-  local response = {
-    jsonrpc = "2.0",
-    id = id,
-    result = result,
-  }
-  local json_str = JSON.encode(response)
-  -- Delegate to socket_server.send_response()
-  if JsonRpc._send_fn then
-    JsonRpc._send_fn(json_str)
-  end
-end
-
-function JsonRpc.send_error(socket_fd, id, code, message, data)
-  local response = {
-    jsonrpc = "2.0",
-    id = id,
-    error = {
-      code = code,
-      message = message,
-      data = data,
-    },
-  }
-  local json_str = JSON.encode(response)
-  if JsonRpc._send_fn then
-    JsonRpc._send_fn(json_str)
-  end
-end
-
-function JsonRpc.set_send_function(fn)
-  JsonRpc._send_fn = fn
+function JsonRpc.configure(options)
+  action_handler = options.action
+  state_handler = options.state
+  send = options.send
 end
 
 return JsonRpc
