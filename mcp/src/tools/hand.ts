@@ -7,16 +7,8 @@ import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { cardIdSchema, normalizeCardIds } from "./cardIds.js";
-
-const SELECT_HAND_CARDS_DESCRIPTION =
-  "Highlights (selects) specific cards in the player's hand for a subsequent play or discard action, using replace-mode semantics so each call replaces any previously selected cards entirely with the new set. " +
-  "Pass an empty array to deselect all cards, or pass card IDs from the current state to highlight that exact set; order does not matter and duplicate IDs are not meaningful. " +
-  "Use this before balatro_play_hand or balatro_discard_hand. Requires SELECTING_HAND, current hand card IDs, and no more than the legal hand size (typically 5).";
-
-const SORT_HAND_DESCRIPTION =
-  "Reorders the cards in the player's hand to the explicit order specified by an array of card IDs, where the first ID becomes the leftmost card and the last ID becomes the rightmost. " +
-  "This is a visual/organizational action that does not consume any game resources (hands or discards) and does not alter card values, ranks, suits, or any gameplay-relevant state beyond display order. " +
-  "Use this to reorganize cards for better visibility before deciding what to play. Requires SELECTING_HAND and an order array matching the current hand contents.";
+import SELECT_HAND_CARDS_DESCRIPTION from "./descriptions/select-hand-cards.txt" with { type: "text" };
+import SORT_HAND_DESCRIPTION from "./descriptions/sort-hand.txt" with { type: "text" };
 
 const selectHandCardsSchema = z
   .object({

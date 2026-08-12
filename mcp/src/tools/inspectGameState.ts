@@ -6,16 +6,8 @@ import type { Deps } from "../deps.js";
 import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
-
-const DESCRIPTION =
-  "Retrieves the complete current game state snapshot from the running Balatro instance. " +
-  "Returns all information visible to the player: hand cards, jokers, consumables, money, blind info, " +
-  "round progress, deck composition summary, shop contents (when in shop), and booster pack contents (when open). " +
-  "This is the primary observation tool — call it before making any strategic decision to understand the current situation. " +
-  "Joker markdown uses compact strategic notation: the section header shows occupied/maximum slots like Jokers (2/5), rarity is appended to the Joker name as stars (* common, ** uncommon, *** rare, **** legendary), prices are $cost/$sell, and debuffed Jokers include (x). " +
-  "Consumable markdown uses compact notation with the section header showing occupied/maximum slots like Consumables (1/2), and type prefixes T=Tarot, P=Planet, S=Spectral. " +
-  "Output includes legal_actions[] indicating valid moves. " +
-  "Do NOT poll faster than 1 Hz; prefer calling once per decision point rather than repeatedly.";
+import INSPECT_CARD_INSTANCE_DESCRIPTION from "./descriptions/inspect-card-instance.txt" with { type: "text" };
+import INSPECT_GAME_STATE_DESCRIPTION from "./descriptions/inspect-game-state.txt" with { type: "text" };
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
@@ -514,7 +506,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
   server.registerTool(
     "balatro_inspect_game_state",
     {
-      description: DESCRIPTION,
+      description: INSPECT_GAME_STATE_DESCRIPTION,
       inputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
@@ -545,10 +537,7 @@ export function registerInspectGameState(server: McpServer, deps: Deps): void {
   server.registerTool(
     "balatro_inspect_card_instance",
     {
-      description:
-        "Reads one live card instance from the current Balatro state by card_id and returns live per-run fields. " +
-        "Use this after balatro_inspect_game_state when you need to inspect a specific Joker, consumable, shop card, pack option, or hand card. " +
-        "card_id is the live instance handle used by action tools; entity_id identifies the static card/Joker type. Requires a card_id present in the current live state.",
+      description: INSPECT_CARD_INSTANCE_DESCRIPTION,
       inputSchema: inspectCardInstanceSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },

@@ -7,21 +7,9 @@ import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { cardIdSchema, normalizeCardId, normalizeCardIds } from "./cardIds.js";
-
-const OPEN_BOOSTER_DESCRIPTION =
-  "Opens a Booster Pack that you have already purchased from the shop, revealing the cards inside for selection. " +
-  "Use this when you have bought a Booster Pack (Arcana, Celestial, Spectral, Standard, or Buffoon) and want to see its contents and begin choosing cards from it. " +
-  "Requires SHOP, a purchased Booster Pack card_id, and no other open Booster Pack awaiting resolution.";
-
-const SELECT_BOOSTER_CARD_DESCRIPTION =
-  "Selects a card from an open Booster Pack, adding it to your collection or applying its effect immediately if it is a consumable with targets specified. " +
-  "Use this when a Booster Pack is open and you want to pick one of the revealed cards — for example, choosing a Joker from a Buffoon Pack, a Tarot from an Arcana Pack, or a playing card from a Standard Pack. " +
-  "Requires an open Booster Pack, remaining picks, a revealed pack card_id, any needed slot capacity, and valid targets only for targeted consumables.";
-
-const SKIP_BOOSTER_DESCRIPTION =
-  "Skips the remaining picks in an open Booster Pack, closing it and returning to the shop without selecting any more cards. " +
-  "Use this when a Booster Pack is open but you do not want any of the remaining revealed cards, or you have already picked the cards you want and wish to forfeit the remaining selections. " +
-  "Requires an open Booster Pack; this action is irreversible and the remaining cards in the pack are lost permanently.";
+import OPEN_BOOSTER_DESCRIPTION from "./descriptions/open-booster.txt" with { type: "text" };
+import SELECT_BOOSTER_CARD_DESCRIPTION from "./descriptions/select-booster-card.txt" with { type: "text" };
+import SKIP_BOOSTER_DESCRIPTION from "./descriptions/skip-booster.txt" with { type: "text" };
 
 const openBoosterSchema = z
   .object({

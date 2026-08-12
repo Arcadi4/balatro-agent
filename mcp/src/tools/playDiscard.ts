@@ -6,16 +6,8 @@ import type { Deps } from "../deps.js";
 import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
-
-const PLAY_HAND_DESCRIPTION =
-  "Plays the currently selected cards from your hand, scoring them against the active blind's chip target and consuming one of your limited hands for the round. " +
-  "Use this after selecting cards via balatro_select_cards_for_hand when you are confident the resulting poker hand scores enough chips to make progress toward (or defeat) the blind. " +
-  "Requires SELECTING_HAND and currently selected cards; select cards first with balatro_select_cards_for_hand.";
-
-const DISCARD_HAND_DESCRIPTION =
-  "Discards the currently selected cards from your hand, drawing replacements from the deck and consuming one of your limited discards for the round. " +
-  "Use this after selecting cards via balatro_select_cards_for_hand when you want to cycle unwanted cards in search of better scoring combinations before committing a play. " +
-  "Requires SELECTING_HAND, currently selected cards, and at least one discard remaining; check game state first.";
+import PLAY_HAND_DESCRIPTION from "./descriptions/play-hand.txt" with { type: "text" };
+import DISCARD_HAND_DESCRIPTION from "./descriptions/discard-hand.txt" with { type: "text" };
 
 const inputSchema = z.object({}).strict();
 

@@ -7,17 +7,8 @@ import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
 import { normalizeCardId } from "./cardIds.js";
-
-const USE_CONSUMABLE_DESCRIPTION =
-  "Uses a consumable card (Tarot, Planet, or Spectral) from your consumable slots, applying its effect to the game state immediately. " +
-  "Use this when you want to activate a consumable's effect — for example, enhancing cards with a Tarot, upgrading a poker hand level with a Planet, or triggering a Spectral card's special ability. " +
-  "Requires a usable consumable card_id in your consumable slots and a phase where that consumable can be applied; Joker cards are passive and cannot be used.";
-
-const SELL_CARD_DESCRIPTION =
-  "Sells a card (Joker or consumable) from your slots for its sell value in dollars, permanently removing it from your possession. " +
-  "Use this when you need cash to buy a better card from the shop, when a Joker no longer fits your build, or when you need to free up a slot for an incoming card. " +
-  "Selling is available in stable interaction phases including blind select, hand selection, cash-out, and shop; it is not available during scoring/draw animations or while resolving Booster Packs. " +
-  "Requires a sellable Joker or consumable card_id in your slots; playing cards in hand cannot be sold this way.";
+import USE_CONSUMABLE_DESCRIPTION from "./descriptions/use-consumable.txt" with { type: "text" };
+import SELL_CARD_DESCRIPTION from "./descriptions/sell-card.txt" with { type: "text" };
 
 const useConsumableSchema = z
   .object({

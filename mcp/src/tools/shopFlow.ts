@@ -6,21 +6,9 @@ import type { Deps } from "../deps.js";
 import { formatResponse } from "../response.js";
 import { toolError } from "../errors.js";
 import { BridgeError } from "../bridge/socket-client.js";
-
-const REROLL_SHOP_DESCRIPTION =
-  "Rerolls the current shop offerings, replacing the displayed cards with a fresh set generated from the run's seed and spending the current reroll cost in dollars. " +
-  "Use this when the current shop offerings are not useful for your build and you have enough dollars to afford the rising reroll cost (which scales each time within the same shop visit). " +
-  "Requires SHOP and enough dollars for the current reroll cost; affects only the card row, not Booster Packs or Vouchers.";
-
-const LEAVE_SHOP_DESCRIPTION =
-  "Leaves the current shop and advances the run to the next BLIND_SELECT phase, finalizing all purchases and rerolls made during this shop visit. " +
-  "Use this when you are done buying cards, opening Booster Packs, and rerolling, and want to proceed to the next ante's blind selection. " +
-  "Requires SHOP with no open Booster Pack or pending cash-out; resolve those before leaving.";
-
-const CASH_OUT_DESCRIPTION =
-  "Cashes out the round-end rewards (blind reward, interest, hand and discard bonuses, and any per-Joker dollar effects) into your bankroll and transitions the run from ROUND_EVAL into the SHOP phase. " +
-  "Use this immediately after defeating a blind when the game is presenting the cash-out screen and you are ready to enter the shop. " +
-  "Requires ROUND_EVAL after end-of-round effects have resolved; this is irreversible in non-endless runs.";
+import REROLL_SHOP_DESCRIPTION from "./descriptions/reroll-shop.txt" with { type: "text" };
+import LEAVE_SHOP_DESCRIPTION from "./descriptions/leave-shop.txt" with { type: "text" };
+import CASH_OUT_DESCRIPTION from "./descriptions/cash-out.txt" with { type: "text" };
 
 const inputSchema = z.object({}).strict();
 
