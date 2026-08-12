@@ -85,9 +85,9 @@ The server exposes tools with the `balatro_` prefix, including:
 | State     | `balatro_inspect_game_state`                                                                                        |
 | Blinds    | `balatro_select_blind`, `balatro_skip_blind`                                                                        |
 | Hand play | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand`                       |
-| Shop      | `balatro_buy_card`, `balatro_buy_and_use_card`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out`     |
+| Shop      | `balatro_buy_card`, `balatro_buy_consumable`, `balatro_buy_voucher`, `balatro_buy_booster`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
 | Cards     | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers`                                             |
-| Boosters  | `balatro_open_booster`, `balatro_select_booster_card`, `balatro_skip_booster`                                       |
+| Boosters  | `balatro_select_booster_card`, `balatro_skip_booster`                                                               |
 | Knowledge | `balatro_get_game_rules`, `balatro_list_game_entities`, `balatro_read_wiki`, `balatro_inspect_card_instance` |
 
 It also registers:
