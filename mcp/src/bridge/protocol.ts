@@ -1,53 +1,14 @@
-/**
- * protocol.ts — JSON-RPC 2.0 protocol specification for the Balatro MCP bridge.
- *
- * Shared wire format used by:
- * - T3: TypeScript socket client (socket-client.ts)
- * - T5: Lua JSON-RPC dispatcher (Lua side)
- *
- * ## NDJSON Framing
- *
- * - Each message is a single line terminated by `\n`
- * - Both sides split incoming data on `\n` and parse each complete line
- * - Incomplete lines (no trailing `\n` yet) are buffered until more data arrives
- *
- * ## Method Name Convention
- *
- * Each JSON-RPC method name equals the command `kind` string:
- *   "play_hand", "get_state", "select_blind", "skip_blind",
- *   "select_hand_cards", "sort_hand", "discard_hand",
- *   "use_consumable", "sell_card", "buy_card", "buy_consumable",
- *   "buy_voucher", "buy_booster",
- *   "reroll_shop", "leave_shop", "cash_out",
- *   "select_booster_card", "skip_booster",
- *   "reorder_jokers"
- *
- * The 18 action kinds from actions.lua are the method names.
- */
-
-import type {
-  JSONRPCErrorResponse,
-  JSONRPCRequest,
-  JSONRPCResultResponse,
-} from "@modelcontextprotocol/sdk/types.js"
-
-// Bun routes `\\.\pipe\...` paths to its named-pipe transport on Windows
-// and every other path to AF_UNIX, so one client serves both platforms.
+export interface JsonRpcRequest {
+  jsonrpc: "2.0"
+  id: number
+  method: string
+  params?: Record<string, unknown>
+}
 
 export const DEFAULT_BRIDGE_SOCKET_POSIX = "/tmp/balatro-mcp.sock"
 export const DEFAULT_BRIDGE_SOCKET_WIN32 = "\\\\.\\pipe\\balatro-mcp"
 export const BRIDGE_SOCKET_ENV_VAR = "BALATRO_BRIDGE_SOCKET"
 
-/**
- * Resolve the bridge endpoint address for the current platform.
- *
- * Honors the `BALATRO_BRIDGE_SOCKET` environment variable override so the
- * mod and the server can agree on a custom endpoint (e.g. a per-user pipe
- * name or a non-default socket path) without code changes.
- *
- * @param platform - `process.platform` value; overridable for tests
- * @param env - environment variables; overridable for tests
- */
 export function resolveBridgeSocketPath(
   platform: string = process.platform,
   env: Record<string, string | undefined> = process.env,
@@ -57,159 +18,63 @@ export function resolveBridgeSocketPath(
   return platform === "win32" ? DEFAULT_BRIDGE_SOCKET_WIN32 : DEFAULT_BRIDGE_SOCKET_POSIX
 }
 
-export type JsonRpcRequest = Omit<JSONRPCRequest, "id" | "params"> & {
-  id: number
-  params?: Record<string, unknown>
+interface JsonRpcError {
+  code: number
+  message: string
+  data?: unknown
 }
 
 export type JsonRpcResponse =
-  | (Omit<JSONRPCResultResponse, "id" | "result"> & {
-      id: number
-      result: unknown
-      error?: never
-    })
-  | (Omit<JSONRPCErrorResponse, "id"> & {
-      id: number
-      result?: never
-    })
+  | { jsonrpc: "2.0"; id: number; result: unknown; error?: never }
+  | { jsonrpc: "2.0"; id: number; error: JsonRpcError; result?: never }
 
-export type JsonRpcError = JSONRPCErrorResponse["error"]
-
-// Error Code Mapping
-// Application-level string codes → JSON-RPC integer codes.
-// JSON-RPC 2.0 reserves the -32000 to -32099 range for server errors.
-//
-// Mapping convention:
-//   -32001..-32005 — Transport-level errors (from BridgeClient)
-//   -32010..-32017 — Action-level errors (from Lua action handlers)
-//   -32032         — Catch-all internal error (far enough from -32000 to
-//                    reduce collision risk with future application codes)
-
-// Catch-all fallback code, kept as a named constant so `toJsonRpcError` can
-// fall back to it without an `undefined`-able index lookup.
-const INTERNAL_ERROR_CODE = -32032
-
-export const ErrorCodeMap: Record<string, number> = Object.freeze({
-  // Transport-level errors (from BridgeClient)
-  GAME_NOT_RUNNING: -32001,
-  INSTANCE_BUSY: -32002,
-  PROTOCOL_MISMATCH: -32003,
-  STATE_STALE: -32004,
-  STATE_NOT_FOUND: -32005,
-
-  // Action-level errors (from Lua action handlers)
-  WRONG_PHASE: -32010,
-  INVALID_TARGET: -32011,
-  INSUFFICIENT_FUNDS: -32012,
-  NO_SLOT: -32013,
-  SLOTS_FULL: -32013,
-  ETERNAL_BLOCKED: -32014,
-  PACK_LIMIT_REACHED: -32015,
-  BOSS_REROLL_LOCKED: -32016,
-  VOUCHER_DEPENDENCY: -32017,
-
-  // Catch-all
-  INTERNAL_ERROR: INTERNAL_ERROR_CODE,
-})
-
-export const ReverseErrorMap: Record<number, string> = Object.freeze(
-  Object.fromEntries(Object.entries(ErrorCodeMap).map(([key, value]) => [value, key])),
-)
-
-/**
- * Standard JSON-RPC 2.0 error codes (per spec §5.1).
- */
-export const STANDARD_ERRORS = {
-  PARSE_ERROR: { code: -32700, message: "Parse error" },
-  INVALID_REQUEST: { code: -32600, message: "Invalid Request" },
-  METHOD_NOT_FOUND: { code: -32601, message: "Method not found" },
-} as const
-
-/**
- * Create a JsonRpcError from a string error code.
- * Falls back to INTERNAL_ERROR if the code is not recognized.
- */
-export function toJsonRpcError(errorCode: string, message: string, data?: unknown): JsonRpcError {
-  const code = ErrorCodeMap[errorCode] ?? INTERNAL_ERROR_CODE
-  return { code, message, data }
+const ERROR_CODES: Record<number, string> = {
+  [-32700]: "PARSE_ERROR",
+  [-32600]: "INVALID_REQUEST",
+  [-32601]: "UNKNOWN_METHOD",
+  [-32001]: "GAME_NOT_RUNNING",
+  [-32002]: "INSTANCE_BUSY",
+  [-32003]: "PROTOCOL_MISMATCH",
+  [-32004]: "STATE_STALE",
+  [-32005]: "STATE_NOT_FOUND",
+  [-32010]: "WRONG_PHASE",
+  [-32011]: "INVALID_TARGET",
+  [-32012]: "INSUFFICIENT_FUNDS",
+  [-32013]: "SLOTS_FULL",
+  [-32014]: "ETERNAL_BLOCKED",
+  [-32015]: "PACK_LIMIT_REACHED",
+  [-32017]: "VOUCHER_DEPENDENCY",
+  [-32018]: "CANNOT_USE_NOW",
+  [-32032]: "INTERNAL_ERROR",
 }
 
-/**
- * Look up the string code for a JSON-RPC integer error code.
- * Returns "UNKNOWN" if not found.
- */
 export function errorCodeToString(code: number): string {
-  if (code === STANDARD_ERRORS.PARSE_ERROR.code) return "PARSE_ERROR"
-  if (code === STANDARD_ERRORS.INVALID_REQUEST.code) return "INVALID_REQUEST"
-  if (code === STANDARD_ERRORS.METHOD_NOT_FOUND.code) return "UNKNOWN_METHOD"
-  return ReverseErrorMap[code] ?? "UNKNOWN"
+  return ERROR_CODES[code] ?? "UNKNOWN_ERROR"
 }
 
-/**
- * Serialize a JSON-RPC request or response as a single NDJSON frame.
- * Appends `\n` as the message delimiter.
- */
-export function serializeFrame(obj: JsonRpcRequest | JsonRpcResponse): string {
-  return JSON.stringify(obj) + "\n"
+export function serializeFrame(request: JsonRpcRequest): string {
+  return JSON.stringify(request) + "\n"
 }
 
-/**
- * Parse a buffer of NDJSON data into completed messages and any trailing
- * incomplete data.
- *
- * - Splits the buffer on `\n`
- * - Attempts to JSON-parse each complete line
- * - Malformed lines are silently skipped (caller may log at debug level)
- * - Any data after the last `\n` is returned as `remainder` for buffering
- * - An empty buffer or buffer with no `\n` returns remainder as-is
- */
-export function parseFrames(buffer: string): {
-  messages: (JsonRpcRequest | JsonRpcResponse)[]
-  remainder: string
-} {
-  const messages: (JsonRpcRequest | JsonRpcResponse)[] = []
+export function parseFrames(buffer: string): { messages: unknown[]; remainder: string } {
+  const boundary = buffer.lastIndexOf("\n")
+  if (boundary === -1) return { messages: [], remainder: buffer }
 
-  const lastNewline = buffer.lastIndexOf("\n")
-  if (lastNewline === -1) {
-    return { messages, remainder: buffer }
-  }
-
-  const complete = buffer.slice(0, lastNewline)
-  const remainder = buffer.slice(lastNewline + 1)
-
-  for (const line of complete.split("\n")) {
-    const trimmed = line.trim()
-    if (trimmed.length === 0) continue
+  const messages: unknown[] = []
+  for (const line of buffer.slice(0, boundary).split("\n")) {
+    if (line.trim() === "") continue
     try {
-      const parsed = JSON.parse(trimmed) as unknown
-      if (typeof parsed === "object" && parsed !== null) {
-        messages.push(parsed as JsonRpcRequest | JsonRpcResponse)
-      }
+      messages.push(JSON.parse(line))
     } catch {
-      // Malformed JSON — skip (caller may log at debug level)
+      // The peer owns malformed frames; the pending request will time out.
     }
   }
-
-  return { messages, remainder }
+  return { messages, remainder: buffer.slice(boundary + 1) }
 }
 
-/**
- * Check if an unknown value is a structurally valid JSON-RPC 2.0 request.
- */
-export function isJsonRpcRequest(obj: unknown): obj is JsonRpcRequest {
-  if (typeof obj !== "object" || obj === null) return false
-  const r = obj as Record<string, unknown>
-  return r.jsonrpc === "2.0" && typeof r.id === "number" && typeof r.method === "string"
-}
-
-/**
- * Check if an unknown value is a structurally valid JSON-RPC 2.0 response.
- */
-export function isJsonRpcResponse(obj: unknown): obj is JsonRpcResponse {
-  if (typeof obj !== "object" || obj === null) return false
-  const r = obj as Record<string, unknown>
-  if (r.jsonrpc !== "2.0" || typeof r.id !== "number") return false
-  // result and error are mutually exclusive per JSON-RPC 2.0 spec
-  if (r.result !== undefined && r.error !== undefined) return false
-  return r.result !== undefined || r.error !== undefined
+export function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
+  if (typeof value !== "object" || value === null) return false
+  const response = value as Record<string, unknown>
+  if (response.jsonrpc !== "2.0" || typeof response.id !== "number") return false
+  return "result" in response !== "error" in response
 }
