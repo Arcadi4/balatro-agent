@@ -9,7 +9,7 @@
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 
-import { getRulesContent, getRulesVersion, getRulesLastUpdated } from "../resources/rules.js"
+import { getRulesContent, getRulesVersion } from "../resources/rules.js"
 import INSTRUCTION_BLOCK from "./strategy.md" with { type: "text" }
 
 const PROMPT_NAME = "balatro_strategy_context"
@@ -23,7 +23,7 @@ export function registerStrategyPrompt(server: McpServer): void {
         "Loads the global rules reference and instructions on canonical IDs and tool usage for advising on Balatro runs.",
     },
     () => ({
-      description: `Balatro strategy context (rules version ${getRulesVersion()}, updated ${getRulesLastUpdated()})`,
+      description: `Balatro strategy context (rules version ${getRulesVersion()})`,
       messages: [
         {
           role: "user" as const,
