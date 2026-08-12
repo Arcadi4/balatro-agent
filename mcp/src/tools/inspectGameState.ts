@@ -286,6 +286,10 @@ function isConsumableCard(card: Record<string, unknown>): boolean {
 function displayShopCardLine(card: Record<string, unknown>): string {
   if (isJokerCard(card)) return displayJokerLine(card, 1)
   if (isConsumableCard(card)) return displayConsumableLine(card, 1)
+  if (card.kind === "playing_card") {
+    const cost = card.cost !== undefined ? ` — $${String(card.cost)}` : ""
+    return `${displayHandCardLine(card)}${cost}`
+  }
 
   const label = card.name ?? card.entity_id ?? "Unknown Card"
   const details = [card.kind, displayCardModifier(card.edition, EDITION_NAMES)].filter(

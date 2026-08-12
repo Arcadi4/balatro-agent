@@ -7,19 +7,8 @@ import type { Deps } from "../deps.js"
 import { toolError } from "../errors.js"
 import { formatResponse } from "../response.js"
 import { cardIdSchema, normalizeCardId, normalizeCardIds } from "./cardIds.js"
-import OPEN_BOOSTER_DESCRIPTION from "./descriptions/open-booster.txt" with { type: "text" }
 import SELECT_BOOSTER_CARD_DESCRIPTION from "./descriptions/select-booster-card.txt" with { type: "text" }
 import SKIP_BOOSTER_DESCRIPTION from "./descriptions/skip-booster.txt" with { type: "text" }
-
-const openBoosterSchema = z
-  .object({
-    card_id: z
-      .union([z.string(), z.number().int()])
-      .describe(
-        "The ID of the Booster Pack in the shop to open. Must reference a purchased Booster Pack available in the current SHOP phase.",
-      ),
-  })
-  .strict()
 
 const selectBoosterCardSchema = z
   .object({
@@ -39,13 +28,6 @@ const selectBoosterCardSchema = z
 
 const skipBoosterSchema = z.object({}).strict()
 
-const OPEN_BOOSTER_ANNOTATIONS = {
-  readOnlyHint: false,
-  destructiveHint: false,
-  idempotentHint: false,
-  openWorldHint: false,
-} as const satisfies ToolAnnotations
-
 const SELECT_BOOSTER_CARD_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: true,
@@ -63,7 +45,6 @@ const SKIP_BOOSTER_ANNOTATIONS = {
 async function executeBoosterCommand(
   deps: Deps,
   command:
-    | { kind: "open_booster"; args: { card_id: string } }
     | { kind: "select_booster_card"; args: { card_id: string; targets?: string[] } }
     | { kind: "skip_booster" },
 ) {
@@ -97,23 +78,6 @@ async function executeBoosterCommand(
 }
 
 export function registerBoosterTools(server: McpServer, deps: Deps): void {
-  server.registerTool(
-    "balatro_open_booster",
-    {
-      description: OPEN_BOOSTER_DESCRIPTION,
-      inputSchema: openBoosterSchema,
-      annotations: OPEN_BOOSTER_ANNOTATIONS,
-    },
-    async (args) => {
-      const cardId = normalizeCardId(args.card_id)
-      const envelope = await executeBoosterCommand(deps, {
-        kind: "open_booster",
-        args: { card_id: cardId },
-      })
-      return { ...envelope }
-    },
-  )
-
   server.registerTool(
     "balatro_select_booster_card",
     {

@@ -16,12 +16,13 @@
  * Each JSON-RPC method name equals the command `kind` string:
  *   "play_hand", "get_state", "select_blind", "skip_blind",
  *   "select_hand_cards", "sort_hand", "discard_hand",
- *   "use_consumable", "sell_card", "buy_card", "buy_and_use_card",
+ *   "use_consumable", "sell_card", "buy_card", "buy_consumable",
+ *   "buy_voucher", "buy_booster",
  *   "reroll_shop", "leave_shop", "cash_out",
- *   "open_booster", "select_booster_card", "skip_booster",
+ *   "select_booster_card", "skip_booster",
  *   "reorder_jokers"
  *
- * The 17 action kinds from actions.lua are the method names.
+ * The 18 action kinds from actions.lua are the method names.
  */
 
 import type {

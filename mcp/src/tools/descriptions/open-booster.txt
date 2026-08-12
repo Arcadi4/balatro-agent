@@ -1,1 +1,0 @@
-Opens a Booster Pack that you have already purchased from the shop, revealing the cards inside for selection. Use this when you have bought a Booster Pack (Arcana, Celestial, Spectral, Standard, or Buffoon) and want to see its contents and begin choosing cards from it. Requires SHOP, a purchased Booster Pack card_id, and no other open Booster Pack awaiting resolution.
