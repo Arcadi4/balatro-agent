@@ -8,113 +8,93 @@
 
 <!-- README-I18N:END -->
 
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-3c873a?style=flat-square)](https://nodejs.org) [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-Server-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
+[![Bun](https://img.shields.io/badge/Bun-%3E%3D1.3.14-f9f1e1?style=flat-square&logo=bun&logoColor=black)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
 
 </div>
 
-Balatro Agent 将 TypeScript MCP 服务器与 Steamodded/Lovely Balatro Mod 配对，让智能体可以通过完全基于文本的接口观察实时游戏状态并与 Balatro 交互。不需要视觉模型，也不需要屏幕抓取。
+Balatro Agent 将 Bun MCP 服务器与 Steamodded/Lovely Mod 组合起来。智能体无需截图或屏幕抓取，即可读取结构化游戏状态并调用类型化操作。
 
-> [!WARNING]
-> 本项目目前仅针对 macOS Apple Silicon 配置并测试。未来会加入更通用的安装支持。
+运行时桥接在 macOS/Linux 上使用 Unix socket，在 Windows 上使用命名管道。目前仅在 macOS Apple Silicon 上做过本地测试；仓库根目录的 `make` 开发流程仍仅适用于 macOS。
 
-## 功能
-
-- **实时游戏观察**：通过 `balatro_inspect_game_state` 获取阶段、手牌、Joker、商店、盲注、牌库摘要、合法动作与规则元数据。
-- **类型化游戏动作**：支持盲注、手牌选择、出牌/弃牌、购买、补充包、商店流程、消耗牌、出售与 Joker 重排。
-- **文本优先的智能体控制**：模型可以基于结构化状态推理，而不是依赖截图。
-- **游戏知识表面**：包含规则资源、策略 prompt 与实体参考。
-
-## 通信架构
+## 架构
 
 ```text
-Agent / MCP client
-        |
-        | stdio MCP
-        v
-mcp/dist/index.js
-(will release a npm package
-later for the ease of installation)
-        |
-        | JSON commands, responses, state snapshots
-        v
-~/Library/Application Support/Balatro/Mods/balatro_mcp/bridge/
-(a socket or HTTP server is considered for
-performance and reliability in the future.)
-        |
-        | love.update hook
-        v
-Balatro + Lovely + SMODS + balatro_mcp mod
+MCP 客户端 ── stdio ──> Bun 服务器 ── JSON-RPC 2.0 / NDJSON ──> Balatro Mod
+                                  Unix socket（macOS/Linux）
+                                  命名管道（Windows）
 ```
+
+macOS/Linux 的默认端点为 `/tmp/balatro-mcp.sock`，Windows 为 `\\.\pipe\balatro-mcp`。如需覆盖，请为两个进程设置同一个 `BALATRO_BRIDGE_SOCKET`。
 
 ## 要求
 
-- 通过 Steam 安装 Balatro。
-- [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)。
-- [Steamodded / SMODS](https://github.com/Steamodded/smods)。
-- Node.js 18 或更高版本。
-- pnpm。
-- 可用的 Lua 工具链，并能运行 `luac` 做语法检查。
+- Steam 版 Balatro
+- [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
+- [Steamodded / SMODS](https://github.com/Steamodded/smods)
+- [Bun](https://bun.sh) 1.3.14 或更高版本
+- 用于 Lua 语法验证的 `luac`
 
-## 快速开始
+## 安装
 
-请在仓库根目录使用 `make` 管理本地开发流程：
-
-| 命令                | 说明                                                                 |
-| ------------------- | -------------------------------------------------------------------- |
-| `make doctor`       | 检查本机 Balatro、Lovely 与 SMODS 路径。                             |
-| `make install-mods` | 将仓库内的 Mod 同步到 `~/Library/Application Support/Balatro/Mods`。 |
-| `make run`          | 同步仓库内的 Mod，然后通过 Lovely 启动 Balatro。                     |
-
-需要时可以覆盖本地路径，例如：
+安装服务器依赖并验证源码：
 
 ```sh
-make doctor BALATRO_DIR="/path/to/Balatro" BALATRO_SAVE="/path/to/Balatro/save"
+cd mcp
+bun install
+bun run typecheck
+bun run build
 ```
 
-请在 `mcp/` 中构建 MCP 服务器，然后将 MCP 客户端配置为启动 `mcp/dist/index.js`。
+将 `mods/balatro_mcp` 安装到 Balatro 的 `Mods` 目录：
 
-## 使用 MCP 服务器
+- macOS 开发 checkout：`make install-mods`
+- Windows：复制到 `%AppData%\Balatro\Mods\balatro_mcp`
 
-服务器暴露带有 `balatro_` 前缀的工具，包括：
+启用 Mod 并启动 Balatro，然后配置 MCP 客户端直接运行 TypeScript 源码：
 
-| 范围     | 工具                                                                                                                |
-| -------- | ------------------------------------------------------------------------------------------------------------------- |
-| 状态     | `balatro_inspect_game_state`                                                                                        |
-| 盲注     | `balatro_select_blind`, `balatro_skip_blind`                                                                        |
-| 手牌行动 | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand`                       |
-| 商店     | `balatro_buy_card`, `balatro_buy_consumable`, `balatro_buy_voucher`, `balatro_buy_booster`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
-| 卡牌     | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers`                                             |
-| 补充包   | `balatro_select_booster_card`, `balatro_skip_booster`                                                               |
-| 知识     | `balatro_get_game_rules`, `balatro_list_game_entities`, `balatro_read_wiki`, `balatro_inspect_card_instance` |
+```json
+{
+  "mcpServers": {
+    "balatro": {
+      "command": "bun",
+      "args": ["/absolute/path/to/balatro-mcp/mcp/src/index.ts"]
+    }
+  }
+}
+```
 
-它还注册了：
+打包并非必需；`bun run build` 会生成 `mcp/dist/index.js`。
 
-- `balatro://rules/global` 静态规则资源。
-- `balatro_strategy_context` 策略 prompt。
+## MCP 接口
 
-游戏智能体应在开始或继续一局前调用 `balatro_get_game_rules`，并在每次行动前调用 `balatro_inspect_game_state`。
+服务器提供 22 个工具：
 
-## 验证
+| 范围 | 工具 |
+| --- | --- |
+| 状态 | `balatro_inspect_game_state`, `balatro_inspect_card_instance` |
+| 盲注 | `balatro_select_blind`, `balatro_skip_blind` |
+| 手牌 | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand` |
+| 商店 | `balatro_buy_card`, `balatro_buy_consumable`, `balatro_buy_voucher`, `balatro_buy_booster`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
+| 卡牌 | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers` |
+| 补充包 | `balatro_select_booster_card`, `balatro_skip_booster` |
+| 知识 | `balatro_list_game_entities`, `balatro_read_wiki` |
 
-修改 MCP 服务器或配套 Mod 时，请针对你的 checkout 运行相应的 TypeScript 和 Lua 检查。修改 Balatro Mod 后，请运行 `make install-mods`，重新加载 Balatro，并通过 MCP 工具验证行为，而不只是阅读代码。
+静态规则仅通过 `balatro://rules/global` 资源暴露，并包含在 `balatro_strategy_context` prompt 中。每次操作前都应检查实时状态。
 
-## 故障排查
+## 开发验证
 
-### MCP 工具返回 `GAME_NOT_RUNNING`
+```sh
+cd mcp
+bun run typecheck
+bun run build
+find ../mods/balatro_mcp -name '*.lua' -print0 | xargs -0 -n1 luac -p
+```
 
-确认 Balatro 正在运行且配套 Mod 已加载，然后确认 MCP 客户端可以成功启动已构建的服务器。
-
-### Balatro 没有反映 Mod 变更
-
-更新已安装的配套 Mod 后，请重新加载或重启 Balatro。Lua 文件由游戏运行时加载，而不是由 MCP 服务器进程加载。
-
-### MCP 服务器无法启动
-
-启动服务器前请先构建 MCP 服务器。如果客户端启动的是旧构建，请重新构建并重启 MCP 会话。
+修改 Mod 后，请重新安装并重启 Balatro，再进行 MCP 手动测试。
 
 ## 参考资料
 
-- [Model Context Protocol](https://modelcontextprotocol.io)
+- [Model Context Protocol](https://modelcontextprotocol.io/docs/2026-07-28)
+- [Bun 文档](https://bun.sh/docs)
 - [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
 - [Steamodded / SMODS](https://github.com/Steamodded/smods)
-- [SMODS wiki](https://github.com/Steamodded/smods/wiki)
