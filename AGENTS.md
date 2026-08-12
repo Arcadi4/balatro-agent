@@ -4,12 +4,12 @@
 
 Balatro Agent is a two-part system that enables AI agents to interact with the Balatro game through a textual interface:
 
-1. **TypeScript MCP server** (`mcp/`) - Runs as a Node.js stdio process, exposes 20+ MCP tools for game interaction
+1. **TypeScript MCP server** (`mcp/`) - Runs as a Bun stdio process, exposes 20+ MCP tools for game interaction
 2. **Lua Steamodded mod** (`mods/balatro_mcp/`) - Runs inside Balatro, communicates with the MCP server via Unix socket
 
 The server and mod communicate via a Unix socket at `/tmp/balatro-mcp.sock` using JSON-RPC 2.0 framed messages.
 
-**Tech Stack**: TypeScript, Node.js 18+, Zod, MCP SDK, Lua (SMODS/Lovely)
+**Tech Stack**: TypeScript, Bun (runtime, package manager, and test runner), Zod, MCP SDK, Lua (SMODS/Lovely)
 
 ## Setup Commands
 
@@ -18,15 +18,14 @@ The server and mod communicate via a Unix socket at `/tmp/balatro-mcp.sock` usin
 - Balatro installed through Steam
 - [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector) installed
 - [Steamodded/SMODS](https://github.com/Steamodded/smods) mod installed
-- Node.js 18 or newer
-- pnpm package manager
+- [Bun](https://bun.sh) 1.x (runtime, package manager, and test runner; the project has no Node.js dependency)
 - `luac` available for Lua syntax validation
 
 ### Installation
 
 ```bash
-# Install MCP server dependencies
-cd mcp && pnpm install
+# Install MCP server dependencies (creates bun.lock)
+cd mcp && bun install
 
 # Verify Balatro/Lovely/SMODS paths
 make doctor
@@ -50,20 +49,20 @@ make doctor BALATRO_DIR="/path/to/Balatro" BALATRO_SAVE="/path/to/Balatro/save"
 ```bash
 cd mcp
 
-# Build TypeScript to dist/
-pnpm build
-
-# Run compiled server (production)
-pnpm start
-
-# Run with tsx in watch mode (development)
-pnpm dev
-
 # Type-check without emitting files
-pnpm typecheck
+bun run typecheck
+
+# Run the server directly from source (no build step; Bun runs TS natively)
+bun run start
+
+# Run in watch mode (development; restarts on file changes)
+bun run dev
+
+# Optional: bundle the server to a single dist/index.js
+bun run build
 ```
 
-**Entry point**: `mcp/dist/index.js` (stdio MCP server)
+**Entry point**: `mcp/src/index.ts` (stdio MCP server; `bun run start` runs it directly)
 
 ### Mod Development (Lua)
 
@@ -87,23 +86,23 @@ make run ARGS="--debug"
 
 ## Testing Instructions
 
-**No automated test framework is configured.** Testing is validation-based:
+**No test files are configured.** Bun's built-in `bun test` runner is available if tests are added; current testing is validation-based:
 
 ### 1. Type Checking (MANDATORY before claiming work is done)
 
 ```bash
-cd mcp && pnpm typecheck
+cd mcp && bun run typecheck
 ```
 
-This runs `tsc --noEmit -p .` and catches all type errors. Build must pass.
+This runs `tsc --noEmit -p .` and catches all type errors.
 
 ### 2. Build Validation
 
 ```bash
-cd mcp && pnpm build
+cd mcp && bun run build
 ```
 
-If build fails, the code is broken. Fix before proceeding.
+Bundles the server with `bun build`; a failure indicates broken code. Note that `bun run start` runs from source and does not require a build.
 
 ### 3. Manual QA
 
@@ -126,10 +125,10 @@ For behavior changes, follow the manual QA runbooks:
 
 From `mcp/tsconfig.json`:
 - `strict: true` (all strict type-checking enabled)
-- Target: ES2022
-- Module: Node16, moduleResolution: Node16
-- Output: `dist/`, source: `src/`
-- Generates declaration maps and source maps
+- Target/lib: ESNext, Module: Preserve, moduleResolution: bundler
+- `types: ["bun"]` — Bun's type definitions; `@types/node` is not used
+- `noEmit: true` — Bun executes TypeScript directly; there is no compile step
+- `noUncheckedIndexedAccess` — index access yields `T | undefined`; guard or fall back explicitly
 
 ### Import/Export Conventions
 
@@ -158,6 +157,12 @@ From `mcp/tsconfig.json`:
    export { registerSelectBlindTool } from './select-blind.js';
    export { registerSkipBlindTool } from './skip-blind.js';
    ```
+
+5. **Prompt text imports use Bun's text import attribute** (raw markdown, not HTML):
+   ```ts
+   import INSTRUCTION_BLOCK from "./strategy.md" with { type: "text" };
+   ```
+   `.md` files import as raw text only with the attribute — a plain `.md` import renders markdown to HTML at runtime. Prompt texts live in `src/prompts/*.md`, never inline.
 
 ### Naming Conventions
 
@@ -249,26 +254,23 @@ import { registerSelectBlindTool } from './tools/select-blind.js';
 
 ## Build and Deployment
 
-### Build Process
+### Running the Server
 
 ```bash
-cd mcp && pnpm build
+cd mcp && bun run start   # from source; no build step required
+cd mcp && bun run dev     # watch mode; restarts the process on file changes
 ```
 
-- Compiles TypeScript from `src/` to `dist/`
-- Generates `.d.ts` declaration files
-- Generates source maps and declaration maps
-- Output: `mcp/dist/index.js` (MCP server entry point)
-
-### Running the MCP Server
+### Optional Bundling
 
 ```bash
-# Production (compiled)
-node mcp/dist/index.js
-
-# Development (tsx with watch)
-cd mcp && pnpm dev
+cd mcp && bun run build
 ```
+
+- `bun build` bundles the server code (plus MCP SDK and zod) into a single `mcp/dist/index.js`
+- The bundle is **not self-contained**: the rules resource reads `mcp/data/rules/global.md` from disk at runtime, so the `data/` directory must be kept alongside `dist/`
+- The bundled entry runs the same way: `bun mcp/dist/index.js`
+- Source files remain the canonical entry; bundling is for distribution
 
 ### MCP Client Configuration
 
@@ -278,8 +280,8 @@ Configure your MCP client to launch the server:
 {
   "mcpServers": {
     "balatro": {
-      "command": "node",
-      "args": ["/path/to/balatro-mcp/mcp/dist/index.js"]
+      "command": "bun",
+      "args": ["/path/to/balatro-mcp/mcp/src/index.ts"]
     }
   }
 }
@@ -316,14 +318,15 @@ The Makefile uses `rsync` to sync `mods/balatro_mcp/` to `~/Library/Application 
 
 ### MCP Server Cannot Start
 
-- Build the server first: `cd mcp && pnpm build`
-- Check Node.js version: `node --version` (must be ≥18)
-- Verify entry point exists: `ls mcp/dist/index.js`
+- Check Bun version: `bun --version` (must be ≥1.0)
+- The server runs directly from source (`mcp/src/index.ts`); no build step required
+- If using the bundled entry, build it first: `cd mcp && bun run build`
+- Verify the MCP client config uses `"command": "bun"` with the entry path
 
 ### Type Errors After Changes
 
 ```bash
-cd mcp && pnpm typecheck
+cd mcp && bun run typecheck
 ```
 
 Fix all errors shown. TypeScript strict mode is enabled—no type suppressions allowed.
@@ -338,11 +341,13 @@ Fix all errors shown. TypeScript strict mode is enabled—no type suppressions a
 
 ### Common Gotchas
 
-- **Import extensions**: Always include `.js` on local imports, even though source files are `.ts`
-- **Node prefix**: Always use `node:` prefix for built-in modules
+- **Import extensions**: Always include `.js` on local imports, even though source files are `.ts` (Bun and tsc both resolve `.js` → `.ts`)
+- **Node prefix**: Always use `node:` prefix for Node built-ins (e.g. `node:path`, `node:fs/promises`)
 - **Barrel imports**: Import from `index.ts`, not individual files
 - **Zod strict mode**: All input schemas must call `.strict()` to reject unknown fields
 - **No type suppression**: Never use `as any`, `@ts-ignore`, or `@ts-expect-error`
+- **Text imports**: `.md` content must be imported with `with { type: "text" }` — never inline prompt strings, and never plain-import `.md` (renders HTML)
+- **Bun sockets**: The bridge client (`src/bridge/socket-client.ts`) uses `Bun.connect` on a Unix socket. Bun fires `connectError` synchronously, so `connect()` must return the captured promise, not a cleared field; do not port `node:net` patterns onto it
 
 ### Performance Considerations
 
@@ -354,8 +359,8 @@ Fix all errors shown. TypeScript strict mode is enabled—no type suppressions a
 
 **Before submitting:**
 
-1. Run `cd mcp && pnpm typecheck` - must pass with no errors
-2. Run `cd mcp && pnpm build` - must complete successfully
+1. Run `cd mcp && bun run typecheck` - must pass with no errors
+2. Run `cd mcp && bun run build` - must complete successfully
 3. Test changed tools manually with Balatro running
 4. Update relevant docs in `mcp/docs/` if protocol or contracts changed
 
