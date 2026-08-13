@@ -212,6 +212,67 @@ local function purchase_from_shop(card, buy_and_use)
   return nil
 end
 
+local RUN_DECKS = {
+  red = 'b_red',
+  blue = 'b_blue',
+  yellow = 'b_yellow',
+  green = 'b_green',
+  black = 'b_black',
+}
+
+local RUN_STAKES = {
+  white = { key = 'stake_white', level = 1 },
+  red = { key = 'stake_red', level = 2 },
+  green = { key = 'stake_green', level = 3 },
+  black = { key = 'stake_black', level = 4 },
+  blue = { key = 'stake_blue', level = 5 },
+  purple = { key = 'stake_purple', level = 6 },
+  orange = { key = 'stake_orange', level = 7 },
+  gold = { key = 'stake_gold', level = 8 },
+}
+
+local function begin_run(deck_name, stake_name, restarted)
+  local deck_key = RUN_DECKS[deck_name]
+  local stake = RUN_STAKES[stake_name]
+  if not deck_key or not stake then
+    return err('INVALID_TARGET', 'Unsupported deck or stake')
+  end
+
+  local profile = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+  local deck = G.P_CENTERS and G.P_CENTERS[deck_key]
+  if not profile or not deck or not G.GAME then
+    return err('INVALID_TARGET', 'Run setup data is not available')
+  end
+  if not deck.unlocked and not profile.all_unlocked then
+    return err('INVALID_TARGET', 'Deck is not unlocked: ' .. deck_key)
+  end
+  if SMODS and SMODS.stake_is_unlocked
+      and not SMODS.stake_is_unlocked(stake.key, deck_key) then
+    return err('INVALID_TARGET', 'Stake ' .. stake.key .. ' is not unlocked for ' .. deck_key)
+  end
+  if not Back or not G.FUNCS or not G.FUNCS.start_run then
+    return err('INTERNAL_ERROR', 'Balatro run-start callbacks are unavailable')
+  end
+
+  if G.OVERLAY_MENU and G.FUNCS.exit_overlay_menu then G.FUNCS.exit_overlay_menu() end
+  G.GAME.viewed_back = Back(deck)
+  profile.MEMORY = profile.MEMORY or {}
+  profile.MEMORY.deck = deck.name
+  profile.MEMORY.stake = stake.level
+  G.SETTINGS.current_setup = 'New Run'
+  G.FUNCS.start_run(nil, { stake = stake.level })
+
+  return ok({
+    started = true,
+    restarted = restarted or nil,
+    deck = deck_name,
+    deck_key = deck_key,
+    stake = stake_name,
+    stake_key = stake.key,
+    stake_level = stake.level,
+  })
+end
+
 local PACK_PHASES = {
   "TAROT_PACK",
   "PLANET_PACK",
@@ -220,6 +281,46 @@ local PACK_PHASES = {
   "BUFFOON_PACK",
   "SMODS_BOOSTER_OPENED",
 }
+
+handlers.start_run = function(args)
+  local phase_err = check_phase({ 'MENU', 'GAME_OVER' })
+  if phase_err then return phase_err end
+  return begin_run(args.deck, args.stake, false)
+end
+
+handlers.restart_run = function(args)
+  local phase_err = check_phase({ 'BLIND_SELECT' })
+  if phase_err then return phase_err end
+
+  local round_resets = G.GAME and G.GAME.round_resets
+  if not round_resets or round_resets.ante ~= 1 or G.GAME.blind_on_deck ~= 'Small' then
+    return err(
+      'WRONG_PHASE',
+      'Opening rerolls are only allowed at Ante 1 before the Small Blind is played or skipped'
+    )
+  end
+  if G.GAME.seeded or G.GAME.challenge then
+    return err('INVALID_TARGET', 'Opening rerolls are only supported for standard unseeded runs')
+  end
+
+  local selected_back = G.GAME.selected_back
+  local selected_center = selected_back and selected_back.effect and selected_back.effect.center
+  local current_deck_key = selected_center and selected_center.key
+  local current_deck_name
+  for deck_name, deck_key in pairs(RUN_DECKS) do
+    if deck_key == current_deck_key then current_deck_name = deck_name end
+  end
+
+  local current_stake_name
+  for stake_name, stake in pairs(RUN_STAKES) do
+    if stake.level == G.GAME.stake then current_stake_name = stake_name end
+  end
+  if not current_deck_name or not current_stake_name then
+    return err('INVALID_TARGET', 'The current deck or stake is not supported for opening rerolls')
+  end
+
+  return begin_run(current_deck_name, current_stake_name, true)
+end
 
 handlers.select_blind = function(args)
   local phase_err = check_phase({ "BLIND_SELECT" })

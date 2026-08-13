@@ -1,0 +1,1 @@
+Starts a new unseeded run with one supported base deck and stake. Use this only from MENU or GAME_OVER after confirming the requested setup. The deck and stake must already be unlocked. This replaces any finished or abandoned run state.

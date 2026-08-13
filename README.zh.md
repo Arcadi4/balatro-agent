@@ -72,11 +72,12 @@ MCP 客户端 ── stdio ──> Bun 服务器 ── JSON-RPC 2.0 / NDJSON �
 
 ## 智能体可以做什么
 
-智能体有 22 个工具可用。
+智能体有 24 个工具可用。
 
 | 范围 | 工具 |
 | --- | --- |
 | 检查游戏 | `balatro_inspect_game_state`, `balatro_inspect_card_instance` |
+| 对局控制 | `balatro_start_run`, `balatro_restart_run` |
 | 盲注 | `balatro_select_blind`, `balatro_skip_blind` |
 | 手牌 | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand` |
 | 商店 | `balatro_buy_card`, `balatro_buy_consumable`, `balatro_buy_voucher`, `balatro_buy_booster`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |

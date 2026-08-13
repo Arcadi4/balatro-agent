@@ -13,6 +13,7 @@ import LEAVE_SHOP_DESCRIPTION from "./descriptions/leave-shop.txt" with { type: 
 import PLAY_HAND_DESCRIPTION from "./descriptions/play-hand.txt" with { type: "text" }
 import REORDER_JOKERS_DESCRIPTION from "./descriptions/reorder-jokers.txt" with { type: "text" }
 import REROLL_SHOP_DESCRIPTION from "./descriptions/reroll-shop.txt" with { type: "text" }
+import RESTART_RUN_DESCRIPTION from "./descriptions/restart-run.txt" with { type: "text" }
 import SELECT_BLIND_DESCRIPTION from "./descriptions/select-blind.txt" with { type: "text" }
 import SELECT_BOOSTER_CARD_DESCRIPTION from "./descriptions/select-booster-card.txt" with { type: "text" }
 import SELECT_HAND_CARDS_DESCRIPTION from "./descriptions/select-hand-cards.txt" with { type: "text" }
@@ -20,6 +21,7 @@ import SELL_CARD_DESCRIPTION from "./descriptions/sell-card.txt" with { type: "t
 import SKIP_BLIND_DESCRIPTION from "./descriptions/skip-blind.txt" with { type: "text" }
 import SKIP_BOOSTER_DESCRIPTION from "./descriptions/skip-booster.txt" with { type: "text" }
 import SORT_HAND_DESCRIPTION from "./descriptions/sort-hand.txt" with { type: "text" }
+import START_RUN_DESCRIPTION from "./descriptions/start-run.txt" with { type: "text" }
 import USE_CONSUMABLE_DESCRIPTION from "./descriptions/use-consumable.txt" with { type: "text" }
 
 const emptySchema = z.object({}).strict()
@@ -62,6 +64,16 @@ const reorderJokersSchema = z
       .array(cardIdSchema)
       .max(50)
       .describe("All held Joker IDs in the desired left-to-right scoring order."),
+  })
+  .strict()
+const startRunSchema = z
+  .object({
+    deck: z
+      .enum(["red", "blue", "yellow", "green", "black"])
+      .describe("Unlocked base deck to use."),
+    stake: z
+      .enum(["white", "red", "green", "black", "blue", "purple", "orange", "gold"])
+      .describe("Unlocked stake difficulty to use."),
   })
   .strict()
 const buyConsumableSchema = z
@@ -114,6 +126,13 @@ interface ActionTool {
 }
 
 const NO_ARG_TOOLS: ActionTool[] = [
+  {
+    name: "balatro_restart_run",
+    title: "Restart Opening Run",
+    description: RESTART_RUN_DESCRIPTION,
+    command: "restart_run",
+    annotations: annotations(true, false),
+  },
   {
     name: "balatro_select_blind",
     title: "Select Blind",
@@ -205,6 +224,18 @@ const CARD_ID_TOOLS: ActionTool[] = [
 ]
 
 export function registerActionTools(server: McpServer, bridge: BridgeClient): void {
+  server.registerTool(
+    "balatro_start_run",
+    {
+      title: "Start Run",
+      description: START_RUN_DESCRIPTION,
+      inputSchema: startRunSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(true, false),
+    },
+    ({ deck, stake }) => commandResult(bridge, "start_run", { deck, stake }),
+  )
+
   for (const tool of NO_ARG_TOOLS) {
     server.registerTool(
       tool.name,

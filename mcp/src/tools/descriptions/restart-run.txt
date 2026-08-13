@@ -1,0 +1,1 @@
+Rerolls the current unseeded run while preserving its deck and stake, generating new opening Blind tags. This destructive action is available only at Ante 1 on the initial Small Blind selection before any Blind is played or skipped. Use it only when the user explicitly asks to reroll the opening; do not repeatedly fish for ideal tags by default.

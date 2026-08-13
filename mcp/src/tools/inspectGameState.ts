@@ -212,13 +212,31 @@ function displayJokerPrice(card: Record<string, unknown>): string | undefined {
   return `$${String(card.cost ?? "?")}/$${String(card.sell_value ?? "?")}`
 }
 
+function displayJokerStickers(card: Record<string, unknown>): string[] {
+  if (!Array.isArray(card.stickers)) return []
+  return card.stickers.map((sticker) => {
+    if (sticker === "eternal") return "Eternal"
+    if (sticker === "perishable") {
+      const rounds = card.perishable_rounds_remaining
+      return rounds === undefined ? "Perishable" : `Perishable (${String(rounds)} rounds left)`
+    }
+    if (sticker === "rental") {
+      const cost = card.rental_cost_per_round
+      return cost === undefined ? "Rental" : `Rental (-$${String(cost)}/round)`
+    }
+    return String(sticker)
+  })
+}
+
 function displayJokerLine(card: Record<string, unknown>, index: number): string {
   const rarity = displayJokerRarity(card.rarity)
   const price = displayJokerPrice(card)
   const edition = displayCardModifier(card.edition, EDITION_NAMES)
-  const status = [edition, card.debuffed !== undefined ? "(x)" : undefined].filter(
-    (value): value is string => value !== undefined,
-  )
+  const status = [
+    edition,
+    ...displayJokerStickers(card),
+    card.debuffed === true ? "(debuffed)" : undefined,
+  ].filter((value): value is string => value !== undefined)
   const parts = [
     `${index}. [${String(card.card_id ?? "?")}]`,
     `${displayJokerName(card)}${rarity}`,
@@ -426,6 +444,12 @@ function stateToMarkdown(data: object): string {
   if (phase) lines.push(`**Phase:** ${phase}  `)
   if (payload.g_state) lines.push(`**G.STATE:** ${String(payload.g_state)}  `)
   if (payload.money !== undefined) lines.push(`**Money:** $${payload.money}  `)
+  const runSetup = asRecord(payload.run_setup)
+  if (runSetup) {
+    lines.push(
+      `**Run Setup:** ${String(runSetup.deck ?? "unknown")} / ${String(runSetup.stake ?? runSetup.stake_level ?? "unknown")}  `,
+    )
+  }
   lines.push("")
 
   if (payload.ante !== undefined || payload.current_round !== undefined) {
@@ -474,6 +498,12 @@ function stateToMarkdown(data: object): string {
         appendCompactCardLine(lines, joker, index)
         index += 1
       }
+    }
+    const upkeep = asRecord(payload.joker_upkeep)
+    if (upkeep?.rental_total_per_round !== undefined) {
+      lines.push(
+        `- **Rental upkeep:** ${String(upkeep.rental_count ?? "?")} Joker(s), -$${String(upkeep.rental_total_per_round)}/round`,
+      )
     }
     lines.push("")
   }

@@ -16,6 +16,7 @@ Use `balatro_list_game_entities` to read entity prototypes from the running game
 - Issue actions through the typed bridge tools (e.g. `balatro_play_hand`, `balatro_discard_hand`, `balatro_buy_card`, `balatro_skip_blind`). Use `card_id` for live card actions, not `entity_id`.
 - Shared bridge errors: `GAME_NOT_RUNNING` means no Balatro instance is connected, `INSTANCE_BUSY` means another MCP client owns the bridge, and `PROTOCOL_MISMATCH` means the TypeScript server and Balatro mod versions are incompatible. Treat these as hard stops — do not fabricate state or outcomes.
 - Do not replay an action tool call unless the bridge explicitly reports it was lost or failed.
+- At MENU or GAME_OVER, `balatro_start_run` can start an unlocked supported deck and stake. `balatro_restart_run` is an opening-tag reroll that preserves the current setup and is legal only at Ante 1 before the Small Blind is played or skipped. Use opening rerolls only when the user explicitly requests them; never loop until an ideal tag appears by default.
 
 ### Tactical Checks
 
@@ -24,6 +25,7 @@ Use `balatro_list_game_entities` to read entity prototypes from the running game
 - Do not routinely finish a difficult round with all discards unused. Red Deck's extra discard is a resource for finding the build-defining hand, especially when the current hand cannot meet the Blind in the remaining plays.
 - During blind selection, inspect `blind_selection` and its `skip_reward` before deciding. Boss Blinds cannot be skipped. Skip Small or Big blinds only when the tag's concrete value and tempo exceed the lost blind reward, shop access, and scaling opportunities.
 - Joker order is gameplay-relevant because scoring resolves left to right. In general, put additive Chips/Mult before xMult, and position Blueprint, Brainstorm, or other copy effects against the intended target before playing.
+- Treat Joker stickers as economic and slot constraints. Eternal Jokers cannot be sold. Perishable Jokers expose their remaining active rounds and should usually be sold after becoming debuffed when the slot is needed. Each Rental Joker charges its displayed cost every round; add the per-card costs together before buying or retaining several rentals.
 
 ### Reasoning Style
 

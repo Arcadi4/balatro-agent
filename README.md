@@ -72,11 +72,12 @@ The server and the mod find each other at `/tmp/balatro-mcp.sock` on macOS and L
 
 ## What the agent can do
 
-The agent has 22 tools available.
+The agent has 24 tools available.
 
 | Area | Tools |
 | --- | --- |
 | Inspect the game | `balatro_inspect_game_state`, `balatro_inspect_card_instance` |
+| Run control | `balatro_start_run`, `balatro_restart_run` |
 | Blinds | `balatro_select_blind`, `balatro_skip_blind` |
 | Hand | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand` |
 | Shop | `balatro_buy_card`, `balatro_buy_consumable`, `balatro_buy_voucher`, `balatro_buy_booster`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |

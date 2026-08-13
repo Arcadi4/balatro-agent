@@ -68,6 +68,16 @@ local function get_card_stickers(card)
   return stickers
 end
 
+local function get_perishable_rounds_remaining(card)
+  if not card or not card.ability or not card.ability.perishable then return nil end
+  return tonumber(card.ability.perish_tally)
+end
+
+local function get_rental_cost_per_round(card)
+  if not card or not card.ability or not card.ability.rental then return nil end
+  return G and G.GAME and tonumber(G.GAME.rental_rate) or 3
+end
+
 local function get_card_edition(card)
   if not card or not card.edition then return nil end
   local ed = card.edition
@@ -225,6 +235,8 @@ local function serialize_joker(card)
     sell_value = card.sell_cost,
     edition = get_card_edition(card),
     stickers = get_card_stickers(card),
+    perishable_rounds_remaining = get_perishable_rounds_remaining(card),
+    rental_cost_per_round = get_rental_cost_per_round(card),
     debuffed = card.debuff or nil,
     cost = card.cost,
   }
@@ -285,6 +297,8 @@ local function serialize_shop_card(card)
     sell_value = card.sell_cost,
     edition = get_card_edition(card),
     stickers = get_card_stickers(card),
+    perishable_rounds_remaining = get_perishable_rounds_remaining(card),
+    rental_cost_per_round = get_rental_cost_per_round(card),
   }
 end
 
@@ -346,6 +360,15 @@ local function compute_legal_actions()
     local blind_ui = blind_key and G.blind_select_opts and G.blind_select_opts[string.lower(blind_key)]
     local select_button = blind_ui and blind_ui.get_UIE_by_ID and blind_ui:get_UIE_by_ID('select_blind_button')
     local round_resets = G.GAME and G.GAME.round_resets
+    local selected_back = G.GAME and G.GAME.selected_back
+    local selected_center = selected_back and selected_back.effect and selected_back.effect.center
+    local basic_decks = { b_red = true, b_blue = true, b_yellow = true, b_green = true, b_black = true }
+    if round_resets and round_resets.ante == 1 and blind_key == 'Small'
+        and selected_center and basic_decks[selected_center.key]
+        and not G.GAME.seeded and not G.GAME.challenge
+        and G.GAME.stake and G.GAME.stake >= 1 and G.GAME.stake <= 8 then
+      actions[#actions + 1] = 'restart_run'
+    end
     if G.GAME and G.GAME.round_resets and G.GAME.round_resets.blind_choices
         and (blind_key == 'Small' or blind_key == 'Big' or blind_key == 'Boss')
         and G.GAME.round_resets.blind_choices[blind_key]
@@ -358,6 +381,8 @@ local function compute_legal_actions()
         actions[#actions + 1] = 'skip_blind'
       end
     end
+  elseif gs == states.MENU or gs == states.GAME_OVER then
+    actions[#actions + 1] = 'start_run'
   elseif gs == states.SHOP then
     local has_card = false
     local has_consumable = false
@@ -613,6 +638,17 @@ local function snapshot()
   payload.bankrupt_at = G.GAME and G.GAME.bankrupt_at
   payload.ante = G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante
 
+  local selected_back = G.GAME and G.GAME.selected_back
+  local selected_center = selected_back and selected_back.effect and selected_back.effect.center
+  if selected_center and selected_center.key then
+    payload.run_setup = {
+      deck = selected_center.key,
+      stake_level = G.GAME.stake,
+      stake = G.GAME.stake and SMODS and SMODS.stake_from_index
+          and SMODS.stake_from_index(G.GAME.stake) or nil,
+    }
+  end
+
   if G.GAME and G.GAME.blind then
     local b = G.GAME.blind
     payload.blind = {
@@ -658,13 +694,26 @@ local function snapshot()
 
   if G.jokers and G.jokers.cards then
     local jokers = {}
+    local rental_count = 0
+    local rental_total_per_round = 0
     for _, card in ipairs(G.jokers.cards) do
       local set = card and card.config and card.config.center and card.config.center.set
       if set == nil or set == 'Joker' then
         jokers[#jokers + 1] = serialize_joker(card)
+        local rental_cost = get_rental_cost_per_round(card)
+        if rental_cost then
+          rental_count = rental_count + 1
+          rental_total_per_round = rental_total_per_round + rental_cost
+        end
       end
     end
     if #jokers > 0 then payload.jokers = jokers end
+    if rental_count > 0 then
+      payload.joker_upkeep = {
+        rental_count = rental_count,
+        rental_total_per_round = rental_total_per_round,
+      }
+    end
   end
 
   if G.consumeables and G.consumeables.cards then
