@@ -8,6 +8,7 @@ import { registerCardModifiersResource } from "./resources/cardModifiers.js"
 import { registerChallengesResource } from "./resources/challenges.js"
 import { registerDecksResource } from "./resources/decks.js"
 import { registerRulesResource } from "./resources/rules.js"
+import { registerWikiResource } from "./resources/wiki.js"
 import { registerAllTools } from "./tools/index.js"
 
 const LIST_CACHE_HINT = { ttlMs: 60_000, cacheScope: "public" } as const
@@ -36,6 +37,7 @@ function createServer(bridge: BridgeClient): McpServer {
   registerChallengesResource(server)
   registerDecksResource(server)
   registerRulesResource(server)
+  registerWikiResource(server)
   registerStrategyPrompt(server)
   return server
 }

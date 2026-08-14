@@ -72,20 +72,29 @@ The server and the mod find each other at `/tmp/balatro-mcp.sock` on macOS and L
 
 ## What the agent can do
 
-The agent has 25 tools available.
+The agent has 27 tools available.
 
 | Area | Tools |
 | --- | --- |
-| Inspect the game | `balatro_inspect_game_state`, `balatro_inspect_card_instance` |
+| Inspect the game | `balatro_inspect_game_state`, `balatro_inspect_card_instance`, `balatro_inspect_deck`, `balatro_inspect_run_info` |
 | Blinds | `balatro_select_blind`, `balatro_skip_blind` |
 | Hand | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand` |
 | Shop | `balatro_buy_card`, `balatro_buy_consumable`, `balatro_buy_voucher`, `balatro_buy_booster`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
 | Cards | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers` |
 | Boosters | `balatro_select_booster_card`, `balatro_skip_booster` |
 | Game control | `balatro_new_game`, `balatro_continue_game`, `balatro_restart` |
-| Game knowledge | `balatro_list_game_entities`, `balatro_read_wiki` |
+| Game knowledge | `balatro_list_game_entities`, `balatro_wiki_search` |
 
 The agent also receives the static rules of Balatro through the `balatro://rules/global` resource and the `balatro_strategy_context` prompt, so it can make decisions without external documentation.
+
+## Wiki resources
+
+Balatro Wiki articles are fetched live and rendered as Markdown resources:
+
+- `balatro://wiki/index` lists the important pages with their resource URI, wiki URL, and a summary.
+- `balatro://wiki/<Title>` renders any wiki page as Markdown (for example `balatro://wiki/Blueprint`). Spaces may be written as underscores.
+
+Use the `balatro_wiki_search` tool to find the exact title first.
 
 ## Troubleshooting
 

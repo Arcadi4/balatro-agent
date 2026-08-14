@@ -1,0 +1,1 @@
+Searches the Balatro Wiki for article titles matching a keyword query. Returns matching titles with a short snippet and URL. Use this to discover the exact article title, then fetch the full page as Markdown via the balatro://wiki/<Title> resource.
