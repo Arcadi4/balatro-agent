@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server"
 
 import rulesMarkdown from "../../data/rules/global.md" with { type: "text" }
 
-const RULES_URI = "balatro://rules/global"
+const RULES_URI = "balatro://rules"
 export const RULES_MARKDOWN = rulesMarkdown
 
 export const RULES_VERSION = new Bun.CryptoHasher("sha256")

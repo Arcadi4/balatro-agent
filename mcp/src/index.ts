@@ -21,7 +21,7 @@ function createServer(bridge: BridgeClient): McpServer {
     },
     {
       instructions:
-        "Inspect the live game state before acting. Static game rules are available as balatro://rules/global or through the balatro_strategy_context prompt.",
+        "Inspect the live game state before acting. Static game rules are available as balatro://rules or through the balatro_strategy_context prompt.",
       cacheHints: {
         "server/discover": LIST_CACHE_HINT,
         "tools/list": LIST_CACHE_HINT,
