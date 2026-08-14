@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "privacy": "Aggregate run metadata only. Raw conversations, reasoning, identifiers, local paths, and credentials are excluded.",
+  "benchmark_status": "exploratory_live_runs",
+  "local_performance_observation": {
+    "platform": "Windows",
+    "scope": "single_local_machine",
+    "observation": "Long OpenCode sessions sometimes produced visible Balatro frame drops around Ante 5 or later.",
+    "successful_v4_run_duration_minutes": 86,
+    "successful_v4_persistent_slow_frame_context_tokens": 90674,
+    "observed_relief": "Closing OpenCode removed the visible lag in the observed case.",
+    "root_cause": "unconfirmed",
+    "cross_platform_reproduction": false
+  },
+  "variants": [
+    {
+      "version": "v1",
+      "prompt_file": "balatro-v1-2026-07-19.md",
+      "snapshot_date": "2026-07-19",
+      "snapshot_fidelity": "closest_preserved_pre_campfire_snapshot",
+      "evidence": {
+        "model": "DeepSeek V4 Flash",
+        "channel": "OpenCode free",
+        "deck": "Green Deck",
+        "stake": "White Stake",
+        "best_ante": 8,
+        "terminal_phase": "SHOP",
+        "result": "provider_quota_limited",
+        "autonomous_clear": false,
+        "tool_calls": 493,
+        "tool_errors": 3,
+        "observed_duration_minutes": 108
+      }
+    },
+    {
+      "version": "v2",
+      "prompt_file": "balatro-v2-2026-07-23.md",
+      "snapshot_date": "2026-07-23",
+      "snapshot_fidelity": "preserved_file",
+      "evidence": null
+    },
+    {
+      "version": "v3",
+      "prompt_file": "balatro-v3-2026-07-23.md",
+      "snapshot_date": "2026-07-23",
+      "snapshot_fidelity": "preserved_file",
+      "evidence": {
+        "model": "DeepSeek V4 Flash",
+        "channel": "OpenCode free",
+        "runs_in_export": [
+          {
+            "deck": "Red Deck",
+            "stake": "White Stake",
+            "terminal_ante": 3
+          },
+          {
+            "deck": "Blue Deck",
+            "stake": "White Stake",
+            "terminal_ante": 7,
+            "terminal_phase": "GAME_OVER"
+          }
+        ],
+        "best_ante": 7,
+        "autonomous_clear": false,
+        "session_tool_calls": 530,
+        "session_tool_errors": 30,
+        "observed_duration_minutes": 61
+      }
+    },
+    {
+      "version": "v4",
+      "prompt_file": "balatro-v4-2026-07-24.md",
+      "snapshot_date": "2026-07-24",
+      "snapshot_fidelity": "preserved_successful_run_snapshot",
+      "evidence": {
+        "model": "DeepSeek V4 Flash",
+        "channel": "OpenCode free",
+        "deck": "Red Deck",
+        "stake": "White Stake",
+        "ante_8_boss": "Verdant Leaf",
+        "ante_8_target_chips": 100000,
+        "ante_8_scored_chips": 107315,
+        "terminal_ante": 9,
+        "terminal_phase": "ROUND_EVAL",
+        "result": "ante_8_boss_defeated",
+        "autonomous_clear": true,
+        "tool_calls": 351,
+        "tool_errors": 4,
+        "observed_duration_minutes": 86
+      }
+    }
+  ]
+}

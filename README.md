@@ -96,6 +96,8 @@ Balatro Wiki articles are fetched live and rendered as Markdown resources:
 
 Use the `balatro_wiki_search` tool to find the exact title first.
 
+Four tested OpenCode agent-prompt iterations and privacy-safe aggregate run evidence are available in [`examples/opencode/agents`](examples/opencode/agents/README.md).
+
 ## Troubleshooting
 
 - **The agent cannot reach the game.** Make sure Balatro is running with the mod enabled, then restart your MCP client.

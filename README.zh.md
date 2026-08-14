@@ -87,6 +87,8 @@ MCP 客户端 ── stdio ──> Bun 服务器 ── JSON-RPC 2.0 / NDJSON �
 
 智能体还会通过 `balatro://rules/global` 资源和 `balatro_strategy_context` prompt 获得 Balatro 的静态规则，无需查阅外部文档即可做出决策。
 
+四个经过实机测试的 OpenCode 智能体提示词版本及脱敏汇总证据位于 [`examples/opencode/agents`](examples/opencode/agents/README.md)。
+
 ## 故障排除
 
 - **智能体无法连接游戏。** 确认 Balatro 正在运行且 Mod 已启用，然后重启 MCP 客户端。
