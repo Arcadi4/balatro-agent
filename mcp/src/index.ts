@@ -4,6 +4,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio"
 import packageJson from "../package.json"
 import { BridgeClient } from "./bridge/socket-client.js"
 import { registerStrategyPrompt } from "./prompts/strategy.js"
+import { registerCardModifiersResource } from "./resources/cardModifiers.js"
 import { registerChallengesResource } from "./resources/challenges.js"
 import { registerDecksResource } from "./resources/decks.js"
 import { registerRulesResource } from "./resources/rules.js"
@@ -31,8 +32,9 @@ function createServer(bridge: BridgeClient): McpServer {
   )
 
   registerAllTools(server, bridge)
-  registerDecksResource(server)
+  registerCardModifiersResource(server)
   registerChallengesResource(server)
+  registerDecksResource(server)
   registerRulesResource(server)
   registerStrategyPrompt(server)
   return server
