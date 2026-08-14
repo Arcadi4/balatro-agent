@@ -561,6 +561,35 @@ handlers.cash_out = function(args)
   return ok({ cashed_out = true })
 end
 
+handlers.restart = function(args)
+  if not G or not G.STAGE or not G.STAGES or G.STAGE ~= G.STAGES.RUN then
+    return err("WRONG_PHASE", "Restart is only available during a run")
+  end
+  if not G.GAME then
+    return err("GAME_NOT_RUNNING", "No run in progress")
+  end
+
+  -- Mirrors holding R in the run: reset the streak, preserve the current
+  -- deck/stake/seed, and start a new run without opening the setup screen.
+  if not G.GAME.won and not G.GAME.seeded and not G.GAME.challenge then
+    G.PROFILES[G.SETTINGS.profile].high_scores.current_streak.amt = 0
+  end
+  G:save_settings()
+  G.SETTINGS.current_setup = 'New Run'
+  G.GAME.viewed_back = nil
+  G.run_setup_seed = G.GAME.seeded
+  G.challenge_tab = G.GAME and G.GAME.challenge and G.GAME.challenge_tab or nil
+  G.forced_seed, G.setup_seed = nil, nil
+  if G.GAME.seeded then G.forced_seed = G.GAME.pseudorandom.seed end
+  G.forced_stake = G.GAME.stake
+  G.FUNCS.start_setup_run()
+  G.forced_stake = nil
+  G.challenge_tab = nil
+  G.forced_seed = nil
+
+  return ok({ restarted = true })
+end
+
 handlers.buy_booster = function(args)
   local phase_err = require_shop_phase('balatro_buy_booster')
   if phase_err then return phase_err end

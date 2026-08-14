@@ -398,6 +398,9 @@ local function compute_legal_actions()
     actions[#actions + 1] = 'sell_card'
   end
 
+  if G.STAGE == G.STAGES.RUN and G.GAME then
+    actions[#actions + 1] = 'restart'
+  end
   return actions
 end
 

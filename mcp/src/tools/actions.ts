@@ -13,6 +13,7 @@ import LEAVE_SHOP_DESCRIPTION from "./descriptions/leave-shop.txt" with { type: 
 import PLAY_HAND_DESCRIPTION from "./descriptions/play-hand.txt" with { type: "text" }
 import REORDER_JOKERS_DESCRIPTION from "./descriptions/reorder-jokers.txt" with { type: "text" }
 import REROLL_SHOP_DESCRIPTION from "./descriptions/reroll-shop.txt" with { type: "text" }
+import RESTART_DESCRIPTION from "./descriptions/restart.txt" with { type: "text" }
 import SELECT_BLIND_DESCRIPTION from "./descriptions/select-blind.txt" with { type: "text" }
 import SELECT_BOOSTER_CARD_DESCRIPTION from "./descriptions/select-booster-card.txt" with { type: "text" }
 import SELECT_HAND_CARDS_DESCRIPTION from "./descriptions/select-hand-cards.txt" with { type: "text" }
@@ -169,6 +170,13 @@ const NO_ARG_TOOLS: ActionTool[] = [
     title: "Skip Booster",
     description: SKIP_BOOSTER_DESCRIPTION,
     command: "skip_booster",
+    annotations: annotations(true, false),
+  },
+  {
+    name: "balatro_restart",
+    title: "Restart Run",
+    description: RESTART_DESCRIPTION,
+    command: "restart",
     annotations: annotations(true, false),
   },
 ]
