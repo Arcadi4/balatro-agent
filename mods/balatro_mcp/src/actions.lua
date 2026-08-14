@@ -590,6 +590,30 @@ handlers.restart = function(args)
   return ok({ restarted = true })
 end
 
+handlers.continue_game = function(args)
+  if not G or not G.STAGE or not G.STAGES or G.STAGE ~= G.STAGES.MAIN_MENU
+      or not G.STATE or not G.STATES or G.STATE ~= G.STATES.MENU then
+    return err("WRONG_PHASE", "Continue game is only available from the main menu")
+  end
+  if not G.FUNCS or type(G.FUNCS.can_continue) ~= "function"
+      or type(G.FUNCS.start_run) ~= "function" then
+    return err("CANNOT_USE_NOW", "Continue game action is not ready")
+  end
+
+  local profile = G.SETTINGS and G.SETTINGS.profile
+  if profile == nil or not love.filesystem.getInfo(tostring(profile) .. "/save.jkr") then
+    return err("CANNOT_USE_NOW", "No saved game is available")
+  end
+
+  local can_continue = G.FUNCS.can_continue({ config = { func = true } })
+  if not can_continue or not G.SAVED_GAME then
+    return err("CANNOT_USE_NOW", "No valid saved game is available")
+  end
+
+  G.FUNCS.start_run(nil, { savetext = G.SAVED_GAME })
+  return ok({ continued = true })
+end
+ 
 handlers.new_game = function(args)
   if not G or not G.GAME then
     return err("GAME_NOT_RUNNING", "Game not ready")

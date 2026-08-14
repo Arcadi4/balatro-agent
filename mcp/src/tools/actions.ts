@@ -8,6 +8,7 @@ import BUY_CARD_DESCRIPTION from "./descriptions/buy-card.txt" with { type: "tex
 import BUY_CONSUMABLE_DESCRIPTION from "./descriptions/buy-consumable.txt" with { type: "text" }
 import BUY_VOUCHER_DESCRIPTION from "./descriptions/buy-voucher.txt" with { type: "text" }
 import CASH_OUT_DESCRIPTION from "./descriptions/cash-out.txt" with { type: "text" }
+import CONTINUE_GAME_DESCRIPTION from "./descriptions/continue-game.txt" with { type: "text" }
 import DISCARD_HAND_DESCRIPTION from "./descriptions/discard-hand.txt" with { type: "text" }
 import LEAVE_SHOP_DESCRIPTION from "./descriptions/leave-shop.txt" with { type: "text" }
 import NEW_GAME_DESCRIPTION from "./descriptions/new-game.txt" with { type: "text" }
@@ -194,6 +195,13 @@ const NO_ARG_TOOLS: ActionTool[] = [
     title: "Restart Run",
     description: RESTART_DESCRIPTION,
     command: "restart",
+    annotations: annotations(true, false),
+  },
+  {
+    name: "balatro_continue_game",
+    title: "Continue Game",
+    description: CONTINUE_GAME_DESCRIPTION,
+    command: "continue_game",
     annotations: annotations(true, false),
   },
 ]

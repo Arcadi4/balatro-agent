@@ -72,7 +72,7 @@ The server and the mod find each other at `/tmp/balatro-mcp.sock` on macOS and L
 
 ## What the agent can do
 
-The agent has 22 tools available.
+The agent has 25 tools available.
 
 | Area | Tools |
 | --- | --- |
@@ -82,6 +82,7 @@ The agent has 22 tools available.
 | Shop | `balatro_buy_card`, `balatro_buy_consumable`, `balatro_buy_voucher`, `balatro_buy_booster`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
 | Cards | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers` |
 | Boosters | `balatro_select_booster_card`, `balatro_skip_booster` |
+| Game control | `balatro_new_game`, `balatro_continue_game`, `balatro_restart` |
 | Game knowledge | `balatro_list_game_entities`, `balatro_read_wiki` |
 
 The agent also receives the static rules of Balatro through the `balatro://rules/global` resource and the `balatro_strategy_context` prompt, so it can make decisions without external documentation.
