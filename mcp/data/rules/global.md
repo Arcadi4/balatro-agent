@@ -46,8 +46,16 @@ When a hand is played, effects activate in this sequence:
 3. **Scored cards** (left to right), each card in order:
    - Base chips (rank value) → enhancement → seal → edition → "on scored" Jokers → retriggers
 4. **Held-in-hand cards** (left to right) — Steel cards, Baron, Shoot the Moon, Mime retriggers
-5. **Joker editions + "Independent" Jokers** (left to right) — Foil, Holographic, Polychrome, and independent effects (e.g., The Duo, Blackboard)
+5. **Joker editions + "Independent" Jokers** (left to right) — Foil, Holographic, Polychrome, and independent effects (e.g., Spare Trousers, The Duo, Blackboard)
 6. **Score = Chips × Mult** — the final multiplication
+
+### ×Mult Multiplies Only Prior Mult
+
+A multiplicative bonus (×Mult) multiplies the Mult accumulated **before** it triggers, never later additions:
+
+- **Steel ×1.5** triggers in the held-in-hand phase (step 4), **before** independent Jokers (step 5). It multiplies base Mult plus played-card/on-scored effects, but **not** independent-Joker +Mult such as Spare Trousers.
+- **Joker Polychrome ×1.5** triggers right after its own Joker (step 5), multiplying that Joker's Mult but not later Jokers.
+- **Glass ×2** triggers when the card is scored (step 3), multiplying Mult accumulated up to that card.
 
 ### Key Rules
 
