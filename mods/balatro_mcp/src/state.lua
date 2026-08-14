@@ -388,7 +388,9 @@ local function compute_legal_actions()
     actions[#actions + 1] = 'skip_booster'
 
   elseif gs == states.ROUND_EVAL then
-    actions[#actions + 1] = 'cash_out'
+    if G.round_eval then
+      actions[#actions + 1] = 'cash_out'
+    end
   end
 
   if (gs == states.BLIND_SELECT or gs == states.SELECTING_HAND or gs == states.ROUND_EVAL or gs == states.SHOP)

@@ -550,12 +550,13 @@ handlers.cash_out = function(args)
   if not G.FUNCS or type(G.FUNCS.cash_out) ~= "function" then
     return err("CANNOT_USE_NOW", "Cash-out action is not ready")
   end
-  local cash_out_button = G.round_eval and G.round_eval.get_UIE_by_ID
-    and G.round_eval:get_UIE_by_ID("cash_out_button")
-  if not cash_out_button then
+  if not G.round_eval then
     return err("CANNOT_USE_NOW", "Cash-out screen is not ready")
   end
-  G.FUNCS.cash_out(cash_out_button)
+  -- The cash_out_button is rendered in a separate UIBox (major = G.round_eval),
+  -- not as a child of G.round_eval, so get_UIE_by_ID never finds it.
+  -- G.FUNCS.cash_out only writes e.config.button, so a synthetic table suffices.
+  G.FUNCS.cash_out({ config = {} })
 
   return ok({ cashed_out = true })
 end
