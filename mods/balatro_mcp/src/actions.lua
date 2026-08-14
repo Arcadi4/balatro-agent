@@ -590,6 +590,74 @@ handlers.restart = function(args)
   return ok({ restarted = true })
 end
 
+handlers.new_game = function(args)
+  if not G or not G.GAME then
+    return err("GAME_NOT_RUNNING", "Game not ready")
+  end
+  if not G.FUNCS or type(G.FUNCS.start_setup_run) ~= "function" then
+    return err("CANNOT_USE_NOW", "New game action is not ready")
+  end
+
+  local challenge = args.challenge
+  local deck = args.deck
+  local stake = args.stake
+  local seed = args.seed
+
+  if challenge then
+    if deck or stake or seed then
+      return err("INVALID_TARGET", "challenge cannot be combined with deck, stake, or seed")
+    end
+    local challenge_obj = SMODS.Challenges[challenge]
+    if not challenge_obj then
+      return err("INVALID_TARGET", "Unknown challenge: " .. tostring(challenge))
+    end
+    if not (G.PROFILES[G.SETTINGS.profile].all_unlocked or challenge_obj:unlocked()) then
+      return err("LOCKED", "Challenge not unlocked: " .. tostring(challenge))
+    end
+  else
+    if not deck or stake == nil then
+      return err("INVALID_TARGET", "deck and stake are required when challenge is not specified")
+    end
+    local deck_center = G.P_CENTERS[deck]
+    if not deck_center or deck_center.set ~= 'Back' or deck_center.omit then
+      return err("INVALID_TARGET", "Unknown deck: " .. tostring(deck))
+    end
+    if not deck_center.unlocked and not G.PROFILES[G.SETTINGS.profile].all_unlocked then
+      return err("LOCKED", "Deck not unlocked: " .. tostring(deck))
+    end
+    if type(stake) ~= 'number' or stake < 1 or stake > 8 or stake % 1 ~= 0 then
+      return err("INVALID_TARGET", "stake must be an integer between 1 and 8")
+    end
+    if not SMODS.stake_is_unlocked(SMODS.stake_from_index(stake), deck) then
+      return err("LOCKED", "Stake not unlocked for this deck: " .. tostring(stake))
+    end
+  end
+
+  -- start_setup_run resets the win streak and persists settings itself.
+  G.SETTINGS.current_setup = 'New Run'
+  G.GAME.viewed_back = nil
+  G.run_setup_seed = nil
+  G.challenge_tab = nil
+  G.forced_seed, G.setup_seed = nil, nil
+  G.forced_stake = nil
+
+  if challenge then
+    G.forced_stake = 1
+    G.challenge_tab = SMODS.Challenges[challenge]
+  else
+    G.GAME.viewed_back = Back(G.P_CENTERS[deck])
+    G.forced_stake = stake
+    if seed then G.forced_seed = seed end
+  end
+
+  G.FUNCS.start_setup_run()
+  G.forced_stake = nil
+  G.challenge_tab = nil
+  G.forced_seed = nil
+
+  return ok({ started = true })
+end
+
 handlers.buy_booster = function(args)
   local phase_err = require_shop_phase('balatro_buy_booster')
   if phase_err then return phase_err end

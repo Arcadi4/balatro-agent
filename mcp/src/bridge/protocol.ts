@@ -45,6 +45,7 @@ const ERROR_CODES: Record<number, string> = {
   [-32015]: "PACK_LIMIT_REACHED",
   [-32017]: "VOUCHER_DEPENDENCY",
   [-32018]: "CANNOT_USE_NOW",
+  [-32019]: "LOCKED",
   [-32032]: "INTERNAL_ERROR",
 }
 

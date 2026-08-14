@@ -10,6 +10,7 @@ import BUY_VOUCHER_DESCRIPTION from "./descriptions/buy-voucher.txt" with { type
 import CASH_OUT_DESCRIPTION from "./descriptions/cash-out.txt" with { type: "text" }
 import DISCARD_HAND_DESCRIPTION from "./descriptions/discard-hand.txt" with { type: "text" }
 import LEAVE_SHOP_DESCRIPTION from "./descriptions/leave-shop.txt" with { type: "text" }
+import NEW_GAME_DESCRIPTION from "./descriptions/new-game.txt" with { type: "text" }
 import PLAY_HAND_DESCRIPTION from "./descriptions/play-hand.txt" with { type: "text" }
 import REORDER_JOKERS_DESCRIPTION from "./descriptions/reorder-jokers.txt" with { type: "text" }
 import REROLL_SHOP_DESCRIPTION from "./descriptions/reroll-shop.txt" with { type: "text" }
@@ -70,6 +71,22 @@ const buyConsumableSchema = z
     card_id: cardIdSchema,
     use: z.boolean().describe("Whether to apply the consumable immediately instead of storing it."),
     targets: targetsSchema,
+  })
+  .strict()
+const newGameSchema = z
+  .object({
+    deck: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Deck key (b_red, b_blue, ...). See balatro://decks."),
+    stake: z.number().int().min(1).max(8).optional().describe("Stake difficulty, 1-8."),
+    seed: z.string().min(1).optional().describe("Seed for a seeded run."),
+    challenge: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Challenge id (*_1). See balatro://challenges."),
   })
   .strict()
 const commandOutputSchema = z.object({ ok: z.literal(true), data: z.unknown() }).strict()
@@ -325,5 +342,18 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       annotations: annotations(false, true),
     },
     ({ order }) => commandResult(bridge, "reorder_jokers", { card_ids: order.map(String) }),
+  )
+
+  server.registerTool(
+    "balatro_new_game",
+    {
+      title: "New Game",
+      description: NEW_GAME_DESCRIPTION,
+      inputSchema: newGameSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(true, false),
+    },
+    ({ deck, stake, seed, challenge }) =>
+      commandResult(bridge, "new_game", { deck, stake, seed, challenge }),
   )
 }
