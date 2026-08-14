@@ -5,6 +5,8 @@ import type { BridgeClient } from "../bridge/socket-client.js"
 import { asRecord, toolError, toolResult, withBridgeErrors } from "../response.js"
 import INSPECT_CARD_INSTANCE_DESCRIPTION from "./descriptions/inspect-card-instance.txt" with { type: "text" }
 import INSPECT_GAME_STATE_DESCRIPTION from "./descriptions/inspect-game-state.txt" with { type: "text" }
+import INSPECT_DECK_DESCRIPTION from "./descriptions/inspect-deck.txt" with { type: "text" }
+import INSPECT_RUN_INFO_DESCRIPTION from "./descriptions/inspect-run-info.txt" with { type: "text" }
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
@@ -503,6 +505,98 @@ function stateToMarkdown(data: object): string {
   return lines.join("\n")
 }
 
+function statLines(value: unknown): string[] {
+  const obj = asRecord(value)
+  if (!obj) return []
+  const entries = Object.entries(obj).filter(([, count]) => count !== undefined && count !== null)
+  if (entries.length === 0) return []
+  return entries.map(([key, count]) => `- ${key}: ${String(count)}`)
+}
+
+function deckToMarkdown(data: Record<string, unknown>): string {
+  const payload = (data.payload ?? {}) as Record<string, unknown>
+  const deck = asRecord(payload.deck_summary)
+  if (!deck) return "No deck data available."
+  const lines: string[] = []
+  lines.push("# Deck\n")
+  lines.push(`**Total cards:** ${String(deck.count ?? 0)}  `)
+  lines.push("")
+
+  const sections: ReadonlyArray<readonly [string, unknown]> = [
+    ["By Rank", deck.by_rank],
+    ["By Suit", deck.by_suit],
+    ["By Enhancement", deck.by_enhancement],
+    ["By Seal", deck.by_seal],
+    ["By Edition", deck.by_edition],
+  ]
+  for (const [title, field] of sections) {
+    const stats = statLines(field)
+    if (stats.length > 0) {
+      lines.push(`## ${title}\n`)
+      lines.push(...stats)
+      lines.push("")
+    }
+  }
+
+  if (Array.isArray(deck.cards) && deck.cards.length > 0) {
+    lines.push("## Cards\n")
+    for (const card of deck.cards) {
+      const record = asRecord(card)
+      if (record) lines.push(`- ${displayHandCard(record)}`)
+    }
+  }
+
+  return lines.join("\n")
+}
+
+function runInfoToMarkdown(data: Record<string, unknown>): string {
+  const payload = (data.payload ?? {}) as Record<string, unknown>
+  const lines: string[] = []
+  lines.push("# Run Info\n")
+
+  if (Array.isArray(payload.hand_levels) && payload.hand_levels.length > 0) {
+    lines.push("## Hand Levels\n")
+    for (const entry of payload.hand_levels) {
+      const level = asRecord(entry)
+      if (!level) continue
+      const played = level.played !== undefined ? ` — played ${String(level.played)}x` : ""
+      lines.push(
+        `- **${String(level.name ?? "?")}**: Lv.${String(level.level ?? "?")} — ${String(level.chips ?? "?")} chips × ${String(level.mult ?? "?")} mult${played}`,
+      )
+    }
+    lines.push("")
+  }
+
+  if (Array.isArray(payload.used_vouchers) && payload.used_vouchers.length > 0) {
+    lines.push("## Vouchers\n")
+    for (const voucher of payload.used_vouchers) lines.push(`- \`${String(voucher)}\``)
+    lines.push("")
+  }
+
+  if (Array.isArray(payload.tags) && payload.tags.length > 0) {
+    lines.push("## Tags\n")
+    for (const entry of payload.tags) {
+      const tag = asRecord(entry)
+      if (tag) lines.push(`- ${String(tag.name ?? tag.entity_id ?? "?")}`)
+    }
+    lines.push("")
+  }
+
+  const discard = asRecord(payload.discard_summary)
+  if (discard) {
+    lines.push(`## Discard Pile (${String(discard.count ?? 0)})\n`)
+    if (Array.isArray(discard.cards) && discard.cards.length > 0) {
+      for (const card of discard.cards) {
+        const record = asRecord(card)
+        if (record) lines.push(`- ${displayHandCard(record)}`)
+      }
+    }
+    lines.push("")
+  }
+
+  return lines.join("\n").trimEnd() + "\n"
+}
+
 export function registerInspectGameState(server: McpServer, bridge: BridgeClient): void {
   server.registerTool(
     "balatro_inspect_game_state",
@@ -548,5 +642,37 @@ export function registerInspectGameState(server: McpServer, bridge: BridgeClient
         },
       )
     },
+  )
+
+  server.registerTool(
+    "balatro_inspect_deck",
+    {
+      title: "Inspect Deck",
+      description: INSPECT_DECK_DESCRIPTION,
+      inputSchema,
+      outputSchema: gameStateOutputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    () =>
+      withBridgeErrors(
+        () => bridge.getState(1_500),
+        (payload) => toolResult({ payload }, deckToMarkdown),
+      ),
+  )
+
+  server.registerTool(
+    "balatro_inspect_run_info",
+    {
+      title: "Inspect Run Info",
+      description: INSPECT_RUN_INFO_DESCRIPTION,
+      inputSchema,
+      outputSchema: gameStateOutputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    () =>
+      withBridgeErrors(
+        () => bridge.getState(1_500),
+        (payload) => toolResult({ payload }, runInfoToMarkdown),
+      ),
   )
 }

@@ -1,0 +1,1 @@
+Inspects the current run's deck: total card count, composition broken down by rank, suit, enhancement, seal, and edition, plus the full card list. Read-only. Use this instead of balatro_inspect_game_state when you need the deck's full composition — for example, to count how many of a rank or suit remain, or to see which enhancements/seals/editions are present.

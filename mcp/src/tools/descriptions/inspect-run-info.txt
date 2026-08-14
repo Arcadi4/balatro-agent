@@ -1,0 +1,1 @@
+Inspects run-level information not shown by balatro_inspect_game_state: poker hand levels (chips/mult/level/played count), used vouchers, held tags, blind selection details (including skip rewards), and the discard pile. Read-only. Use this to check hand-level progress, active vouchers/tags, upcoming blind choices, or what has been discarded.

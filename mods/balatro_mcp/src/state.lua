@@ -304,6 +304,10 @@ local function compute_legal_actions()
     end
     return G.consumeables and G.consumeables.cards and #G.consumeables.cards > 0
   end
+  local function has_saved_game()
+    if not G.SETTINGS or G.SETTINGS.profile == nil then return false end
+    return love.filesystem.getInfo(tostring(G.SETTINGS.profile) .. '/save.jkr') ~= nil
+  end
 
   local states = G.STATES
   local pack_state = false
@@ -399,6 +403,9 @@ local function compute_legal_actions()
   end
 
 
+  if G.STAGE == G.STAGES.MAIN_MENU and gs == states.MENU and has_saved_game() then
+    actions[#actions + 1] = 'continue_game'
+  end
   if G.STAGE == G.STAGES.RUN and G.GAME then
     actions[#actions + 1] = 'restart'
   end
@@ -424,9 +431,15 @@ local function compute_deck_summary()
   local count = #G.deck.cards
   local by_rank = {}
   local by_suit = {}
-  local by_modifier = {}
+  local by_enhancement = {}
+  local by_seal = {}
+  local by_edition = {}
+  local cards = {}
 
   for _, card in ipairs(G.deck.cards) do
+    local pc = serialize_playing_card(card)
+    if pc then cards[#cards + 1] = pc end
+
     if card.base then
       local rank = card.base.value
       local suit = card.base.suit
@@ -434,14 +447,21 @@ local function compute_deck_summary()
       if suit then by_suit[suit] = (by_suit[suit] or 0) + 1 end
     end
     local enh = get_card_enhancement(card)
-    if enh then by_modifier[enh] = (by_modifier[enh] or 0) + 1 end
+    if enh then by_enhancement[enh] = (by_enhancement[enh] or 0) + 1 end
+    local seal = card.seal
+    if seal then by_seal[seal] = (by_seal[seal] or 0) + 1 end
+    local edition = get_card_edition(card)
+    if edition then by_edition[edition] = (by_edition[edition] or 0) + 1 end
   end
 
   return {
     count = count,
     by_rank = next(by_rank) and by_rank or nil,
     by_suit = next(by_suit) and by_suit or nil,
-    by_modifier = next(by_modifier) and by_modifier or nil,
+    by_enhancement = next(by_enhancement) and by_enhancement or nil,
+    by_seal = next(by_seal) and by_seal or nil,
+    by_edition = next(by_edition) and by_edition or nil,
+    cards = cards,
   }
 end
 
@@ -687,7 +707,15 @@ local function snapshot()
   payload.deck_summary = compute_deck_summary()
 
   if G.discard and G.discard.cards then
-    payload.discard_summary = { count = #G.discard.cards }
+    local discard_cards = {}
+    for _, card in ipairs(G.discard.cards) do
+      local pc = serialize_playing_card(card)
+      if pc then discard_cards[#discard_cards + 1] = pc end
+    end
+    payload.discard_summary = {
+      count = #G.discard.cards,
+      cards = discard_cards,
+    }
   end
 
   payload.shop = snapshot_shop()
