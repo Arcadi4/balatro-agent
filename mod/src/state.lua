@@ -263,11 +263,8 @@ local function serialize_joker(card)
     active = is_active_joker(card),
   }
   if card.ability and type(card.ability.extra) == 'table' then
-    local extras = {}
-    for k, v in pairs(card.ability.extra) do
-      extras[k] = v
-    end
-    if next(extras) then
+    local extras = compact_table(card.ability.extra, 3)
+    if extras then
       obj.extras = extras
     end
   end
