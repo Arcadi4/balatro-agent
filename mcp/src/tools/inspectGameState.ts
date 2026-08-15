@@ -3,8 +3,8 @@ import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
 import { asRecord, toolResult, withBridgeErrors } from "../response.js"
-import INSPECT_GAME_STATE_DESCRIPTION from "./descriptions/inspect-game-state.txt" with { type: "text" }
 import INSPECT_DECK_DESCRIPTION from "./descriptions/inspect-deck.txt" with { type: "text" }
+import INSPECT_GAME_STATE_DESCRIPTION from "./descriptions/inspect-game-state.txt" with { type: "text" }
 import INSPECT_RUN_INFO_DESCRIPTION from "./descriptions/inspect-run-info.txt" with { type: "text" }
 
 const READ_ONLY_ANNOTATIONS = {
@@ -117,9 +117,11 @@ function displayJokerLine(card: Record<string, unknown>, index: number): string 
   const rarity = displayJokerRarity(card.rarity)
   const price = displayJokerPrice(card)
   const edition = displayCardModifier(card.edition, EDITION_NAMES)
-  const status = [edition, card.debuffed !== undefined ? "(x)" : undefined].filter(
-    (value): value is string => value !== undefined,
-  )
+  const status = [
+    edition,
+    card.debuffed !== undefined ? "(x)" : undefined,
+    card.active === true ? "(active)" : undefined,
+  ].filter((value): value is string => value !== undefined)
   const parts = [
     `${index}. [${String(card.card_id ?? "?")}]`,
     `${displayJokerName(card)}${rarity}`,
