@@ -1,1 +1,1 @@
-Restarts the current run with the same deck, stake, seed, and challenge, equivalent to holding the R key during a run or pressing New Run after a game over. The new run starts immediately without opening the deck/stake/seed setup screen. Requires an active run (including the game over screen); this is irreversible.
+Restart the current run with the same deck, stake, and seed.

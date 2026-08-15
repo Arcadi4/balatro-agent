@@ -1,1 +1,1 @@
-Purchases a Voucher from the shop and immediately redeems it, applying its permanent run effect and deducting its cost. Use this for any shop item shown as kind=voucher. Requires SHOP phase, an affordable Voucher, and any prerequisite base Voucher already purchased (upgraded Vouchers list their requirement, e.g. Illusion requires Magic Trick).
+Buy and redeem a voucher from the shop, applying its permanent run effect.

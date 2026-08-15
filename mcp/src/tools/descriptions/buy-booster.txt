@@ -1,1 +1,1 @@
-Buys a Booster Pack from the shop and opens it in a single action, deducting the pack's cost and revealing the cards inside. There is no separate "buy then open" step — buying a pack IS opening it. Once open, pick cards with balatro_select_booster_card or close the pack with balatro_skip_booster. Requires SHOP phase, an affordable Booster Pack, and no other Booster Pack currently open.
+Buy and open a booster pack from the shop. Buying a pack opens it immediately; pick cards with balatro_select_booster_card or close it with balatro_skip_booster.

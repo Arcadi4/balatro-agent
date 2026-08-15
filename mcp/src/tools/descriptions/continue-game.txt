@@ -1,1 +1,1 @@
-Continues the saved run from Balatro's main menu. Requires a valid saved run; returns an error when no saved run is available. This does not start a new run or overwrite the saved run.
+Continue the saved run from the main menu.

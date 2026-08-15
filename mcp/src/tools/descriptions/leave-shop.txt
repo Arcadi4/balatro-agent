@@ -1,1 +1,1 @@
-Leaves the current shop and advances the run to the next BLIND_SELECT phase, finalizing all purchases and rerolls made during this shop visit. Use this when you are done buying cards, opening Booster Packs, and rerolling, and want to proceed to the next ante's blind selection. Requires SHOP with no open Booster Pack or pending cash-out; resolve those before leaving.
+Leave the shop and advance to the next blind selection.

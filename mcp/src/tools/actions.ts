@@ -28,7 +28,7 @@ import USE_CONSUMABLE_DESCRIPTION from "./descriptions/use-consumable.txt" with 
 const emptySchema = z.object({}).strict()
 const cardIdSchema = z
   .union([z.string().min(1), z.number().int()])
-  .describe("Live card ID from balatro_inspect_game_state.")
+  .describe("Card ID from game state.")
 const cardIdInputSchema = z.object({ card_id: cardIdSchema }).strict()
 const targetsSchema = z
   .array(cardIdSchema)
@@ -37,9 +37,7 @@ const targetsSchema = z
     message: "targets must not contain duplicates",
   })
   .optional()
-  .describe(
-    "Ordered target card IDs for effects that act on cards in hand. Include any Cerulean Bell forced-selection card already highlighted.",
-  )
+  .describe("Target card IDs for effects that act on hand cards.")
 const targetedCardSchema = z.object({ card_id: cardIdSchema, targets: targetsSchema }).strict()
 const selectHandSchema = z
   .object({
@@ -49,14 +47,12 @@ const selectHandSchema = z
       .refine((cardIds) => new Set(cardIds.map(String)).size === cardIds.length, {
         message: "card_ids must not contain duplicates",
       })
-      .describe(
-        "Exact hand card IDs to highlight. An empty array clears selection unless Cerulean Bell forces a card; include every forced-selection card. Duplicates are rejected.",
-      ),
+  .describe("Hand card IDs to highlight. Empty array clears selection.")
   })
   .strict()
 const sortHandSchema = z
   .object({
-    order: z.enum(["rank", "suit"]).describe("How Balatro should sort the current hand."),
+    order: z.enum(["rank", "suit"]).describe("Sort by rank or suit."),
   })
   .strict()
 const reorderJokersSchema = z
@@ -64,13 +60,13 @@ const reorderJokersSchema = z
     order: z
       .array(cardIdSchema)
       .max(50)
-      .describe("All held Joker IDs in the desired left-to-right scoring order."),
+      .describe("Joker card IDs in desired left-to-right order."),
   })
   .strict()
 const buyConsumableSchema = z
   .object({
     card_id: cardIdSchema,
-    use: z.boolean().describe("Whether to apply the consumable immediately instead of storing it."),
+    use: z.boolean().describe("Apply the consumable immediately instead of storing it."),
     targets: targetsSchema,
   })
   .strict()
@@ -80,14 +76,14 @@ const newGameSchema = z
       .string()
       .min(1)
       .optional()
-      .describe("Deck key (b_red, b_blue, ...). See balatro://decks."),
+      .describe("Deck key (e.g. b_red, b_blue)."),
     stake: z.number().int().min(1).max(8).optional().describe("Stake difficulty, 1-8."),
     seed: z.string().min(1).optional().describe("Seed for a seeded run."),
     challenge: z
       .string()
       .min(1)
       .optional()
-      .describe("Challenge id (*_1). See balatro://challenges."),
+      .describe("Challenge id (e.g. c_omelette_1)."),
   })
   .strict()
 const commandOutputSchema = z.object({ ok: z.literal(true), data: z.unknown() }).strict()

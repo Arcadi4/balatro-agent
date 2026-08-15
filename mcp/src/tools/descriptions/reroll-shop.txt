@@ -1,1 +1,1 @@
-Rerolls the current shop offerings, replacing the displayed cards with a fresh set generated from the run's seed and spending the current reroll cost in dollars. Use this when the current shop offerings are not useful for your build and you have enough dollars to afford the rising reroll cost (which scales each time within the same shop visit). Requires SHOP and enough dollars for the current reroll cost; affects only the card row, not Booster Packs or Vouchers.
+Reroll the shop offerings, spending the current reroll cost.

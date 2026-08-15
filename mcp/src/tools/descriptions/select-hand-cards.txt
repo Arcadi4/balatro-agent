@@ -1,1 +1,1 @@
-Highlights specific hand cards for a subsequent play or discard, replacing the previous selection with the exact requested set. Pass an empty array to clear selection unless Cerulean Bell has forced a card; every forced-selection card must remain included. Order does not matter, duplicate IDs are rejected, and the legal limit is typically five cards. Requires SELECTING_HAND and current card IDs from balatro_inspect_game_state.
+Set the highlighted hand cards for the next play or discard. Pass an empty array to clear selection.

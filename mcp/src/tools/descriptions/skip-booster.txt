@@ -1,1 +1,1 @@
-Skips the remaining picks in an open Booster Pack, closing it and returning to the shop without selecting any more cards. Use this when a Booster Pack is open but you do not want any of the remaining revealed cards, or you have already picked the cards you want and wish to forfeit the remaining selections. Requires an open Booster Pack; this action is irreversible and the remaining cards in the pack are lost permanently.
+Close an open booster pack, forfeiting remaining picks.

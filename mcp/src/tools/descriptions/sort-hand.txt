@@ -1,1 +1,1 @@
-Sorts the player's current hand by rank or suit without consuming a hand, discard, or other game resource. Requires SELECTING_HAND. Pass order="rank" to group by card value or order="suit" to group by suit.
+Sort the hand by rank or suit without consuming a game resource.
