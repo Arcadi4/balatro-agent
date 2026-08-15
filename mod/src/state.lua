@@ -218,6 +218,35 @@ local function serialize_playing_card(card)
   }
 end
 
+-- Matches the game predicates that drive recurring Joker readiness jiggles.
+local function is_active_joker(card)
+  if not card or not card.ability or not G or not G.GAME or not G.STATE or not G.STATES then return false end
+  local ability = card.ability
+  local current_round = G.GAME.current_round
+  if not current_round then return false end
+
+  if ability.name == 'Trading Card' then
+    return G.STATE == G.STATES.SELECTING_HAND
+      and current_round.any_hand_drawn
+      and current_round.discards_used == 0
+      and not G.RESET_JIGGLES
+  end
+  if ability.name == 'DNA' then
+    return G.STATE == G.STATES.SELECTING_HAND
+      and current_round.any_hand_drawn
+      and current_round.hands_played == 0
+  end
+  if ability.name == 'Loyalty Card' then
+    return ability.loyalty_remaining == 0
+  end
+  if ability.name == 'Invisible Joker' then
+    return type(ability.invis_rounds) == 'number' and type(ability.extra) == 'number'
+      and ability.invis_rounds >= ability.extra and not card.REMOVED
+  end
+
+  return false
+end
+
 local function serialize_joker(card)
   if not card then return nil end
   local obj = {
@@ -232,6 +261,7 @@ local function serialize_joker(card)
     stickers = get_card_stickers(card),
     debuffed = card.debuff or nil,
     cost = card.cost,
+    active = is_active_joker(card),
   }
   if card.ability and type(card.ability.extra) == 'table' then
     local extras = {}
