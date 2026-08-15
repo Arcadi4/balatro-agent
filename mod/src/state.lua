@@ -272,6 +272,17 @@ local function serialize_joker(card)
   return obj
 end
 
+local function consumable_usable(card)
+  -- can_use_consumeable reads UI-refresh state (e.g. Wheel of Fortune's
+  -- eligible_strength_jokers) that is only populated during Card:update.
+  if type(card) ~= 'table' or type(card.can_use_consumeable) ~= 'function' then
+    return nil
+  end
+  local ok, usable = pcall(card.can_use_consumeable, card)
+  if not ok then return nil end
+  return usable
+end
+
 local function serialize_consumable(card)
   if not card then return nil end
   local kind = 'consumable'
@@ -291,6 +302,7 @@ local function serialize_consumable(card)
     edition = get_card_edition(card),
     stickers = get_card_stickers(card),
     cost = card.cost,
+    usable = consumable_usable(card),
   }
 end
 
