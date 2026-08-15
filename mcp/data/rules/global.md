@@ -129,7 +129,7 @@ Wiki lookup guide: This is summarized from the Balatro Wiki pages "Card modifier
 - **Shop Inventory**: 2 random cards + 2 Booster Packs + 1 Voucher (default)
 - **Reroll Behavior**: Packs and Vouchers do NOT restock on reroll; only on new shop entry
 
-Wiki lookup guide: This is summarized from the Balatro Wiki page "Booster Packs". To read the article through MCP, call `balatro_read_wiki` with `title: "Booster Packs"`; for pack contents, use entity names from `balatro_list_game_entities` and pass those names to `balatro_read_wiki`, such as `"The Fool"`, `"Mercury"`, `"Familiar"`, or `"Joker"`.
+Wiki lookup guide: This is summarized from the Balatro Wiki page "Booster Packs". To read the article through MCP, call `balatro_read_wiki` with `title: "Booster Packs"`; for pack contents, pass article titles such as `"The Fool"`, `"Mercury"`, `"Familiar"`, or `"Joker"`.
 
 ## Stakes Summary
 
@@ -173,7 +173,7 @@ This reference is for AI agent use in the Balatro MCP Bridge project.
 
 Wiki lookup guide:
 
-- Wiki article lookup: call `balatro_read_wiki` with exact article titles. When starting from an entity ID, call `balatro_list_game_entities`, read the returned `name`, and pass that title to `balatro_read_wiki`.
+- Wiki article lookup: call `balatro_read_wiki` with exact article titles.
 - Special high-value article titles summarized here: "Gameplay loop", "Poker hands", "The Shop", "Money", "Booster Packs", "Card modifiers", "Stickers", "Blinds and Antes", "Score", "Chips", "Stakes", "Jokers", "Tags", "Vouchers", "Decks", "Editions", "Enhancements", and "Challenge Decks".
 - Boss Blind article titles are natural names, not entity IDs: "The Hook", "The Wall", "The Psychic", "Amber Acorn", "Verdant Leaf", "Violet Vessel", "Crimson Heart", and "Cerulean Bell".
 - External non-Balatro-Wiki references summarized here but not addressable by MCP tools: the activation-sequence guide and the score-calculation guide. Use the summaries in this bundled resource; do not browse the web from a game-playing agent.

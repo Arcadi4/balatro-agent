@@ -18,7 +18,6 @@ end
 local bridge_commands = load_module('commands')
 local socket_module = jit.os == 'Windows' and 'socket_server_windows' or 'socket_server'
 local actions = load_module('actions')
-actions.list_game_entities = load_module('entities')
 bridge_commands.init({
   actions = actions,
   state = load_module('state'),

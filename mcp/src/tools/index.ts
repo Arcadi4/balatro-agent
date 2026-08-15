@@ -8,5 +8,5 @@ import { registerInspectGameState } from "./inspectGameState.js"
 export function registerAllTools(server: McpServer, bridge: BridgeClient): void {
   registerInspectGameState(server, bridge)
   registerActionTools(server, bridge)
-  registerEntityTools(server, bridge)
+  registerEntityTools(server)
 }

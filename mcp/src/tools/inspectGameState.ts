@@ -2,8 +2,7 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import { asRecord, toolError, toolResult, withBridgeErrors } from "../response.js"
-import INSPECT_CARD_INSTANCE_DESCRIPTION from "./descriptions/inspect-card-instance.txt" with { type: "text" }
+import { asRecord, toolResult, withBridgeErrors } from "../response.js"
 import INSPECT_GAME_STATE_DESCRIPTION from "./descriptions/inspect-game-state.txt" with { type: "text" }
 import INSPECT_DECK_DESCRIPTION from "./descriptions/inspect-deck.txt" with { type: "text" }
 import INSPECT_RUN_INFO_DESCRIPTION from "./descriptions/inspect-run-info.txt" with { type: "text" }
@@ -19,112 +18,12 @@ const inputSchema = z.object({}).strict()
 const recordSchema = z.record(z.string(), z.unknown())
 const gameStateOutputSchema = z.object({ payload: recordSchema }).strict()
 
-const inspectCardInstanceSchema = z
-  .object({
-    card_id: z
-      .union([z.string().min(1), z.number().int()])
-      .describe(
-        "Live card instance ID from balatro_inspect_game_state, not an entity/prototype ID.",
-      ),
-  })
-  .strict()
-const inspectCardInstanceOutputSchema = z
-  .object({
-    card_id: z.string(),
-    location: z.string(),
-    instance: recordSchema,
-  })
-  .strict()
-
 const EDITION_NAMES: Record<string, string> = {
   foil: "Foil",
   holo: "Holographic",
   holographic: "Holographic",
   polychrome: "Polychrome",
   negative: "Negative",
-}
-
-interface FoundCard {
-  location: string
-  card: Record<string, unknown>
-}
-
-function findInArray(items: unknown, cardId: string, location: string): FoundCard | undefined {
-  if (!Array.isArray(items)) return undefined
-  for (const item of items) {
-    const record = asRecord(item)
-    if (record && String(record.card_id) === cardId) {
-      return { location, card: record }
-    }
-  }
-  return undefined
-}
-
-function findCardInstance(payload: Record<string, unknown>, cardId: string): FoundCard | undefined {
-  const directLocations = [
-    ["hand", "hand"],
-    ["jokers", "jokers"],
-    ["consumables", "consumables"],
-  ] as const
-
-  for (const [field, location] of directLocations) {
-    const found = findInArray(payload[field], cardId, location)
-    if (found) return found
-  }
-
-  const shop = asRecord(payload.shop)
-  if (shop) {
-    for (const field of ["jokers", "vouchers", "boosters", "cards"]) {
-      const found = findInArray(shop[field], cardId, `shop.${field}`)
-      if (found) return found
-    }
-  }
-
-  const pack = asRecord(payload.pack)
-  if (pack) {
-    const found = findInArray(pack.options, cardId, "pack.options")
-    if (found) return found
-  }
-
-  return undefined
-}
-
-function cardInstanceToMarkdown(data: object): string {
-  const d = data as Record<string, unknown>
-  const instance = (d.instance ?? {}) as Record<string, unknown>
-  const lines: string[] = []
-
-  if (isJokerCard(instance)) {
-    lines.push(`# ${displayJokerName(instance)}\n`)
-    lines.push(`**Location:** ${d.location}  `)
-    lines.push("")
-    lines.push("## Joker\n")
-    lines.push(displayJokerLine(instance, 1))
-    appendLiveDescription(lines, instance)
-    lines.push("")
-    lines.push("## Live Instance\n")
-    lines.push("```json")
-    lines.push(JSON.stringify(instance, null, 2))
-    lines.push("```")
-
-    return lines.join("\n")
-  }
-
-  lines.push(`# ${instance.name ?? instance.display ?? instance.card_id ?? "Card Instance"}\n`)
-  lines.push(`**Location:** ${d.location}  `)
-  lines.push(`**Card ID:** ${instance.card_id}  `)
-  if (instance.entity_id) lines.push(`**Entity ID:** \`${instance.entity_id}\`  `)
-  if (instance.sell_value !== undefined) lines.push(`**Sell Value:** $${instance.sell_value}  `)
-  if (instance.cost !== undefined) lines.push(`**Cost:** $${instance.cost}  `)
-  if (instance.debuffed !== undefined) lines.push(`**Debuffed:** ${instance.debuffed}  `)
-  lines.push("")
-
-  lines.push("## Live Instance\n")
-  lines.push("```json")
-  lines.push(JSON.stringify(instance, null, 2))
-  lines.push("```")
-
-  return lines.join("\n")
 }
 
 function displayCardRank(value: unknown): string {
@@ -632,36 +531,6 @@ export function registerInspectGameState(server: McpServer, bridge: BridgeClient
         () => bridge.getState(1_500),
         (payload) => toolResult({ payload }, stateToMarkdown),
       ),
-  )
-
-  server.registerTool(
-    "balatro_inspect_card_instance",
-    {
-      title: "Inspect Card Instance",
-      description: INSPECT_CARD_INSTANCE_DESCRIPTION,
-      inputSchema: inspectCardInstanceSchema,
-      outputSchema: inspectCardInstanceOutputSchema,
-      annotations: READ_ONLY_ANNOTATIONS,
-    },
-    ({ card_id }) => {
-      const cardId = String(card_id)
-      return withBridgeErrors(
-        () => bridge.getState(1_500),
-        (payload) => {
-          const found = findCardInstance(payload, cardId)
-          if (!found) {
-            return toolError(
-              "INVALID_TARGET",
-              `card_id "${cardId}" not found in current live state`,
-            )
-          }
-          return toolResult(
-            { card_id: cardId, location: found.location, instance: found.card },
-            cardInstanceToMarkdown,
-          )
-        },
-      )
-    },
   )
 
   server.registerTool(
