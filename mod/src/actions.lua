@@ -128,6 +128,17 @@ end
 
 local function prepare_consumable_targets(card, args, shop_context)
   local target_card_ids = args.targets or {}
+  local cons = card.ability and card.ability.consumeable
+  if not (cons and cons.max_highlighted) then
+    -- Vanilla only reads the hand selection for consumables with a
+    -- max_highlighted config; untargeted ones must leave it untouched.
+    if card.can_use_consumeable and not card:can_use_consumeable() then
+      local name = card.ability and card.ability.name or 'this consumable'
+      return err("CANNOT_USE_NOW", "'" .. name .. "' cannot be used right now")
+    end
+    return nil
+  end
+
   local targets, requested, resolve_err = resolve_hand_cards(target_card_ids)
   if resolve_err then return resolve_err end
 
@@ -140,10 +151,8 @@ local function prepare_consumable_targets(card, args, shop_context)
     if shop_context then
       -- A satisfied target range means the shop phase, not the targets, blocked use.
       local count = G.hand and #G.hand.highlighted or 0
-      local cons = card.ability and card.ability.consumeable
-      local in_range = cons and cons.max_highlighted
-        and count >= (cons.min_highlighted or 1) and count <= cons.max_highlighted
-      if in_range or not (cons and cons.max_highlighted) then
+      local in_range = count >= (cons.min_highlighted or 1) and count <= cons.max_highlighted
+      if in_range then
         use_err = err(
           "CANNOT_USE_NOW",
           "'" .. name .. "' cannot be applied immediately from the shop: hand-targeting and special-case consumables are only usable during hand selection (SELECTING_HAND) or while a booster pack is open, and its use conditions are not met in the shop. No money was charged. Buy it with use=false to store it in a consumable slot (if one is free), then apply it with balatro_use_consumable when it becomes usable."
@@ -158,7 +167,7 @@ local function prepare_consumable_targets(card, args, shop_context)
     return use_err
   end
 
-  return nil
+  return nil, previous
 end
 
 local function available_funds()
@@ -467,14 +476,19 @@ handlers.buy_consumable = function(args)
   local funds_err = check_funds(cost)
   if funds_err then return funds_err end
 
+  local previous_highlights
   if args.use then
-    local target_err = prepare_consumable_targets(card, args, true)
+    local target_err, previous = prepare_consumable_targets(card, args, true)
+    previous_highlights = previous
     if target_err then return target_err end
   end
 
   -- Vanilla must remove the shop card before its delayed use_card call; doing it here leaves c1.area nil.
   local buy_err = purchase_from_shop(card, args.use)
-  if buy_err then return buy_err end
+  if buy_err then
+    if previous_highlights then replace_highlights(previous_highlights) end
+    return buy_err
+  end
 
   return ok({ bought = card_id, cost = cost, used = args.use })
 end
