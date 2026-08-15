@@ -132,8 +132,18 @@ local function prepare_consumable_targets(card, args, shop_context)
   if not (cons and cons.max_highlighted) then
     -- Vanilla only reads the hand selection for consumables with a
     -- max_highlighted config; untargeted ones must leave it untouched.
+    if #target_card_ids > 0 then
+      local name = card.ability and card.ability.name or 'This consumable'
+      return err("INVALID_TARGET", "'" .. name .. "' does not target hand cards")
+    end
     if card.can_use_consumeable and not card:can_use_consumeable() then
       local name = card.ability and card.ability.name or 'this consumable'
+      if shop_context then
+        return err(
+          "CANNOT_USE_NOW",
+          "'" .. name .. "' cannot be applied immediately from the shop: its use conditions are not met (e.g. no free slot for the cards it creates). No money was charged. Buy it with use=false to store it in a consumable slot (if one is free), then apply it with balatro_use_consumable when it becomes usable."
+        )
+      end
       return err("CANNOT_USE_NOW", "'" .. name .. "' cannot be used right now")
     end
     return nil
