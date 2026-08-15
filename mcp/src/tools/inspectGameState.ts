@@ -153,7 +153,11 @@ function displayConsumableType(value: unknown): string {
 
 function displayConsumableLine(card: Record<string, unknown>, index: number): string {
   const edition = displayCardModifier(card.edition, EDITION_NAMES)
-  const suffix = edition !== undefined ? ` (${edition})` : ""
+  const status = [
+    edition !== undefined ? `(${edition})` : undefined,
+    card.usable === false ? "(unusable)" : undefined,
+  ].filter((value): value is string => value !== undefined)
+  const suffix = status.length > 0 ? " " + status.join(" ") : ""
   return `${index}. [${String(card.card_id ?? "?")}] ${displayConsumableType(card.kind)} ${String(card.name ?? card.entity_id ?? "Unknown Consumable")}${suffix}`
 }
 
