@@ -29,7 +29,7 @@
 
 ### 2. 安装 Balatro Agent Mod
 
-把本仓库的 `mods/balatro_mcp` 文件夹复制到 Balatro 的 `Mods` 目录：
+把本仓库的 `mod` 文件夹复制到 Balatro 的 `Mods` 目录：
 
 | 平台 | Mods 目录 |
 | --- | --- |

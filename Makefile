@@ -1,13 +1,14 @@
 .DEFAULT_GOAL := help
 
 ROOT_DIR := $(CURDIR)
-MODS_SRC := $(ROOT_DIR)/mods
+MOD_SRC := $(ROOT_DIR)/mod
 
 BALATRO_SAVE ?= $(HOME)/Library/Application Support/Balatro
 BALATRO_DIR ?= $(HOME)/Library/Application Support/Steam/steamapps/common/Balatro
 BALATRO_APP ?= $(BALATRO_DIR)/Balatro.app
 
 MODS_DIR := $(BALATRO_SAVE)/Mods
+MOD_DST := $(MODS_DIR)/balatro_mcp
 SMODS_DIR := $(MODS_DIR)/smods
 LOVE_BIN := $(BALATRO_APP)/Contents/MacOS/love
 LOVELY_DYLIB := $(BALATRO_DIR)/liblovely.dylib
@@ -19,8 +20,8 @@ help:
 	@printf 'Balatro MCP development workflow\n\n'
 	@printf 'Targets:\n'
 	@printf '  make doctor        Check local Balatro/Lovely/SMODS paths\n'
-	@printf '  make install-mods  Sync repo mods into the Balatro Mods directory\n'
-	@printf '  make run           Sync mods, then launch Balatro with Lovely\n'
+	@printf '  make install-mods  Sync the repo mod into the Balatro Mods directory\n'
+	@printf '  make run           Sync the mod, then launch Balatro with Lovely\n'
 	@printf '\nConfiguration:\n'
 	@printf '  BALATRO_DIR=%s\n' '$(BALATRO_DIR)'
 	@printf '  BALATRO_SAVE=%s\n' '$(BALATRO_SAVE)'
@@ -28,32 +29,14 @@ help:
 
 install-mods:
 	@bash -eu -o pipefail -c ' \
-		if [[ ! -d "$(MODS_SRC)" ]]; then \
-			printf "No repo mods directory found: %s\n" "$(MODS_SRC)" >&2; \
+		if [[ ! -d "$(MOD_SRC)" ]]; then \
+			printf "No repo mod directory found: %s\n" "$(MOD_SRC)" >&2; \
 			exit 1; \
 		fi; \
-		mkdir -p "$(MODS_DIR)"; \
-		shopt -s nullglob; \
-		synced=0; \
-		for src in "$(MODS_SRC)"/*; do \
-			[[ -d "$$src" ]] || continue; \
-			name="$$(basename "$$src")"; \
-			if [[ "$$name" == "smods" ]]; then \
-				printf "Skipping reserved mod name: %s\n" "$$name" >&2; \
-				continue; \
-			fi; \
-			dst="$(MODS_DIR)/$$name"; \
-			mkdir -p "$$dst"; \
-			rm -f "$$dst/actions.lua" "$$dst/commands.lua" "$$dst/state.lua"; \
-			rsync -a --delete --exclude bridge/ "$$src"/ "$$dst"/; \
-			printf "Installed mod %s -> %s\n" "$$name" "$$dst"; \
-			synced=$$((synced + 1)); \
-		done; \
-		if [[ "$$synced" -eq 0 ]]; then \
-			printf "No mods to install from %s\n" "$(MODS_SRC)"; \
-		else \
-			printf "Installed %d mod(s).\n" "$$synced"; \
-		fi \
+		mkdir -p "$(MOD_DST)"; \
+		rm -f "$(MOD_DST)/actions.lua" "$(MOD_DST)/commands.lua" "$(MOD_DST)/state.lua"; \
+		rsync -a --delete --exclude bridge/ "$(MOD_SRC)"/ "$(MOD_DST)"/; \
+		printf "Installed mod -> %s\n" "$(MOD_DST)"; \
 	'
 
 doctor:
@@ -85,15 +68,11 @@ doctor:
 		check_path dir "$(MODS_DIR)"; \
 		check_path dir "$(SMODS_DIR)"; \
 		check_path file "$(SMODS_DIR)/manifest.json"; \
-		printf "\nRepo mods:\n"; \
-		shopt -s nullglob; \
-		mods=("$(MODS_SRC)"/*); \
-		if (( $${#mods[@]} == 0 )); then \
-			printf "none\n"; \
+		printf "\nRepo mod:\n"; \
+		if [[ -d "$(MOD_SRC)" ]]; then \
+			printf "repo mod %s\n" "$$(basename "$(MOD_SRC)")"; \
 		else \
-			for mod in "$${mods[@]}"; do \
-				[[ -d "$$mod" ]] && printf "repo mod %s\n" "$$(basename "$$mod")"; \
-			done; \
+			printf "none\n"; \
 		fi \
 	'
 

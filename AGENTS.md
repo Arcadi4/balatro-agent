@@ -5,7 +5,7 @@
 Balatro Agent has two runtime components:
 
 - `mcp/`: a Bun TypeScript stdio server using the MCP 2026-07-28 SDK
-- `mods/balatro_mcp/`: a Lua Steamodded mod running inside Balatro
+- `mod/`: a Lua Steamodded mod running inside Balatro
 
 They exchange newline-delimited JSON-RPC 2.0 over a local byte stream:
 
@@ -26,7 +26,7 @@ bun run build
 Validate every Lua file with `luac -p`. On macOS/Linux:
 
 ```sh
-find ../mods/balatro_mcp -name '*.lua' -print0 | xargs -0 -n1 luac -p
+find ../mod -name '*.lua' -print0 | xargs -0 -n1 luac -p
 ```
 
 Type checking is mandatory before completion. Build validation is mandatory when MCP source or dependencies change. Gameplay changes also require manual testing with Balatro, Lovely, and SMODS running; restart Balatro after reinstalling the mod.
@@ -54,11 +54,11 @@ mcp/src/
 │   ├── actions.ts           mutating game tools
 │   ├── entities.ts          runtime entities and wiki lookup
 │   └── inspectGameState.ts  state and live-card inspection
-├── prompts/strategy.ts      strategy prompt registration
-└── resources/rules.ts       static rules resource
+├── prompts/handbook.ts      handbook prompt registration
+└── resources/wiki.ts        static index and live Wiki resources
 ```
 
-Run directly from TypeScript with `bun run start`; bundling is optional and embeds text imports such as the rules resource.
+Run directly from TypeScript with `bun run start`; bundling is optional and embeds text imports such as the handbook prompt.
 
 ### TypeScript conventions
 
@@ -79,7 +79,7 @@ Run directly from TypeScript with `bun run start`; bundling is optional and embe
 - Read-only tools use `readOnlyHint: true`; state-changing game actions use `destructiveHint: true`; only repeat-safe operations use `idempotentHint: true`.
 - External wiki access uses `openWorldHint: true`; local game operations use `false`.
 - Keep machine-readable data in `structuredContent` and useful Markdown in text content.
-- Static rules live in `balatro://rules/global` and `balatro_strategy_context`; do not duplicate them as a tool.
+- Live-play guidance lives in the `balatro_play_handbook` prompt. Use `balatro_wiki_search` and `balatro://wiki/<Title>` to verify rules; do not duplicate a static rules resource.
 - Cache discovery/list responses and immutable resources with cache hints.
 
 Reference: [MCP 2026-07-28 documentation](https://modelcontextprotocol.io/docs/2026-07-28) and [TypeScript SDK v2](https://ts.sdk.modelcontextprotocol.io/v2/).
@@ -87,7 +87,7 @@ Reference: [MCP 2026-07-28 documentation](https://modelcontextprotocol.io/docs/2
 ## Lua mod layout
 
 ```text
-mods/balatro_mcp/
+mod/
 ├── main.lua
 └── src/
     ├── actions.lua                authoritative phase/target checks and game mutations

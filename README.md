@@ -29,7 +29,7 @@ Follow the [SMODS installation guide](https://github.com/Steamodded/smods/wiki) 
 
 ### 2. Install the Balatro Agent mod
 
-Copy the `mods/balatro_mcp` folder from this repository into Balatro's `Mods` directory:
+Copy the `mod` folder from this repository into Balatro's `Mods` directory:
 
 | Platform | Mods directory |
 | --- | --- |
