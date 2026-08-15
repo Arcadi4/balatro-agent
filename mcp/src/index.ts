@@ -3,11 +3,10 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio"
 
 import packageJson from "../package.json"
 import { BridgeClient } from "./bridge/socket-client.js"
-import { registerStrategyPrompt } from "./prompts/strategy.js"
+import { registerHandbookPrompt } from "./prompts/handbook.js"
 import { registerCardModifiersResource } from "./resources/cardModifiers.js"
 import { registerChallengesResource } from "./resources/challenges.js"
 import { registerDecksResource } from "./resources/decks.js"
-import { registerRulesResource } from "./resources/rules.js"
 import { registerWikiResource } from "./resources/wiki.js"
 import { registerAllTools } from "./tools/index.js"
 
@@ -22,7 +21,7 @@ function createServer(bridge: BridgeClient): McpServer {
     },
     {
       instructions:
-        "Inspect the live game state before acting. Static game rules are available as balatro://rules or through the balatro_strategy_context prompt.",
+        "Inspect live game state before acting. Use the balatro_play_handbook prompt for live-play guidance and the Balatro Wiki to verify relevant rules.",
       cacheHints: {
         "server/discover": LIST_CACHE_HINT,
         "tools/list": LIST_CACHE_HINT,
@@ -36,9 +35,8 @@ function createServer(bridge: BridgeClient): McpServer {
   registerCardModifiersResource(server)
   registerChallengesResource(server)
   registerDecksResource(server)
-  registerRulesResource(server)
   registerWikiResource(server)
-  registerStrategyPrompt(server)
+  registerHandbookPrompt(server)
   return server
 }
 
