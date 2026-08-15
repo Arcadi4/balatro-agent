@@ -106,13 +106,21 @@ local function flush_client()
   local payload = codec.pending()
   if payload == '' then return true end
 
+  local chunk = #payload <= BUFFER_SIZE and payload or payload:sub(1, BUFFER_SIZE)
   bytes_written[0] = 0
-  local written = kernel32.WriteFile(pipe, payload, #payload, bytes_written, nil)
+  local written = kernel32.WriteFile(pipe, chunk, #chunk, bytes_written, nil)
   if written ~= 0 then
     codec.consume(tonumber(bytes_written[0]))
     return true
   end
-  disconnect('write failed (error ' .. tonumber(kernel32.GetLastError()) .. ')')
+
+  local error_code = tonumber(kernel32.GetLastError())
+  if error_code == ERROR_NO_DATA then return true end
+  if error_code == ERROR_BROKEN_PIPE or error_code == ERROR_PIPE_NOT_CONNECTED then
+    disconnect('peer disconnected')
+  else
+    disconnect('write failed (error ' .. error_code .. ')')
+  end
   return false
 end
 
