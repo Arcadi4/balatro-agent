@@ -47,16 +47,27 @@ Windows users install the mod under `%AppData%\Balatro\Mods\balatro_mcp` and sta
 mcp/src/
 ├── index.ts                 server composition and stdio lifecycle
 ├── response.ts              MCP result rendering and bridge error mapping
+├── wiki.ts                  Wiki HTML→Markdown conversion and MediaWiki API
+├── text-imports.d.ts        ambient types for .txt/.md text imports
 ├── bridge/
 │   ├── protocol.ts          internal JSON-RPC framing
 │   └── socket-client.ts     cross-platform IPC client
 ├── tools/
 │   ├── actions.ts           mutating game tools
-│   ├── entities.ts          runtime entities and wiki lookup
-│   └── inspectGameState.ts  state and live-card inspection
-├── prompts/handbook.ts      handbook prompt registration
-└── resources/wiki.ts        static index and live Wiki resources
+│   ├── entities.ts          wiki search tool
+│   ├── inspectGameState.ts  state and live-card inspection
+│   └── descriptions/        .txt tool description files (text-imported)
+├── prompts/
+│   ├── handbook.ts          handbook prompt registration
+│   └── handbook.md          play handbook prose
+└── resources/
+    ├── wiki.ts              static wiki index and live wiki article resources
+    ├── cardModifiers.ts     card modifier reference (enhancements, seals, editions, stickers)
+    ├── decks.ts             deck reference resource
+    └── challenges.ts        challenge reference resource
 ```
+
+Static reference data lives in `mcp/data/` (wiki index, card modifiers, decks, challenges). Utility scripts live in `mcp/scripts/`.
 
 Run directly from TypeScript with `bun run start`; bundling is optional and embeds text imports such as the handbook prompt.
 
@@ -66,7 +77,7 @@ Run directly from TypeScript with `bun run start`; bundling is optional and embe
 - Local imports include `.js` extensions.
 - Use `import type` for type-only imports.
 - Import subdirectory APIs through their `index.ts` when a barrel exists.
-- Prompt text uses `with { type: "text" }`; do not inline long prompt content.
+- Prose content (`.md`, `.txt`) uses `with { type: "text" }`; do not inline long prompt or description content.
 - Exported functions use declarations; callbacks use arrows.
 - Use `!== undefined` when absence differs from a falsy value.
 - Format with the repository's `oxfmt` dependency.
@@ -92,7 +103,6 @@ mod/
 └── src/
     ├── actions.lua                authoritative phase/target checks and game mutations
     ├── commands.lua               command dispatch and deferred scoring responses
-    ├── entities.lua               runtime prototype inspection
     ├── jsonrpc.lua                JSON-RPC validation and error mapping
     ├── socket_codec.lua           shared NDJSON codec
     ├── socket_server.lua          macOS/Linux AF_UNIX server
