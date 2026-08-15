@@ -8,105 +8,75 @@
 
 <!-- README-I18N:END -->
 
-[![Bun](https://img.shields.io/badge/Bun-%3E%3D1.3.14-f9f1e1?style=flat-square&logo=bun&logoColor=black)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
+[![Bun](https://img.shields.io/badge/Bun-1.3.14-f9f1e1?style=flat-square&logo=bun)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
 
 </div>
 
-Balatro Agent 让你把兼容 MCP 的 AI 智能体连接到 Balatro。智能体读取实时游戏状态并替你游玩。它可以选择盲注、出牌和弃牌、购买和使用卡牌、刷新商店、调整小丑牌顺序。基于纯文本接口，完全不依赖模型视觉。
-
-## 工作原理
-
-项目包含两个组件：
-
-- `mcp/` 中的 Bun MCP 服务器。由你的 MCP 客户端启动，通过 stdio 通信。
-- `mods/balatro_mcp/` 中的 Steamodded Mod。它在 Balatro 内部运行并执行游戏操作。
-
-服务器与 Mod 通过换行分隔的 JSON-RPC 2.0 通信：
-
-```text
-MCP 客户端 ── stdio ──> Bun 服务器 ── JSON-RPC 2.0 / NDJSON ──> Balatro Mod
-                                  Unix socket（macOS/Linux）
-                                  命名管道（Windows）
-```
+让 AI 替你打 Balatro。Balatro Agent 可以把任何兼容 MCP 的 AI 客户端接入正在运行的游戏：智能体读取实时游戏状态，帮你选盲注、出牌弃牌、逛商店买小丑，管理整局游戏。不需要截屏，也不需要模型视觉，一切基于文本。
 
 ## 准备工作
 
-- Steam 版 Balatro
+- Steam 版 [Balatro](https://store.steampowered.com/app/2379780/Balatro/)
 - [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
 - [Steamodded（SMODS）](https://github.com/Steamodded/smods)
-- [Bun](https://bun.sh) 1.3.14 或更高版本
+- [Bun](https://bun.sh) 1.3.14 或更高版本，用于运行 MCP 服务器（之后会发布 npm 包，届时不再需要）
 
-## 开始使用
+## 安装
 
-1. 安装 Lovely Injector 和 Steamodded。
-2. 将 `mods/balatro_mcp` 复制到 Balatro 的 `Mods` 目录，完成 Mod 安装。
-   - 在 macOS 上，于仓库根目录运行 `make install-mods`。
-   - 在 Windows 上，将该目录复制到 `%AppData%\Balatro\Mods\balatro_mcp`。
-3. 安装服务器依赖并验证源码：
+### 1. 安装 Lovely 和 SMODS
 
-   ```sh
-   cd mcp
-   bun install
-   bun run typecheck
-   ```
+按照 [SMODS 安装指南](https://github.com/Steamodded/smods/wiki)完成对应平台的安装。所有 Balatro Mod 都是这一步。
 
-4. 将服务器添加到你的 MCP 客户端配置中：
+### 2. 安装 Balatro Agent Mod
 
-   ```json
-   {
-     "mcpServers": {
-       "balatro": {
-         "command": "bun",
-         "args": ["/absolute/path/to/balatro-mcp/mcp/src/index.ts"]
-       }
-     }
-   }
-   ```
+把本仓库的 `mods/balatro_mcp` 文件夹复制到 Balatro 的 `Mods` 目录：
 
-5. 启用 Mod 并启动 Balatro。
-6. 启动你的 MCP 客户端，让智能体开始游玩。例如："检查游戏状态，然后打下一个盲注。"
-
-## 更改桥接端点
-
-服务器和 Mod 默认在 macOS 和 Linux 上通过 `/tmp/balatro-mcp.sock`、在 Windows 上通过 `\\.\pipe\balatro-mcp` 互相连接。如需使用其他端点，请在两个进程中将 `BALATRO_BRIDGE_SOCKET` 设置为同一个值。
-
-## 智能体可以做什么
-
-智能体有 25 个工具可用。
-
-| 范围 | 工具 |
+| 平台 | Mods 目录 |
 | --- | --- |
-| 检查游戏 | `balatro_inspect_game_state`, `balatro_inspect_card_instance` |
-| 盲注 | `balatro_select_blind`, `balatro_skip_blind` |
-| 手牌 | `balatro_select_hand_cards`, `balatro_sort_hand`, `balatro_play_hand`, `balatro_discard_hand` |
-| 商店 | `balatro_buy_card`, `balatro_buy_consumable`, `balatro_buy_voucher`, `balatro_buy_booster`, `balatro_reroll_shop`, `balatro_leave_shop`, `balatro_cash_out` |
-| 卡牌 | `balatro_use_consumable`, `balatro_sell_card`, `balatro_reorder_jokers` |
-| 补充包 | `balatro_select_booster_card`, `balatro_skip_booster` |
-| 游戏控制 | `balatro_new_game`, `balatro_continue_game`, `balatro_restart` |
-| 游戏知识 | `balatro_list_game_entities`, `balatro_read_wiki` |
+| macOS | `~/Library/Application Support/Balatro/Mods/` |
+| Windows | `%AppData%\Balatro\Mods\` |
+| Linux（原生） | `~/.local/share/love/Balatro/Mods/` |
+| Linux（Proton） | `~/.steam/steam/steamapps/compatdata/2379780/pfx/drive_c/users/steamuser/AppData/Roaming/Balatro/Mods/` |
 
-智能体还会通过 `balatro://rules/global` 资源和 `balatro_strategy_context` prompt 获得 Balatro 的静态规则，无需查阅外部文档即可做出决策。
+> [!TIP]
+> 在 macOS 上，也可以在仓库根目录运行 `make install-mods`，不用手动复制。
 
-## 故障排除
+复制完成后，路径应该是 `.../Balatro/Mods/balatro_mcp/main.lua`。
 
-- **智能体无法连接游戏。** 确认 Balatro 正在运行且 Mod 已启用，然后重启 MCP 客户端。
-- **你修改了 Mod。** 重新安装 Mod 并重启 Balatro。Mod 只在启动时加载。
-- **第二个客户端无法连接。** 桥接同时只接受一个客户端。停止另一个客户端后重试。
-
-## 开发
-
-开发仅在 macOS Apple Silicon 上测试。`make` 目标仅适用于 macOS。修改后请验证两份源码：
+### 3. 安装服务器
 
 ```sh
 cd mcp
-bun run typecheck
-bun run build
-find ../mods/balatro_mcp -name '*.lua' -print0 | xargs -0 -n1 luac -p
+bun install
 ```
 
-## 参考资料
+### 4. 接入 MCP 客户端
 
-- [Model Context Protocol](https://modelcontextprotocol.io/docs/2026-07-28)
-- [Bun 文档](https://bun.sh/docs)
-- [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
-- [Steamodded（SMODS）](https://github.com/Steamodded/smods)
+把服务器加进你的 MCP 客户端配置（Claude Code、Cursor 等）：
+
+```json
+{
+  "mcpServers": {
+    "balatro": {
+      "command": "bun",
+      "args": ["/absolute/path/to/balatro-mcp/mcp/src/index.ts"]
+    }
+  }
+}
+```
+
+## 开始游玩
+
+1. 启用 Mod 并启动 Balatro。
+2. 启动 MCP 客户端。
+3. 让智能体开打，比如：
+
+   > 用红色牌组（Red Deck）开一局新游戏，打完第一底注。
+
+## 功能
+
+- 选择或跳过盲注、出牌和弃牌、整理和选择手牌
+- 在商店购买小丑、消耗牌、优惠券和补充包，刷新商店、结算收益
+- 使用和出售卡牌，调整小丑顺序以优化触发次序
+- 用任意牌组、赌注或挑战开始、继续、重开一局游戏
+- 内置 Balatro 规则文档，并可实时查询 Balatro Wiki 上的卡牌、盲注和机制说明
