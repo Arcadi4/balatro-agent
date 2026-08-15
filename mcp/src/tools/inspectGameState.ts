@@ -332,6 +332,7 @@ function appendShopSection(lines: string[], shop: Record<string, unknown>): void
   lines.push("## Shop\n")
   appendField(lines, "Dollars", shop.dollars)
   appendField(lines, "Reroll Cost", shop.reroll_cost)
+  appendField(lines, "Free Rerolls", shop.free_rerolls)
   appendField(lines, "Joker Slots", shop.slots)
 
   const sections = [
@@ -382,69 +383,87 @@ function appendField(lines: string[], label: string, value: unknown): void {
   if (value !== undefined) lines.push(`- **${label}:** ${String(value)}`)
 }
 
-function appendCurrentRound(lines: string[], value: unknown): void {
-  const round = asRecord(value)
-  if (!round) {
-    appendField(lines, "Round", value)
-    return
-  }
+function appendRoundSection(lines: string[], round: Record<string, unknown>): void {
+  lines.push("## Round\n")
 
+  const blind = asRecord(round.blind)
+  if (blind) {
+    const scored =
+      round.chips_scored !== undefined && blind.chips !== undefined
+        ? `${String(round.chips_scored)} / `
+        : ""
+    const target = blind.chips !== undefined ? ` — ${scored}${String(blind.chips)} chips` : ""
+    lines.push(`- **Blind:** ${String(blind.name ?? "?")}${target}`)
+  }
   appendField(lines, "Hands Left", round.hands_left)
   appendField(lines, "Discards Left", round.discards_left)
   appendField(lines, "Hands Played", round.hands_played)
   appendField(lines, "Discards Used", round.discards_used)
   appendField(lines, "Round Dollars", round.dollars)
-  appendField(lines, "Reroll Cost", round.reroll_cost)
-  appendField(lines, "Free Rerolls", round.free_rerolls)
+  lines.push("")
 }
 
-function displayPhase(
-  payload: Record<string, unknown>,
-  pack: Record<string, unknown> | undefined,
-): string | undefined {
-  const phase = payload.phase
-  if (typeof phase !== "string") return phase !== undefined ? String(phase) : undefined
-  if (!/^STATE_\d+$/.test(phase) || !pack) return phase
+function displaySkipReward(reward: Record<string, unknown>): string {
+  const name = String(reward.name ?? reward.entity_id ?? "?")
+  if (reward.dollars !== undefined) return `${name} (+$${String(reward.dollars)})`
+  if (reward.poker_hand !== undefined) return `${name} (upgrade ${String(reward.poker_hand)})`
+  return name
+}
 
-  const packPhases: Record<string, string> = {
-    tarot: "TAROT_PACK",
-    planet: "PLANET_PACK",
-    spectral: "SPECTRAL_PACK",
-    standard: "STANDARD_PACK",
-    buffoon: "BUFFOON_PACK",
-    modded: "SMODS_BOOSTER_OPENED",
+function appendBlindSelectSection(
+  lines: string[],
+  selection: Record<string, unknown>,
+  tags: unknown,
+): void {
+  lines.push("## Blind Select\n")
+
+  if (Array.isArray(selection.blinds)) {
+    for (const entry of selection.blinds) {
+      const blind = asRecord(entry)
+      if (!blind) continue
+      const chips = blind.chips !== undefined ? ` — ${String(blind.chips)} chips` : ""
+      const markers: string[] = []
+      if (typeof blind.state === "string" && blind.state !== "Select") {
+        markers.push(blind.state.toLowerCase())
+      }
+      if (selection.current !== undefined && selection.current === blind.slot) {
+        markers.push("on deck")
+      }
+      const markerText = markers.length > 0 ? ` (${markers.join(", ")})` : ""
+      const reward = asRecord(blind.skip_reward)
+      const skip = reward ? ` — skip: ${displaySkipReward(reward)}` : ""
+      lines.push(
+        `- **${String(blind.name ?? blind.blind_id ?? "?")}** (${String(blind.slot ?? "?")})${chips}${skip}${markerText}`,
+      )
+    }
   }
-  return typeof pack.kind === "string" ? (packPhases[pack.kind] ?? phase) : phase
+
+  if (Array.isArray(tags) && tags.length > 0) {
+    lines.push("\n### Queued Tags\n")
+    for (const entry of tags) {
+      const tag = asRecord(entry)
+      if (tag) lines.push(`- ${String(tag.name ?? tag.entity_id ?? "?")}`)
+    }
+  }
+  lines.push("")
 }
 
 function stateToMarkdown(data: object): string {
   const payload = ((data as Record<string, unknown>).payload ?? {}) as Record<string, unknown>
-  const pack = asRecord(payload.pack)
 
   const lines: string[] = []
   lines.push("# Balatro Game State\n")
 
-  const phase = displayPhase(payload, pack)
-  if (phase) lines.push(`**Phase:** ${phase}  `)
-  if (payload.g_state) lines.push(`**G.STATE:** ${String(payload.g_state)}  `)
-  if (payload.money !== undefined) lines.push(`**Money:** $${payload.money}  `)
+  if (payload.phase !== undefined) lines.push(`**Phase:** ${String(payload.phase)}  `)
+  if (payload.ante !== undefined) lines.push(`**Ante:** ${String(payload.ante)}  `)
+  if (payload.money !== undefined) lines.push(`**Money:** $${String(payload.money)}  `)
   lines.push("")
 
-  if (payload.ante !== undefined || payload.current_round !== undefined) {
-    lines.push("## Round Info\n")
-    appendField(lines, "Ante", payload.ante)
-    appendCurrentRound(lines, payload.current_round)
-    lines.push("")
-  }
+  const round = asRecord(payload.round)
+  if (round) appendRoundSection(lines, round)
 
-  if (payload.blind && typeof payload.blind === "object") {
-    const blind = payload.blind as Record<string, unknown>
-    lines.push("## Blind\n")
-    if (blind.name) lines.push(`- **Name:** ${blind.name}`)
-    if (blind.chips !== undefined) lines.push(`- **Target Chips:** ${blind.chips}`)
-    if (blind.chips_scored !== undefined) lines.push(`- **Chips Scored:** ${blind.chips_scored}`)
-    lines.push("")
-  }
+  const blindSelect = asRecord(payload.blind_select)
+  if (blindSelect) appendBlindSelectSection(lines, blindSelect, payload.tags)
 
   if (Array.isArray(payload.legal_actions) && payload.legal_actions.length > 0) {
     lines.push("## Legal Actions\n")
@@ -500,6 +519,7 @@ function stateToMarkdown(data: object): string {
   const shop = asRecord(payload.shop)
   if (shop) appendShopSection(lines, shop)
 
+  const pack = asRecord(payload.pack)
   if (pack) appendPackSection(lines, pack)
 
   return lines.join("\n")

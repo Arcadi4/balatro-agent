@@ -3,21 +3,26 @@ local PROTOCOL_VERSION = 1
 local seq = 0
 local PHASE_NAMES = {
   'SELECTING_HAND',
-  'BLIND_SELECT',
+  'HAND_PLAYED',
+  'DRAW_TO_HAND',
+  'GAME_OVER',
   'SHOP',
+  'PLAY_TAROT',
+  'BLIND_SELECT',
+  'ROUND_EVAL',
   'TAROT_PACK',
   'PLANET_PACK',
+  'MENU',
+  'TUTORIAL',
+  'SPLASH',
+  'SANDBOX',
+  'DEMO_CTA',
   'SPECTRAL_PACK',
   'STANDARD_PACK',
   'BUFFOON_PACK',
-  'SMODS_BOOSTER_OPENED',
-  'ROUND_EVAL',
-  'HAND_PLAYED',
-  'DRAW_TO_HAND',
   'NEW_ROUND',
-  'GAME_OVER',
-  'MENU',
-  'SPLASH',
+  'SMODS_BOOSTER_OPENED',
+  'SMODS_REDEEM_VOUCHER',
 }
 local PACK_KINDS = {
   TAROT_PACK = 'tarot',
@@ -495,6 +500,8 @@ local function snapshot_shop()
   end
 
   shop.reroll_cost = G.GAME and G.GAME.current_round and G.GAME.current_round.reroll_cost
+  local free_rerolls = G.GAME and G.GAME.current_round and G.GAME.current_round.free_rerolls
+  if free_rerolls and free_rerolls > 0 then shop.free_rerolls = free_rerolls end
   shop.dollars = G.GAME and G.GAME.dollars
   shop.slots = G.GAME and G.GAME.shop and G.GAME.shop.joker_max
 
@@ -581,33 +588,83 @@ local function snapshot_skip_reward(tag_key, blind_key)
   return reward
 end
 
-local function snapshot_blind_selection()
-  local round_resets = G and G.GAME and G.GAME.round_resets
+local function in_phase(phases)
+  if not G or not G.STATES then return false end
+  for phase in pairs(phases) do
+    if G.STATE == G.STATES[phase] then return true end
+  end
+  return false
+end
+
+local ROUND_PHASES = {
+  SELECTING_HAND = true,
+  HAND_PLAYED = true,
+  DRAW_TO_HAND = true,
+  ROUND_EVAL = true,
+}
+
+local function snapshot_round()
+  if not in_phase(ROUND_PHASES) then return nil end
+
+  local round = {}
+  local cr = G.GAME and G.GAME.current_round
+  if cr then
+    round.hands_left = cr.hands_left
+    round.discards_left = cr.discards_left
+    round.hands_played = cr.hands_played
+    round.discards_used = cr.discards_used
+    round.dollars = cr.dollars
+  end
+
+  local b = G.GAME and G.GAME.blind
+  if b and b.name and b.name ~= '' then
+    round.blind = {
+      name = b.name,
+      chips = b.chips,
+      debuff = b.debuff or nil,
+      block_play = b.block_play or nil,
+    }
+    round.chips_scored = G.GAME.chips
+  end
+
+  return next(round) and round or nil
+end
+
+local function snapshot_blind_select()
+  if not in_phase({ BLIND_SELECT = true }) then return nil end
+  local round_resets = G.GAME and G.GAME.round_resets
   if not round_resets or not round_resets.blind_choices then return nil end
 
-  local selection = { current = G.GAME.blind_on_deck }
-  local has_choice = false
-  for _, blind_key in ipairs({ 'Small', 'Big', 'Boss' }) do
-    local blind_id = round_resets.blind_choices[blind_key]
+  local blinds = {}
+  for _, slot in ipairs({ 'Small', 'Big', 'Boss' }) do
+    local blind_id = round_resets.blind_choices[slot]
     if blind_id then
       local blind = G.P_BLINDS and G.P_BLINDS[blind_id]
       local choice = {
+        slot = slot,
         blind_id = blind_id,
         name = blind and blind.name or blind_id,
-        state = round_resets.blind_states and round_resets.blind_states[blind_key] or nil,
+        state = round_resets.blind_states and round_resets.blind_states[slot] or nil,
       }
 
-      local tag_key = round_resets.blind_tags and round_resets.blind_tags[blind_key]
-      if (blind_key == 'Small' or blind_key == 'Big') and tag_key then
-        choice.skip_reward = snapshot_skip_reward(tag_key, blind_key)
+      -- Chip target preview, same formula as the blind select panel.
+      local blind_ante = round_resets.blind_ante or round_resets.ante
+      local scaling = G.GAME.starting_params and G.GAME.starting_params.ante_scaling or 1
+      if blind_ante and blind and blind.mult and get_blind_amount then
+        choice.chips = get_blind_amount(blind_ante) * blind.mult * scaling
       end
 
-      selection[blind_key] = choice
-      has_choice = true
+      local tag_key = round_resets.blind_tags and round_resets.blind_tags[slot]
+      if (slot == 'Small' or slot == 'Big') and tag_key then
+        choice.skip_reward = snapshot_skip_reward(tag_key, slot)
+      end
+
+      blinds[#blinds + 1] = choice
     end
   end
+  if #blinds == 0 then return nil end
 
-  return has_choice and selection or nil
+  return { current = G.GAME.blind_on_deck, blinds = blinds }
 end
 
 local function snapshot_hand_levels()
@@ -634,7 +691,6 @@ local function snapshot()
 
   local payload = {}
 
-  payload.g_state = G.STATE
   payload.phase = get_phase_name()
   payload.legal_actions = compute_legal_actions()
 
@@ -642,28 +698,7 @@ local function snapshot()
   payload.bankrupt_at = G.GAME and G.GAME.bankrupt_at
   payload.ante = G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante
 
-  if G.GAME and G.GAME.blind then
-    local b = G.GAME.blind
-    payload.blind = {
-      name = b.name,
-      chips = b.chips,
-      debuff = b.debuff or nil,
-      block_play = b.block_play or nil,
-    }
-  end
-
-  if G.GAME and G.GAME.current_round then
-    local cr = G.GAME.current_round
-    payload.current_round = {
-      hands_left = cr.hands_left,
-      discards_left = cr.discards_left,
-      hands_played = cr.hands_played,
-      discards_used = cr.discards_used,
-      dollars = cr.dollars,
-      reroll_cost = cr.reroll_cost,
-      free_rerolls = cr.free_rerolls and cr.free_rerolls > 0 and cr.free_rerolls or nil,
-    }
-  end
+  payload.round = snapshot_round()
 
   payload.hand_size = G.hand and G.hand.config and G.hand.config.card_limit
   payload.joker_slots = G.jokers and G.jokers.config and G.jokers.config.card_limit
@@ -724,7 +759,7 @@ local function snapshot()
 
   payload.tags = snapshot_tags()
 
-  payload.blind_selection = snapshot_blind_selection()
+  payload.blind_select = snapshot_blind_select()
 
   if G.GAME and G.GAME.used_vouchers then
     local vouchers = {}
