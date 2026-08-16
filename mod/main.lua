@@ -17,10 +17,14 @@ end
 
 local bridge_commands = load_module('commands')
 local socket_module = jit.os == 'Windows' and 'socket_server_windows' or 'socket_server'
+local card_ids = load_module('card_ids')
 local actions = load_module('actions')
+local state = load_module('state')
+actions.configure(card_ids)
+state.configure(card_ids)
 bridge_commands.init({
   actions = actions,
-  state = load_module('state'),
+  state = state,
   jsonrpc = load_module('jsonrpc'),
   socket = load_module(socket_module),
   socket_codec = load_module('socket_codec'),
@@ -32,6 +36,7 @@ function love.update(dt)
   if _original_love_update then
     _original_love_update(dt)
   end
+  card_ids.update()
 
   local commands_ok, commands_err = pcall(bridge_commands.update)
   if not commands_ok then

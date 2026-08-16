@@ -1,4 +1,6 @@
 local handlers = {}
+local card_ids
+
 
 local function err(error_code, message)
   return { ok = false, error_code = error_code, error_message = message }
@@ -55,15 +57,7 @@ local function check_phase(allowed_phases)
 end
 
 local function find_card_in(area, target_card_id)
-  if not area or not area.cards then return nil end
-  local target_id = tostring(target_card_id)
-  for _, card in ipairs(area.cards) do
-    local cid = card_id(card)
-    if cid ~= nil and tostring(cid) == target_id then
-      return card
-    end
-  end
-  return nil
+  return card_ids.resolve(area, target_card_id)
 end
 
 local function find_card_in_hand(card_id)
@@ -136,7 +130,7 @@ local function replace_requested_highlights(cards, requested)
     if card.ability and card.ability.forced_selection and not requested[tostring(card_id(card))] then
       return nil, nil, err(
         "INVALID_TARGET",
-        "Forced hand card " .. tostring(card_id(card)) .. " must remain selected; include it in the requested IDs"
+        "Forced hand card " .. tostring(card_ids.public(G.hand, card)) .. " must remain selected; include it in the requested IDs"
       )
     end
   end
@@ -147,9 +141,9 @@ local function replace_requested_highlights(cards, requested)
     local key = tostring(card_id(card))
     if not requested[key] then
       replace_highlights(previous)
-      return nil, nil, err("INVALID_TARGET", "Balatro retained an unrequested hand card: " .. key)
+      return nil, nil, err("INVALID_TARGET", "Balatro retained an unrequested hand card: " .. tostring(card_ids.public(G.hand, card)))
     end
-    selected_ids[#selected_ids + 1] = key
+    selected_ids[#selected_ids + 1] = card_ids.public(G.hand, card)
   end
   if #selected_ids ~= #cards then
     replace_highlights(previous)
@@ -482,6 +476,9 @@ handlers.sell_card = function(args)
   end
   if not card then
     return err("INVALID_TARGET", "Card not found in jokers or consumables: " .. tostring(card_id))
+  end
+  if card_ids.hidden(G.jokers, card) and G.jokers and contains_card(G.jokers.cards, card) then
+    return err("CANNOT_USE_NOW", "Face-down Jokers cannot be sold while their identity is hidden")
   end
 
   if card.ability and card.ability.eternal then
@@ -848,22 +845,22 @@ handlers.reorder_jokers = function(args)
   local phase_err = check_phase({ "SELECTING_HAND", "SHOP" })
   if phase_err then return phase_err end
 
-  local card_ids = args.card_ids
+  local requested_ids = args.card_ids
+  card_ids.sync(G.jokers)
 
   local current_count = #G.jokers.cards
-  if #card_ids ~= current_count then
-    return err("INVALID_TARGET", "card_ids count (" .. #card_ids .. ") does not match joker count (" .. current_count .. ")")
+  if #requested_ids ~= current_count then
+    return err("INVALID_TARGET", "card_ids count (" .. #requested_ids .. ") does not match joker count (" .. current_count .. ")")
   end
 
   local id_to_card = {}
   for _, card in ipairs(G.jokers.cards) do
-    local cid = card_id(card)
-    local key = tostring(cid)
+    local key = tostring(card_ids.public(G.jokers, card))
     id_to_card[key] = card
   end
 
   local seen = {}
-  for _, cid in ipairs(card_ids) do
+  for _, cid in ipairs(requested_ids) do
     local key = tostring(cid)
     if not id_to_card[key] then
       return err("INVALID_TARGET", "Joker ID not found: " .. tostring(cid))
@@ -875,14 +872,19 @@ handlers.reorder_jokers = function(args)
   end
 
   local new_order = {}
-  for _, cid in ipairs(card_ids) do
+  for _, cid in ipairs(requested_ids) do
     new_order[#new_order + 1] = id_to_card[tostring(cid)]
   end
   G.jokers.cards = new_order
+  card_ids.sync(G.jokers)
 
   G.jokers:set_ranks()
 
   return ok({ reordered = true, count = current_count })
+end
+
+function handlers.configure(ids)
+  card_ids = ids
 end
 
 return handlers

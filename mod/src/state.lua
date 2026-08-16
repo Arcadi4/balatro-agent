@@ -1,4 +1,6 @@
 local State = {}
+local card_ids
+
 local PROTOCOL_VERSION = 1
 local seq = 0
 local PHASE_NAMES = {
@@ -237,8 +239,15 @@ local function can_reroll_boss()
 end
 
 
-local function serialize_playing_card(card)
+local function serialize_playing_card(card, faced_down)
   if not card then return nil end
+  if faced_down then
+    return {
+      card_id = card_ids.public(G.hand, card),
+      kind = 'playing_card',
+      faced_down = true,
+    }
+  end
   return {
     card_id = card_id(card),
     kind = 'playing_card',
@@ -282,8 +291,15 @@ local function is_active_joker(card)
   return false
 end
 
-local function serialize_joker(card)
+local function serialize_joker(card, faced_down)
   if not card then return nil end
+  if faced_down then
+    return {
+      card_id = card_ids.public(G.jokers, card),
+      kind = 'joker',
+      faced_down = true,
+    }
+  end
   local obj = {
     card_id = card_id(card),
     kind = 'joker',
@@ -306,7 +322,6 @@ local function serialize_joker(card)
   end
   return obj
 end
-
 local function consumable_usable(card)
   -- can_use_consumeable reads UI-refresh state (e.g. Wheel of Fortune's
   -- eligible_strength_jokers) that is only populated during Card:update.
@@ -376,7 +391,7 @@ local function compute_legal_actions()
   local function has_sellable_card()
     if G.jokers and G.jokers.cards then
       for _, card in ipairs(G.jokers.cards) do
-        if card and not (card.ability and card.ability.eternal) then
+        if card and not card_ids.hidden(G.jokers, card) and not (card.ability and card.ability.eternal) then
           return true
         end
       end
@@ -790,9 +805,22 @@ local function snapshot()
   payload.consumable_slots = G.consumeables and G.consumeables.config and G.consumeables.config.card_limit
 
   if G.hand and G.hand.cards then
-    local hand = {}
+    card_ids.sync(G.hand)
+    local cards = {}
+    local has_hidden = false
     for _, card in ipairs(G.hand.cards) do
-      hand[#hand + 1] = serialize_playing_card(card)
+      cards[#cards + 1] = card
+      if card_ids.hidden(G.hand, card) then has_hidden = true end
+    end
+    if has_hidden then
+      table.sort(cards, function(a, b)
+        return tostring(card_ids.public(G.hand, a)) < tostring(card_ids.public(G.hand, b))
+      end)
+    end
+    local hand = {}
+    for _, card in ipairs(cards) do
+      card_ids.public(G.hand, card)
+      hand[#hand + 1] = serialize_playing_card(card, card_ids.hidden(G.hand, card))
     end
     if #hand > 0 then payload.hand = hand end
   end
@@ -800,18 +828,31 @@ local function snapshot()
   if G.hand and G.hand.highlighted and #G.hand.highlighted > 0 then
     local selected = {}
     for _, card in ipairs(G.hand.highlighted) do
-      selected[#selected + 1] = card_id(card)
+      selected[#selected + 1] = card_ids.public(G.hand, card)
     end
     payload.selected_hand_card_ids = selected
   end
 
   if G.jokers and G.jokers.cards then
-    local jokers = {}
+    card_ids.sync(G.jokers)
+    local cards = {}
+    local has_hidden = false
     for _, card in ipairs(G.jokers.cards) do
       local set = card and card.config and card.config.center and card.config.center.set
       if set == nil or set == 'Joker' then
-        jokers[#jokers + 1] = serialize_joker(card)
+        cards[#cards + 1] = card
+        card_ids.public(G.jokers, card)
+        if card_ids.hidden(G.jokers, card) then has_hidden = true end
       end
+    end
+    if has_hidden then
+      table.sort(cards, function(a, b)
+        return tostring(card_ids.public(G.jokers, a)) < tostring(card_ids.public(G.jokers, b))
+      end)
+    end
+    local jokers = {}
+    for _, card in ipairs(cards) do
+      jokers[#jokers + 1] = serialize_joker(card, card_ids.hidden(G.jokers, card))
     end
     if #jokers > 0 then payload.jokers = jokers end
   end
@@ -827,15 +868,7 @@ local function snapshot()
   payload.deck_summary = compute_deck_summary()
 
   if G.discard and G.discard.cards then
-    local discard_cards = {}
-    for _, card in ipairs(G.discard.cards) do
-      local pc = serialize_playing_card(card)
-      if pc then discard_cards[#discard_cards + 1] = pc end
-    end
-    payload.discard_summary = {
-      count = #G.discard.cards,
-      cards = discard_cards,
-    }
+    payload.discard_summary = { count = #G.discard.cards }
   end
 
   payload.shop = snapshot_shop()
@@ -891,5 +924,9 @@ function State.get_state_envelope()
     payload = snapshot(),
   }
 end
+function State.configure(ids)
+  card_ids = ids
+end
+
 
 return State

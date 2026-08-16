@@ -55,6 +55,7 @@ function displayCardModifier(value: unknown, names: Record<string, string>): str
 }
 
 function displayHandCard(card: Record<string, unknown>): string {
+  if (card.faced_down === true) return "Face-down card"
   const enhancements: Record<string, string> = {
     bonus: "Bonus",
     mult: "Mult",
@@ -114,6 +115,9 @@ function displayJokerPrice(card: Record<string, unknown>): string | undefined {
 }
 
 function displayJokerLine(card: Record<string, unknown>, index: number): string {
+  if (card.faced_down === true) {
+    return `${index}. [${String(card.card_id ?? "?")}] Face-down Joker`
+  }
   const rarity = displayJokerRarity(card.rarity)
   const price = displayJokerPrice(card)
   const edition = displayCardModifier(card.edition, EDITION_NAMES)

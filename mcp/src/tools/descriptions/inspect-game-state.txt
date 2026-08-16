@@ -1,1 +1,1 @@
-Returns the current game state: phase, hand, jokers, consumables, money, shop contents, round progress, and legal actions.
+Returns the current game state: phase, hand, jokers, consumables, money, shop contents, round progress, and legal actions. Face-down hand cards and Jokers are marked without exposing their hidden identity or modifiers.
