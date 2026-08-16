@@ -34,6 +34,7 @@ local function finish_play_hand(pending, timed_out)
   local target = blind_chips() or pending.data.blind_chips
   return {
     cards_played = pending.data.cards_played,
+    played_cards = pending.data.played_cards,
     points_gained = after - before,
     score_before = before,
     score_after = after,

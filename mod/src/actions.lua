@@ -11,6 +11,38 @@ end
 local function card_id(card)
   return card.sort_id or (card.config and card.config.card_id)
 end
+local function serialize_played_card(card)
+  if card.facing == 'back' or card.sprite_facing == 'back' then return { faced_down = true } end
+  local enhancement
+  if card.ability and card.ability.name then
+    local enhancements = {
+      ['Bonus Card'] = 'bonus',
+      ['Mult Card'] = 'mult',
+      ['Wild Card'] = 'wild',
+      ['Glass Card'] = 'glass',
+      ['Steel Card'] = 'steel',
+      ['Stone Card'] = 'stone',
+      ['Gold Card'] = 'gold',
+      ['Lucky Card'] = 'lucky',
+    }
+    enhancement = enhancements[card.ability.name]
+  end
+  local edition
+  if card.edition then
+    if card.edition.foil then edition = 'foil'
+    elseif card.edition.holo then edition = 'holo'
+    elseif card.edition.polychrome then edition = 'polychrome'
+    elseif card.edition.negative then edition = 'negative' end
+  end
+  return {
+    rank = card.base and card.base.value,
+    suit = card.base and card.base.suit,
+    enhancement = enhancement,
+    edition = edition,
+    seal = card.seal,
+  }
+end
+
 
 local function check_phase(allowed_phases)
   if not G or not G.STATE or not G.STATES then
@@ -377,6 +409,10 @@ handlers.play_hand = function(args)
   end
 
   local cards_played = #G.hand.highlighted
+  local played_cards = {}
+  for _, card in ipairs(G.hand.highlighted) do
+    played_cards[#played_cards + 1] = serialize_played_card(card)
+  end
   local score_before = G.GAME and G.GAME.chips or 0
   local hands_played_before = G.GAME and G.GAME.current_round and G.GAME.current_round.hands_played or 0
   local blind_chips = G.GAME and G.GAME.blind and G.GAME.blind.chips or nil
@@ -389,6 +425,7 @@ handlers.play_hand = function(args)
     timeout_seconds = 12,
     data = {
       cards_played = cards_played,
+      played_cards = played_cards,
       score_before = score_before,
       hands_played_before = hands_played_before,
       blind_chips = blind_chips,

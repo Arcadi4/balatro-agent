@@ -92,6 +92,22 @@ function playHandToMarkdown(result: Record<string, unknown>): string {
     "",
     `- **Cards played:** ${String(data.cards_played ?? "unknown")}`,
   ]
+  if (Array.isArray(data.played_cards) && data.played_cards.length > 0) {
+    lines.push("- **Played cards:**")
+    for (const value of data.played_cards) {
+      const card = asRecord(value)
+      if (!card) continue
+      if (card.faced_down === true) {
+        lines.push("  - Face-down card")
+        continue
+      }
+      const modifiers = [card.enhancement, card.edition, card.seal].filter(
+        (modifier): modifier is string => modifier !== undefined,
+      )
+      const suffix = modifiers.length > 0 ? ` (${modifiers.join(", ")})` : ""
+      lines.push(`  - ${String(card.rank ?? "?")} of ${String(card.suit ?? "?")}${suffix}`)
+    }
+  }
   if (data.points_gained !== undefined) lines.push(`- **Points gained:** ${data.points_gained}`)
   if (data.score_before !== undefined && data.score_after !== undefined) {
     lines.push(`- **Score:** ${data.score_before} -> ${data.score_after}`)

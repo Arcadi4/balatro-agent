@@ -24,3 +24,28 @@ test("registers and dispatches boss rerolls", async () => {
   expect(reroll).toBeDefined()
   await reroll?.()
 })
+
+test("returns played cards while preserving hidden-card redaction", async () => {
+  let play: (() => Promise<unknown>) | undefined
+  const server = {
+    registerTool(name: string, _config: unknown, callback: () => Promise<unknown>) {
+      if (name === "balatro_play_hand") play = callback
+    },
+  } as unknown as McpServer
+  const bridge = {
+    command: async () => ({
+      cards_played: 2,
+      played_cards: [{ faced_down: true }, { rank: "King", suit: "Hearts", enhancement: "mult" }],
+    }),
+  } as unknown as BridgeClient
+
+  registerActionTools(server, bridge)
+  const result = (await play?.()) as {
+    content: Array<{ type: string; text: string }>
+    structuredContent: { data: { played_cards: Array<Record<string, unknown>> } }
+  }
+  const markdown = result.content[0]?.text
+  expect(markdown).toContain("Face-down card")
+  expect(markdown).toContain("King of Hearts (mult)")
+  expect(result.structuredContent.data.played_cards[0]).toEqual({ faced_down: true })
+})
