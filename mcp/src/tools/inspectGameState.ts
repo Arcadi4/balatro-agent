@@ -299,6 +299,7 @@ function appendRoundSection(lines: string[], round: Record<string, unknown>): vo
         : ""
     const target = blind.chips !== undefined ? ` — ${scored}${String(blind.chips)} chips` : ""
     lines.push(`- **Blind:** ${String(blind.name ?? "?")}${target}`)
+    if (blind.description !== undefined) lines.push(`  - ${String(blind.description)}`)
   }
   appendField(lines, "Hands Left", round.hands_left)
   appendField(lines, "Discards Left", round.discards_left)
@@ -340,6 +341,7 @@ function appendBlindSelectSection(
       lines.push(
         `- **${String(blind.name ?? blind.blind_id ?? "?")}** (${String(blind.slot ?? "?")})${chips}${skip}${markerText}`,
       )
+      if (blind.description !== undefined) lines.push(`  - ${String(blind.description)}`)
     }
   }
 

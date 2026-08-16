@@ -201,6 +201,31 @@ local function get_card_description(card)
   if #lines == 0 then return nil end
   return table.concat(lines, ' ')
 end
+local function blind_description(blind)
+  if not blind then return nil end
+  local loc_vars
+  if blind.name == 'The Ox' and G and G.GAME and G.GAME.current_round then
+    local most_played = G.GAME.current_round.most_played_poker_hand
+    if most_played then loc_vars = { localize(most_played, 'poker_hands') } end
+  end
+
+  local target = { type = 'raw_descriptions', key = blind.key, set = 'Blind', vars = loc_vars or blind.vars }
+  if type(blind.loc_vars) == 'function' then
+    local result = blind:loc_vars() or {}
+    target.vars = result.vars or target.vars
+    target.key = result.key or target.key
+    target.set = result.set or target.set
+  end
+
+  local localized = localize and localize(target)
+  if type(localized) ~= 'table' then return nil end
+  local lines = {}
+  for _, line in ipairs(localized) do
+    local text = trim_text(line)
+    if text then lines[#lines + 1] = text end
+  end
+  return #lines > 0 and table.concat(lines, ' ') or nil
+end
 
 local function serialize_playing_card(card)
   if not card then return nil end
@@ -660,6 +685,8 @@ local function snapshot_round()
     round.blind = {
       name = b.name,
       chips = b.chips,
+      description = type(b.get_loc_debuff_text) == 'function' and trim_text(b:get_loc_debuff_text())
+        or blind_description(b.config and b.config.blind),
       debuff = b.debuff or nil,
       block_play = b.block_play or nil,
     }
@@ -684,6 +711,7 @@ local function snapshot_blind_select()
         blind_id = blind_id,
         name = blind and blind.name or blind_id,
         state = round_resets.blind_states and round_resets.blind_states[slot] or nil,
+        description = blind_description(blind),
       }
 
       -- Chip target preview, same formula as the blind select panel.
