@@ -265,7 +265,7 @@ export class BridgeClient {
     this.assertConnected()
 
     const id = ++this.commandSeq
-    const pending = this.createPendingRequest(id)
+    const pending = this.createPendingRequest(id, timeoutMs)
     const request: JsonRpcRequest = {
       jsonrpc: "2.0",
       id,
@@ -275,7 +275,7 @@ export class BridgeClient {
 
     try {
       await this.writeFrame(request)
-      const response = await this.awaitJsonRpcResponse(id, pending, timeoutMs)
+      const response = await this.awaitJsonRpcResponse(id, pending)
       if (response.error) {
         throw new BridgeError(bridgeErrorCode(response.error), response.error.message)
       }
@@ -328,6 +328,14 @@ export class BridgeClient {
     })
     socket.on("error", (error) => {
       if (this.socket === socket) this.handleSocketError(error)
+    })
+    // A peer that closes right after accept (the bridge rejects extra
+    // clients this way) half-closes the connection: 'end' arrives but the
+    // pending write callback and 'close' may never fire on their own.
+    // Force the close so pending requests are rejected and reconnection
+    // runs instead of hanging forever.
+    socket.on("end", () => {
+      if (this.socket === socket) socket.destroy()
     })
     socket.once("close", () => {
       if (this.socket === socket) this.handleSocketClose(this.socketError)
@@ -450,8 +458,16 @@ export class BridgeClient {
       throw this.lastDisconnectError ?? gameNotRunning()
     }
 
+    // The write callback can be abandoned when the peer half-closes right
+    // after accept (see openSocket's 'end' handler). Reject on 'close' too
+    // so a queued write never hangs its caller.
     await new Promise<void>((resolve, reject) => {
+      const onClose = () => {
+        reject(this.lastDisconnectError ?? gameNotRunning("Bridge connection closed before the command was written"))
+      }
+      socket.once("close", onClose)
       socket.write(serializeFrame(request), (error) => {
+        socket.removeListener("close", onClose)
         if (error) {
           reject(error)
         } else if (this.socket !== socket || this.connectionGeneration !== generation) {
@@ -463,23 +479,34 @@ export class BridgeClient {
     })
   }
 
-  private createPendingRequest(id: number): PendingRequest {
+  private createPendingRequest(id: number, timeoutMs?: number): PendingRequest {
     const { promise, resolve, reject } = Promise.withResolvers<JsonRpcResponse>()
     void promise.catch(() => undefined)
-    const pending = { promise, resolve, reject }
+    const pending: PendingRequest = { promise, resolve, reject }
     this.pendingRequests.set(id, pending)
+    // Arm the timeout at creation time so it covers the write phase too:
+    // a write that hangs (peer half-close before the callback fires) must
+    // still let the request settle.
+    if (timeoutMs !== undefined) {
+      pending.timeout = setTimeout(() => {
+        this.pendingRequests.delete(id)
+        pending.reject(new BridgeError("STATE_STALE", "Bridge response timed out"))
+      }, timeoutMs)
+    }
     return pending
   }
 
   private async awaitJsonRpcResponse(
     id: number,
     pending: PendingRequest,
-    timeoutMs: number,
+    timeoutMs?: number,
   ): Promise<JsonRpcResponse> {
-    pending.timeout = setTimeout(() => {
-      this.pendingRequests.delete(id)
-      pending.reject(new BridgeError("STATE_STALE", "Bridge response timed out"))
-    }, timeoutMs)
+    if (timeoutMs !== undefined) {
+      pending.timeout = setTimeout(() => {
+        this.pendingRequests.delete(id)
+        pending.reject(new BridgeError("STATE_STALE", "Bridge response timed out"))
+      }, timeoutMs)
+    }
 
     try {
       return await pending.promise
