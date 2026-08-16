@@ -816,14 +816,18 @@ handlers.select_booster_card = function(args)
     if target_err then return target_err end
   end
 
-  if card.config and card.config.center then
-    local set = card.config.center.set
-    if set == "Joker" and not (card.edition and card.edition.negative) then
-      local joker_count = #G.jokers.cards
-      local joker_limit = G.jokers.config.card_limit
-      if joker_count >= joker_limit then
-        return err("SLOTS_FULL", "No available joker slots")
-      end
+  local select_area = booster_obj
+    and SMODS.card_select_area(card, booster_obj)
+    and card:selectable_from_pack(booster_obj)
+  if select_area then
+    local edition_card_limit = card.ability.card_limit - card.ability.extra_slots_used
+    if #G[select_area].cards >= G[select_area].config.card_limit + edition_card_limit then
+      return err("SLOTS_FULL", "No available " .. tostring(select_area) .. " slots")
+    end
+  elseif card.ability.set == "Joker" then
+    local edition_card_limit = card.ability.card_limit - card.ability.extra_slots_used
+    if #G.jokers.cards >= G.jokers.config.card_limit + edition_card_limit then
+      return err("SLOTS_FULL", "No available joker slots")
     end
   end
 
