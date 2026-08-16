@@ -344,6 +344,9 @@ function appendBlindSelectSection(
       if (blind.description !== undefined) lines.push(`  - ${String(blind.description)}`)
     }
   }
+  if (selection.boss_reroll_cost !== undefined) {
+    lines.push(`\n- **Boss reroll:** $${String(selection.boss_reroll_cost)}`)
+  }
 
   if (Array.isArray(tags) && tags.length > 0) {
     lines.push("\n### Queued Tags\n")

@@ -301,6 +301,36 @@ handlers.skip_blind = function(args)
   })
 end
 
+handlers.reroll_boss = function(args)
+  local phase_err = check_phase({ "BLIND_SELECT" })
+  if phase_err then return phase_err end
+
+  local game = G.GAME
+  local resets = game and game.round_resets
+  local vouchers = game and game.used_vouchers
+  if not resets or not resets.blind_choices or not vouchers then
+    return err("CANNOT_USE_NOW", "Boss reroll state is not ready")
+  end
+  if G.CONTROLLER and G.CONTROLLER.locks and G.CONTROLLER.locks.boss_reroll then
+    return err("CANNOT_USE_NOW", "A boss reroll is already in progress")
+  end
+  if not vouchers.v_retcon and not vouchers.v_directors_cut then
+    return err("INVALID_TARGET", "Director's Cut or Retcon is required to reroll the Boss Blind")
+  end
+  if vouchers.v_directors_cut and not vouchers.v_retcon and resets.boss_rerolled then
+    return err("INVALID_TARGET", "Director's Cut has already rerolled this Ante's Boss Blind")
+  end
+  local funds_err = check_funds(10)
+  if funds_err then return funds_err end
+  if not G.FUNCS or type(G.FUNCS.reroll_boss) ~= "function" then
+    return err("CANNOT_USE_NOW", "Boss reroll action is not ready")
+  end
+
+  local previous_boss = resets.blind_choices.Boss
+  G.FUNCS.reroll_boss()
+  return ok({ rerolled = true, previous_boss = previous_boss, cost = 10 })
+end
+
 handlers.select_hand_cards = function(args)
   local phase_err = check_phase({ "SELECTING_HAND" })
   if phase_err then return phase_err end

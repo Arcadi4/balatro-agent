@@ -226,6 +226,16 @@ local function blind_description(blind)
   end
   return #lines > 0 and table.concat(lines, ' ') or nil
 end
+local function can_reroll_boss()
+  local game = G and G.GAME
+  local resets = game and game.round_resets
+  local vouchers = game and game.used_vouchers
+  if not game or not resets or not vouchers then return false end
+  if (game.dollars or 0) - (game.bankrupt_at or 0) < 10 then return false end
+  if vouchers.v_retcon then return true end
+  return vouchers.v_directors_cut and not resets.boss_rerolled or false
+end
+
 
 local function serialize_playing_card(card)
   if not card then return nil end
@@ -430,6 +440,10 @@ local function compute_legal_actions()
       if (blind_key == 'Small' or blind_key == 'Big') and tag_key and tag_container then
         actions[#actions + 1] = 'skip_blind'
       end
+    end
+    if can_reroll_boss() and G.FUNCS and type(G.FUNCS.reroll_boss) == 'function'
+        and not (G.CONTROLLER and G.CONTROLLER.locks and G.CONTROLLER.locks.boss_reroll) then
+      actions[#actions + 1] = 'reroll_boss'
     end
   elseif gs == states.SHOP then
     local has_card = false
@@ -731,7 +745,11 @@ local function snapshot_blind_select()
   end
   if #blinds == 0 then return nil end
 
-  return { current = G.GAME.blind_on_deck, blinds = blinds }
+  return {
+    current = G.GAME.blind_on_deck,
+    blinds = blinds,
+    boss_reroll_cost = can_reroll_boss() and 10 or nil,
+  }
 end
 
 local function snapshot_hand_levels()

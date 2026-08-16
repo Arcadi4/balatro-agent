@@ -14,6 +14,7 @@ import LEAVE_SHOP_DESCRIPTION from "./descriptions/leave-shop.txt" with { type: 
 import NEW_GAME_DESCRIPTION from "./descriptions/new-game.txt" with { type: "text" }
 import PLAY_HAND_DESCRIPTION from "./descriptions/play-hand.txt" with { type: "text" }
 import REORDER_JOKERS_DESCRIPTION from "./descriptions/reorder-jokers.txt" with { type: "text" }
+import REROLL_BOSS_DESCRIPTION from "./descriptions/reroll-boss.txt" with { type: "text" }
 import REROLL_SHOP_DESCRIPTION from "./descriptions/reroll-shop.txt" with { type: "text" }
 import RESTART_DESCRIPTION from "./descriptions/restart.txt" with { type: "text" }
 import SELECT_BLIND_DESCRIPTION from "./descriptions/select-blind.txt" with { type: "text" }
@@ -47,7 +48,7 @@ const selectHandSchema = z
       .refine((cardIds) => new Set(cardIds.map(String)).size === cardIds.length, {
         message: "card_ids must not contain duplicates",
       })
-  .describe("Hand card IDs to highlight. Empty array clears selection.")
+      .describe("Hand card IDs to highlight. Empty array clears selection."),
   })
   .strict()
 const sortHandSchema = z
@@ -57,10 +58,7 @@ const sortHandSchema = z
   .strict()
 const reorderJokersSchema = z
   .object({
-    order: z
-      .array(cardIdSchema)
-      .max(50)
-      .describe("Joker card IDs in desired left-to-right order."),
+    order: z.array(cardIdSchema).max(50).describe("Joker card IDs in desired left-to-right order."),
   })
   .strict()
 const buyConsumableSchema = z
@@ -72,18 +70,10 @@ const buyConsumableSchema = z
   .strict()
 const newGameSchema = z
   .object({
-    deck: z
-      .string()
-      .min(1)
-      .optional()
-      .describe("Deck key (e.g. b_red, b_blue)."),
+    deck: z.string().min(1).optional().describe("Deck key (e.g. b_red, b_blue)."),
     stake: z.number().int().min(1).max(8).optional().describe("Stake difficulty, 1-8."),
     seed: z.string().min(1).optional().describe("Seed for a seeded run."),
-    challenge: z
-      .string()
-      .min(1)
-      .optional()
-      .describe("Challenge id (e.g. c_omelette_1)."),
+    challenge: z.string().min(1).optional().describe("Challenge id (e.g. c_omelette_1)."),
   })
   .strict()
 const commandOutputSchema = z.object({ ok: z.literal(true), data: z.unknown() }).strict()
@@ -163,6 +153,13 @@ const NO_ARG_TOOLS: ActionTool[] = [
     title: "Reroll Shop",
     description: REROLL_SHOP_DESCRIPTION,
     command: "reroll_shop",
+    annotations: annotations(true, false),
+  },
+  {
+    name: "balatro_reroll_boss",
+    title: "Reroll Boss Blind",
+    description: REROLL_BOSS_DESCRIPTION,
+    command: "reroll_boss",
     annotations: annotations(true, false),
   },
   {
