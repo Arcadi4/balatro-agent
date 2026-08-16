@@ -481,8 +481,8 @@ handlers.sell_card = function(args)
     return err("CANNOT_USE_NOW", "Face-down Jokers cannot be sold while their identity is hidden")
   end
 
-  if card.ability and card.ability.eternal then
-    return err("ETERNAL_BLOCKED", "Card has Eternal sticker and cannot be sold")
+  if not card:can_sell_card() then
+    return err("CANNOT_SELL", "Card cannot be sold right now")
   end
 
   G.FUNCS.sell_card({ config = { ref_table = card } })
