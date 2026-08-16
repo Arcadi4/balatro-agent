@@ -259,6 +259,61 @@ G.GAME.dollars = 0
 local unaffordable_reroll = actions.reroll_boss({})
 assert(not unaffordable_reroll.ok and unaffordable_reroll.error_code == 'INSUFFICIENT_FUNDS')
 
+local deck_ace = {
+  sort_id = 301,
+  area = {},
+  base = { id = 14, value = 'Ace', suit = 'Spades' },
+  ability = { name = 'Default Base' },
+}
+function deck_ace:is_suit(suit) return suit == 'Spades' end
+function deck_ace:is_face() return false end
+local wild_king = {
+  sort_id = 302,
+  area = deck_ace.area,
+  base = { id = 13, value = 'King', suit = 'Hearts' },
+  ability = { name = 'Wild Card' },
+}
+function wild_king:is_suit() return true end
+function wild_king:is_face() return true end
+local debuffed_queen = {
+  sort_id = 303,
+  area = deck_ace.area,
+  base = { id = 12, value = 'Queen', suit = 'Diamonds' },
+  ability = { name = 'Default Base' },
+  debuff = true,
+}
+function debuffed_queen:is_suit() return false end
+function debuffed_queen:is_face() return false end
+hidden_hand.ability.wheel_flipped = true
+hidden_hand.area = G.hand
+G.deck = { cards = { deck_ace, wild_king, debuffed_queen } }
+deck_ace.area = G.deck
+wild_king.area = G.deck
+debuffed_queen.area = G.deck
+visible_hand.area = G.hand
+G.playing_cards = { deck_ace, wild_king, debuffed_queen, hidden_hand, visible_hand }
+
+local deck_summary = state_module.get_state_envelope().payload.deck_summary
+assert(deck_summary.remaining.count == 4 and deck_summary.remaining.draw_pile_count == 3)
+assert(deck_summary.full_deck.count == 5 and deck_summary.full_deck.unknown_count == 1)
+assert(deck_summary.remaining.unknown_count == 1)
+assert(deck_summary.remaining.tallies.by_suit.Spades.base == 1)
+assert(deck_summary.remaining.tallies.by_suit.Spades.effective == 2)
+assert(deck_summary.remaining.tallies.by_suit.Diamonds.base == 1)
+assert(deck_summary.remaining.tallies.by_suit.Diamonds.effective == 1)
+assert(deck_summary.remaining.tallies.categories.face_cards.base == 2)
+assert(deck_summary.remaining.tallies.categories.face_cards.effective == 1)
+local hidden_deck_card
+local nonremaining_card
+for _, card in ipairs(deck_summary.remaining.cards) do
+  if card.faced_down then hidden_deck_card = card end
+  if card.remaining == false then nonremaining_card = card end
+end
+assert(hidden_deck_card and hidden_deck_card.rank == nil and hidden_deck_card.suit == nil)
+assert(nonremaining_card and nonremaining_card.remaining == false)
+
+print('deck UI parity tests passed')
+
 G.STATE = G.STATES.SELECTING_HAND
 G.GAME.current_round = { hands_left = 4, discards_left = 3, hands_played = 0, discards_used = 0 }
 G.GAME.blind = {

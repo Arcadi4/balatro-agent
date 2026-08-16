@@ -77,3 +77,53 @@ test("renders face-down cards without hidden details", async () => {
     faced_down: true,
   })
 })
+
+test("renders remaining and full deck tallies like Balatro", async () => {
+  let inspectDeck: (() => Promise<unknown>) | undefined
+  const server = {
+    registerTool(name: string, _config: unknown, callback: () => Promise<unknown>) {
+      if (name === "balatro_inspect_deck") inspectDeck = callback
+    },
+  } as unknown as McpServer
+  const view = {
+    count: 4,
+    draw_pile_count: 3,
+    unknown_count: 1,
+    tallies: {
+      effective_diff: true,
+      stone_cards: 0,
+      categories: {
+        aces: { base: 1, effective: 1 },
+        face_cards: { base: 2, effective: 1 },
+        numbered_cards: { base: 0, effective: 0 },
+      },
+      by_suit: {
+        Spades: { base: 1, effective: 2 },
+        Hearts: { base: 1, effective: 1 },
+      },
+      by_rank: {
+        Ace: { base: 1, effective: 1 },
+        King: { base: 1, effective: 1 },
+      },
+    },
+    cards: [
+      { kind: "playing_card", rank: "Ace", suit: "Spades" },
+      { kind: "playing_card", faced_down: true },
+    ],
+  }
+  const bridge = {
+    getState: async () => ({ deck_summary: { remaining: view, full_deck: view } }),
+  } as unknown as BridgeClient
+
+  registerInspectGameState(server, bridge)
+  const result = (await inspectDeck?.()) as { content: Array<{ type: string; text: string }> }
+  const markdown = result.content[0]?.text
+  expect(markdown).toContain("`b/e` = base/effective; `?N` = N face-down cards")
+  expect(markdown).toContain("## Remaining — 4 (3 deck + ?1)")
+  expect(markdown).toContain("## Full Deck — 4 (?1)")
+  expect(markdown).toContain("**Types:** A 1 · F 2/1 · # 0 · Stone 0")
+  expect(markdown).toContain("**Suits:** ♠ 1/2 · ♥ 1")
+  expect(markdown).toContain("- ?: ×1")
+  expect(markdown).not.toContain("orange/base")
+  expect(markdown).not.toContain("effective blue")
+})

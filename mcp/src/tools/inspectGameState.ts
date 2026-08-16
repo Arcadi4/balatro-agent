@@ -439,47 +439,121 @@ function stateToMarkdown(data: object): string {
   return lines.join("\n")
 }
 
-function statLines(value: unknown): string[] {
-  const obj = asRecord(value)
-  if (!obj) return []
-  const entries = Object.entries(obj).filter(([, count]) => count !== undefined && count !== null)
-  if (entries.length === 0) return []
-  return entries.map(([key, count]) => `- ${key}: ${String(count)}`)
+function displayTally(value: unknown): string {
+  const tally = asRecord(value)
+  if (!tally) return "0"
+  const base = String(tally.base ?? 0)
+  return tally.effective !== undefined && tally.effective !== tally.base
+    ? `${base}/${String(tally.effective)}`
+    : base
+}
+
+const SUIT_ORDER = ["Spades", "Hearts", "Clubs", "Diamonds"] as const
+const RANK_ORDER = [
+  "Ace",
+  "King",
+  "Queen",
+  "Jack",
+  "10",
+  "9",
+  "8",
+  "7",
+  "6",
+  "5",
+  "4",
+  "3",
+  "2",
+] as const
+
+function orderedEntries(
+  value: Record<string, unknown>,
+  order: readonly string[],
+): Array<[string, unknown]> {
+  const positions: Record<string, number> = Object.fromEntries(
+    order.map((key, index) => [key, index]),
+  )
+  return Object.entries(value).sort(
+    ([a], [b]) =>
+      (positions[a] ?? order.length) - (positions[b] ?? order.length) || a.localeCompare(b),
+  )
+}
+
+function appendDeckCards(lines: string[], cards: unknown[], remainingOnly: boolean): void {
+  const groups: Record<string, string[]> = {}
+  let unknown = 0
+  for (const value of cards) {
+    const card = asRecord(value)
+    if (!card || (remainingOnly && card.remaining === false)) continue
+    if (card.faced_down === true) {
+      unknown += 1
+      continue
+    }
+    const suit = String(card.suit ?? "Other")
+    const label = displayHandCard(card).replace(displayCardSuit(card.suit), "")
+    const group = groups[suit] ?? []
+    group.push(label)
+    groups[suit] = group
+  }
+  if (Object.keys(groups).length === 0 && unknown === 0) return
+  lines.push("\n### Cards\n")
+  for (const [suit, cardsInSuit] of orderedEntries(groups, SUIT_ORDER)) {
+    lines.push(`- ${displayCardSuit(suit)}: ${(cardsInSuit as string[]).join(", ")}`)
+  }
+  if (unknown > 0) lines.push(`- ?: ×${unknown}`)
+}
+
+function appendDeckView(lines: string[], title: string, value: unknown): void {
+  const view = asRecord(value)
+  if (!view) return
+  const unknownCount = typeof view.unknown_count === "number" ? view.unknown_count : 0
+  const drawPile =
+    title === "Remaining" && view.draw_pile_count !== undefined
+      ? ` (${String(view.draw_pile_count)} deck`
+      : ""
+  const unknown = unknownCount > 0 ? `${drawPile ? " + " : " ("}?${unknownCount}` : ""
+  const suffix = drawPile || unknown ? `${drawPile}${unknown})` : ""
+  lines.push(`## ${title} — ${String(view.count ?? 0)}${suffix}\n`)
+
+  const tallies = asRecord(view.tallies)
+  if (tallies) {
+    const categories = asRecord(tallies.categories)
+    if (categories) {
+      const stones = String(tallies.stone_cards ?? 0)
+      lines.push(
+        `- **Types:** A ${displayTally(categories.aces)} · F ${displayTally(categories.face_cards)} · # ${displayTally(categories.numbered_cards)} · Stone ${stones}`,
+      )
+    }
+    const suits = asRecord(tallies.by_suit)
+    if (suits) {
+      lines.push(
+        `- **Suits:** ${orderedEntries(suits, SUIT_ORDER)
+          .map(([suit, tally]) => `${displayCardSuit(suit)} ${displayTally(tally)}`)
+          .join(" · ")}`,
+      )
+    }
+    const ranks = asRecord(tallies.by_rank)
+    if (ranks && Object.keys(ranks).length > 0) {
+      lines.push(
+        `- **Ranks:** ${orderedEntries(ranks, RANK_ORDER)
+          .map(([rank, tally]) => `${displayCardRank(rank)} ${displayTally(tally)}`)
+          .join(" · ")}`,
+      )
+    }
+  }
+  if (Array.isArray(view.cards)) appendDeckCards(lines, view.cards, title === "Remaining")
+  lines.push("")
 }
 
 function deckToMarkdown(data: Record<string, unknown>): string {
   const payload = (data.payload ?? {}) as Record<string, unknown>
   const deck = asRecord(payload.deck_summary)
   if (!deck) return "No deck data available."
-  const lines: string[] = []
-  lines.push("# Deck\n")
-  lines.push(`**Total cards:** ${String(deck.count ?? 0)}  `)
-  lines.push("")
-
-  const sections: ReadonlyArray<readonly [string, unknown]> = [
-    ["By Rank", deck.by_rank],
-    ["By Suit", deck.by_suit],
-    ["By Enhancement", deck.by_enhancement],
-    ["By Seal", deck.by_seal],
-    ["By Edition", deck.by_edition],
+  const lines = [
+    "# Deck\n",
+    "`b/e` = base/effective; `?N` = N face-down cards omitted from tallies.\n",
   ]
-  for (const [title, field] of sections) {
-    const stats = statLines(field)
-    if (stats.length > 0) {
-      lines.push(`## ${title}\n`)
-      lines.push(...stats)
-      lines.push("")
-    }
-  }
-
-  if (Array.isArray(deck.cards) && deck.cards.length > 0) {
-    lines.push("## Cards\n")
-    for (const card of deck.cards) {
-      const record = asRecord(card)
-      if (record) lines.push(`- ${displayHandCard(record)}`)
-    }
-  }
-
+  appendDeckView(lines, "Remaining", deck.remaining)
+  appendDeckView(lines, "Full Deck", deck.full_deck)
   return lines.join("\n")
 }
 

@@ -522,44 +522,148 @@ local function get_phase_name()
 end
 
 local function compute_deck_summary()
-  if not G or not G.deck or not G.deck.cards then
-    return { count = 0 }
+  local playing_cards = G and G.playing_cards
+  if not playing_cards then
+    return {
+      remaining = { count = 0, draw_pile_count = 0, unknown_count = 0 },
+      full_deck = { count = 0, unknown_count = 0 },
+    }
   end
 
-  local count = #G.deck.cards
-  local by_rank = {}
-  local by_suit = {}
-  local by_enhancement = {}
-  local by_seal = {}
-  local by_edition = {}
-  local cards = {}
+  local suits = { 'Spades', 'Hearts', 'Clubs', 'Diamonds' }
+  if SMODS and SMODS.Suit and SMODS.Suit.obj_buffer then suits = SMODS.Suit.obj_buffer end
 
-  for _, card in ipairs(G.deck.cards) do
-    local pc = serialize_playing_card(card)
-    if pc then cards[#cards + 1] = pc end
+  local function predicate(card, method, ...)
+    if type(card[method]) ~= 'function' then return false end
+    local ok, value = pcall(card[method], card, ...)
+    return ok and value and true or false
+  end
 
-    if card.base then
-      local rank = card.base.value
-      local suit = card.base.suit
-      if rank then by_rank[rank] = (by_rank[rank] or 0) + 1 end
-      if suit then by_suit[suit] = (by_suit[suit] or 0) + 1 end
+  local function no_rank(card)
+    if SMODS and type(SMODS.has_no_rank) == 'function' then return SMODS.has_no_rank(card) end
+    return get_card_enhancement(card) == 'stone'
+  end
+
+  local function no_suit(card)
+    if SMODS and type(SMODS.has_no_suit) == 'function' then return SMODS.has_no_suit(card) end
+    return get_card_enhancement(card) == 'stone'
+  end
+
+  local function new_tallies()
+    local by_suit = {}
+    for _, suit in ipairs(suits) do by_suit[suit] = { base = 0, effective = 0 } end
+    return {
+      by_rank = {},
+      by_suit = by_suit,
+      categories = {
+        aces = { base = 0, effective = 0 },
+        face_cards = { base = 0, effective = 0 },
+        numbered_cards = { base = 0, effective = 0 },
+      },
+      stone_cards = 0,
+      effective_diff = false,
+    }
+  end
+
+  local function count_card(tallies, card)
+    local rankless = no_rank(card)
+    local suitless = no_suit(card)
+    if get_card_enhancement(card) == 'stone' then tallies.stone_cards = tallies.stone_cards + 1 end
+
+    local rank = card.base and card.base.value
+    if rank and not rankless then
+      local rank_tally = tallies.by_rank[rank] or { base = 0, effective = 0 }
+      rank_tally.base = rank_tally.base + 1
+      if not card.debuff then rank_tally.effective = rank_tally.effective + 1 end
+      tallies.by_rank[rank] = rank_tally
+
+      local rank_data = SMODS and SMODS.Ranks and SMODS.Ranks[rank]
+      local is_ace = (card.base and card.base.id == 14) or rank == 'Ace'
+      local is_face = rank_data and rank_data.face or rank == 'King' or rank == 'Queen' or rank == 'Jack'
+      if is_ace then
+        tallies.categories.aces.base = tallies.categories.aces.base + 1
+        if not card.debuff then
+          tallies.categories.aces.effective = tallies.categories.aces.effective + 1
+        end
+      elseif not is_face then
+        tallies.categories.numbered_cards.base = tallies.categories.numbered_cards.base + 1
+        if not card.debuff then
+          tallies.categories.numbered_cards.effective = tallies.categories.numbered_cards.effective + 1
+        end
+      end
+      if is_face then tallies.categories.face_cards.base = tallies.categories.face_cards.base + 1 end
+      if predicate(card, 'is_face') then
+        tallies.categories.face_cards.effective = tallies.categories.face_cards.effective + 1
+      end
     end
-    local enh = get_card_enhancement(card)
-    if enh then by_enhancement[enh] = (by_enhancement[enh] or 0) + 1 end
-    local seal = card.seal
-    if seal then by_seal[seal] = (by_seal[seal] or 0) + 1 end
-    local edition = get_card_edition(card)
-    if edition then by_edition[edition] = (by_edition[edition] or 0) + 1 end
+
+    local base_suit = card.base and card.base.suit
+    if base_suit and not suitless then
+      tallies.by_suit[base_suit] = tallies.by_suit[base_suit] or { base = 0, effective = 0 }
+      tallies.by_suit[base_suit].base = tallies.by_suit[base_suit].base + 1
+    end
+    for _, suit in ipairs(suits) do
+      if predicate(card, 'is_suit', suit) then
+        tallies.by_suit[suit].effective = tallies.by_suit[suit].effective + 1
+      end
+    end
+  end
+
+  local function finish_tallies(tallies)
+    for _, tally in pairs(tallies.by_rank) do
+      if tally.base ~= tally.effective then tallies.effective_diff = true end
+    end
+    for _, tally in pairs(tallies.by_suit) do
+      if tally.base ~= tally.effective then tallies.effective_diff = true end
+    end
+    for _, tally in pairs(tallies.categories) do
+      if tally.base ~= tally.effective then tallies.effective_diff = true end
+    end
+  end
+
+  local function build_view(remaining_only)
+    local view = {
+      count = 0,
+      unknown_count = 0,
+      tallies = new_tallies(),
+      cards = {},
+    }
+    if remaining_only then view.draw_pile_count = G.deck and G.deck.cards and #G.deck.cards or 0 end
+
+    for _, card in ipairs(playing_cards) do
+      local unknown = card.ability and card.ability.wheel_flipped
+        and not (card.area and G.deck and card.area == G.deck)
+      local included = not remaining_only
+        or (card.area ~= nil and G.deck ~= nil and card.area == G.deck)
+        or unknown == true
+      if included then
+        view.count = view.count + 1
+        if unknown then
+          view.unknown_count = view.unknown_count + 1
+        else
+          count_card(view.tallies, card)
+        end
+      end
+
+      if not unknown then
+        local serialized = serialize_playing_card(card)
+        if serialized then
+          serialized.card_id = nil
+          if remaining_only then serialized.remaining = included and true or false end
+          view.cards[#view.cards + 1] = serialized
+        end
+      end
+    end
+    for _ = 1, view.unknown_count do
+      view.cards[#view.cards + 1] = { kind = 'playing_card', faced_down = true, remaining = true }
+    end
+    finish_tallies(view.tallies)
+    return view
   end
 
   return {
-    count = count,
-    by_rank = next(by_rank) and by_rank or nil,
-    by_suit = next(by_suit) and by_suit or nil,
-    by_enhancement = next(by_enhancement) and by_enhancement or nil,
-    by_seal = next(by_seal) and by_seal or nil,
-    by_edition = next(by_edition) and by_edition or nil,
-    cards = cards,
+    remaining = build_view(true),
+    full_deck = build_view(false),
   }
 end
 
