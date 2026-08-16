@@ -53,12 +53,13 @@ local function update_pending_responses()
   local now = love.timer.getTime()
   local generation = bridge_generation
   for _, pending in ipairs(pending_responses) do
-    if G and G.STATE == G.STATES.HAND_PLAYED then
+    local in_hand_played = G and G.STATES and G.STATE == G.STATES.HAND_PLAYED
+    if in_hand_played then
       pending.saw_hand_played = true
     end
 
     local timed_out = now - pending.started_at >= pending.timeout_seconds
-    local finished = pending.saw_hand_played and G and G.STATE ~= G.STATES.HAND_PLAYED
+    local finished = pending.saw_hand_played and G and G.STATES and G.STATE ~= G.STATES.HAND_PLAYED
     if finished or timed_out then
       jsonrpc.send_result(pending.request_id, {
         ok = true,
