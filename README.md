@@ -80,3 +80,6 @@ Add the server to your MCP client configuration (Claude Code, Cursor, etc.):
 - Use and sell cards, reorder jokers for optimal trigger order
 - Start, continue, and restart runs with any deck, stake, or challenges
 - Provides a built-in Balatro rule doc, plus live lookup of every card, blind, and mechanic from the Balatro Wiki
+
+> [!IMPORTANT]
+> Wiki was exposed as [MCP resoruces](https://modelcontextprotocol.io/specification/2026-07-28/server/resources). If your agent client does not support resources properly, agents might not have access to wiki pages.

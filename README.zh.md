@@ -80,3 +80,6 @@ bun install
 - 使用和出售卡牌，调整小丑顺序以优化触发次序
 - 用任意牌组、赌注或挑战开始、继续、重开一局游戏
 - 内置 Balatro 规则文档，并可实时查询 Balatro Wiki 上的卡牌、盲注和机制说明
+
+> [!IMPORTANT]
+> Wiki 读取是通过 [MCP 资源](https://modelcontextprotocol.io/specification/2026-07-28/server/resources)实现的，如果你的 Agent 客户端没有正确支持这个功能，Agent 可能无法顺利获取 Wiki 内容。
