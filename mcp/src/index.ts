@@ -42,12 +42,10 @@ function createServer(bridge: BridgeClient): McpServer {
 
 async function main(): Promise<void> {
   const bridge = new BridgeClient()
-  try {
-    await bridge.connect()
-  } catch (error) {
-    await bridge.dispose()
-    throw error
-  }
+  bridge.connect().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`[balatro-mcp-server] bridge not connected yet: ${message}\n`)
+  })
 
   const handle = serveStdio(() => createServer(bridge), {
     onerror: (error) => process.stderr.write(`[balatro-mcp-server] ${error.message}\n`),
