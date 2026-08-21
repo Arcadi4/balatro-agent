@@ -67,7 +67,7 @@ mcp/src/
     └── challenges.ts        challenge reference resource
 ```
 
-Static reference data lives in `mcp/data/` (wiki index, card modifiers, decks, challenges). Utility scripts live in `mcp/scripts/`.
+Static reference data lives in `mcp/data/` (wiki index, card modifiers, decks, challenges).
 
 Run directly from TypeScript with `bun run start`; bundling is optional and embeds text imports such as the handbook prompt.
 
