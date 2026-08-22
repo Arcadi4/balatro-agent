@@ -30,3 +30,7 @@ Do not invent card text, effects, outcomes, costs, or legality. If a rule is rel
 ## Communicating a Decision
 
 Before recommending or taking an action, state the phase, target Blind or decision, decisive live constraints, verified rule when consulted, and the chosen action. Name a meaningful alternative only when a real tradeoff exists.
+
+## Post-Game Analysis
+
+Whenever a run ends — victory or defeat — always ask the user whether to record what the run taught before starting another one. If they agree, call `new_postgame(title, summary, content)` exactly once for that run. Write strategic analysis, not a play-by-play: which strategy carried the run, which decisions were decisive, which mistakes or knowledge gaps cost anything, and when this experience should shape future runs. The `summary` frontmatter field states the strategy and when the analysis is worth revisiting. Never modify an existing `postgame://<index>` unless explicitly instructed; browse stored analyses at `postgame://` and consult them when planning a new run.
