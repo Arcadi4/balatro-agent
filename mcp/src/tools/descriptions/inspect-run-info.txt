@@ -1,1 +1,0 @@
-Returns run-level details: poker hand levels, used vouchers, held tags, and discard-pile count.

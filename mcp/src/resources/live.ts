@@ -1,22 +1,61 @@
-import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
-import { z } from "zod"
+import type { McpServer } from "@modelcontextprotocol/server"
+import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server"
 
-import type { BridgeClient } from "../bridge/socket-client.js"
-import { asRecord, toolResult, withBridgeErrors } from "../response.js"
-import INSPECT_DECK_DESCRIPTION from "./descriptions/inspect-deck.txt" with { type: "text" }
-import INSPECT_GAME_STATE_DESCRIPTION from "./descriptions/inspect-game-state.txt" with { type: "text" }
-import INSPECT_RUN_INFO_DESCRIPTION from "./descriptions/inspect-run-info.txt" with { type: "text" }
+import { BridgeError, type BridgeClient } from "../bridge/socket-client.js"
+import { asRecord } from "../response.js"
 
-const READ_ONLY_ANNOTATIONS = {
-  readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-} as const satisfies ToolAnnotations
+const STATE_TIMEOUT_MS = 1_500
 
-const inputSchema = z.object({}).strict()
-const recordSchema = z.record(z.string(), z.unknown())
-const gameStateOutputSchema = z.object({ payload: recordSchema }).strict()
+const MENU_PHASES: ReadonlySet<string> = new Set(["MENU", "SPLASH", "TUTORIAL", "DEMO_CTA"])
+
+function phaseOf(payload: Record<string, unknown>): string {
+  return typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
+}
+
+function unavailable(uri: string, phase: string, message: string): ProtocolError {
+  return new ProtocolError(ProtocolErrorCode.InvalidParams, message, {
+    error_code: "UNAVAILABLE",
+    phase,
+    uri,
+  })
+}
+
+function markdownContents(
+  uri: URL,
+  markdown: string,
+): { contents: Array<{ uri: string; mimeType: string; text: string }> } {
+  return { contents: [{ uri: uri.toString(), mimeType: "text/markdown", text: markdown }] }
+}
+
+async function readLiveResource(
+  bridge: BridgeClient,
+  uri: URL,
+  render: (payload: Record<string, unknown>) => string,
+): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  const uriString = uri.toString()
+  let payload: Record<string, unknown>
+  try {
+    payload = await bridge.getState(STATE_TIMEOUT_MS)
+  } catch (error) {
+    if (error instanceof BridgeError) {
+      throw new ProtocolError(ProtocolErrorCode.InternalError, error.message, {
+        error_code: error.code,
+        uri: uriString,
+      })
+    }
+    throw error
+  }
+
+  const phase = phaseOf(payload)
+  if (MENU_PHASES.has(phase)) {
+    throw unavailable(
+      uriString,
+      phase,
+      "Balatro is not in a run; start or continue a game to read this resource.",
+    )
+  }
+  return markdownContents(uri, render(payload))
+}
 
 const EDITION_NAMES: Record<string, string> = {
   foil: "Foil",
@@ -167,18 +206,6 @@ function displayConsumableLine(card: Record<string, unknown>, index: number): st
   return `${index}. [${String(card.card_id ?? "?")}] ${displayConsumableType(card.kind)} ${String(card.name ?? card.entity_id ?? "Unknown Consumable")}${suffix}`
 }
 
-function displayConsumableSectionTitle(payload: Record<string, unknown>): string {
-  const consumableCount = Array.isArray(payload.consumables) ? payload.consumables.length : 0
-  if (payload.consumable_slots === undefined) return "## Consumables\n"
-  return `## Consumables (${consumableCount}/${String(payload.consumable_slots)})\n`
-}
-
-function displayJokerSectionTitle(payload: Record<string, unknown>): string {
-  const jokerCount = Array.isArray(payload.jokers) ? payload.jokers.length : 0
-  if (payload.joker_slots === undefined) return "## Jokers\n"
-  return `## Jokers (${jokerCount}/${String(payload.joker_slots)})\n`
-}
-
 function isJokerCard(card: Record<string, unknown>): boolean {
   return (
     card.kind === "joker" || (typeof card.entity_id === "string" && card.entity_id.startsWith("j_"))
@@ -238,7 +265,7 @@ function appendCompactCardLine(
 }
 
 function appendShopSection(lines: string[], shop: Record<string, unknown>): void {
-  lines.push("## Shop\n")
+  lines.push("# Shop\n")
   appendField(lines, "Dollars", shop.dollars)
   appendField(lines, "Reroll Cost", shop.reroll_cost)
   appendField(lines, "Free Rerolls", shop.free_rerolls)
@@ -270,7 +297,7 @@ function appendShopSection(lines: string[], shop: Record<string, unknown>): void
 }
 
 function appendPackSection(lines: string[], pack: Record<string, unknown>): void {
-  lines.push("## Booster Pack\n")
+  lines.push("# Booster Pack\n")
   appendField(lines, "Kind", pack.kind)
   appendField(lines, "Picks Remaining", pack.picks_remaining)
 
@@ -362,11 +389,57 @@ function appendBlindSelectSection(
   lines.push("")
 }
 
-function stateToMarkdown(data: object): string {
-  const payload = ((data as Record<string, unknown>).payload ?? {}) as Record<string, unknown>
+function slotLabel(items: unknown, slots: unknown): string {
+  const count = Array.isArray(items) ? items.length : 0
+  return slots === undefined ? "" : ` (${count}/${String(slots)})`
+}
 
+function selectedCardIds(payload: Record<string, unknown>): Set<string> {
+  const ids = new Set<string>()
+  if (Array.isArray(payload.selected_hand_card_ids)) {
+    for (const id of payload.selected_hand_card_ids) ids.add(String(id))
+  }
+  return ids
+}
+
+function appendHandEntries(lines: string[], payload: Record<string, unknown>): void {
+  const hand = Array.isArray(payload.hand) ? payload.hand : []
+  if (hand.length === 0) {
+    lines.push("(empty)")
+    lines.push("")
+    return
+  }
+  const selected = selectedCardIds(payload)
+  for (const entry of hand) {
+    const card = asRecord(entry)
+    if (!card) continue
+    const marker = selected.has(String(card.card_id ?? "?")) ? " *(selected)*" : ""
+    lines.push(`- ${displayHandCardLine(card)}${marker}`)
+  }
+  lines.push("")
+}
+
+function appendCompactEntries(lines: string[], items: unknown): void {
+  const list = Array.isArray(items) ? items : []
+  if (list.length === 0) {
+    lines.push("(empty)")
+    lines.push("")
+    return
+  }
+  let index = 1
+  for (const entry of list) {
+    const card = asRecord(entry)
+    if (!card) continue
+    appendCompactCardLine(lines, card, index)
+    index += 1
+  }
+  lines.push("")
+}
+
+function turnToMarkdown(payload: Record<string, unknown>): string {
   const lines: string[] = []
-  lines.push("# Balatro Game State\n")
+
+  lines.push("# Turn\n")
 
   if (payload.phase !== undefined) lines.push(`**Phase:** ${String(payload.phase)}  `)
   if (payload.ante !== undefined) lines.push(`**Ante:** ${String(payload.ante)}  `)
@@ -376,9 +449,6 @@ function stateToMarkdown(data: object): string {
   const round = asRecord(payload.round)
   if (round) appendRoundSection(lines, round)
 
-  const blindSelect = asRecord(payload.blind_select)
-  if (blindSelect) appendBlindSelectSection(lines, blindSelect, payload.tags)
-
   if (Array.isArray(payload.legal_actions) && payload.legal_actions.length > 0) {
     lines.push("## Legal Actions\n")
     for (const action of payload.legal_actions) {
@@ -387,54 +457,167 @@ function stateToMarkdown(data: object): string {
     lines.push("")
   }
 
-  if (Array.isArray(payload.hand) && payload.hand.length > 0) {
-    lines.push("## Hand\n")
-    for (const card of payload.hand) {
-      const c = card as Record<string, unknown>
-      lines.push(`- ${displayHandCardLine(c)}`)
-    }
-    lines.push("")
-  }
+  lines.push("## Hand\n")
+  appendHandEntries(lines, payload)
 
-  if (
-    (Array.isArray(payload.jokers) && payload.jokers.length > 0) ||
-    payload.joker_slots !== undefined
-  ) {
-    lines.push(displayJokerSectionTitle(payload))
-    let index = 1
-    if (Array.isArray(payload.jokers)) {
-      for (const j of payload.jokers) {
-        const joker = asRecord(j)
-        if (!joker) continue
-        appendCompactCardLine(lines, joker, index)
-        index += 1
-      }
-    }
-    lines.push("")
-  }
+  lines.push(`## Jokers${slotLabel(payload.jokers, payload.joker_slots)}\n`)
+  appendCompactEntries(lines, payload.jokers)
 
-  if (
-    (Array.isArray(payload.consumables) && payload.consumables.length > 0) ||
-    payload.consumable_slots !== undefined
-  ) {
-    lines.push(displayConsumableSectionTitle(payload))
-    let index = 1
-    if (Array.isArray(payload.consumables)) {
-      for (const c of payload.consumables) {
-        const consumable = asRecord(c)
-        if (!consumable) continue
-        appendCompactCardLine(lines, consumable, index)
-        index += 1
-      }
-    }
-    lines.push("")
-  }
+  lines.push(`## Consumables${slotLabel(payload.consumables, payload.consumable_slots)}\n`)
+  appendCompactEntries(lines, payload.consumables)
 
+  return lines.join("\n")
+}
+
+function handToMarkdown(payload: Record<string, unknown>): string {
+  const lines: string[] = ["# Hand\n"]
+
+  appendField(lines, "Hand Size", payload.hand_size)
+  if (Array.isArray(payload.selected_hand_card_ids) && payload.selected_hand_card_ids.length > 0) {
+    const ids = payload.selected_hand_card_ids.map((id) => `\`${String(id)}\``).join(", ")
+    lines.push(`- **Selected:** ${ids}`)
+  }
+  lines.push("")
+
+  lines.push("## Cards\n")
+  appendHandEntries(lines, payload)
+
+  return lines.join("\n")
+}
+
+function jokersToMarkdown(payload: Record<string, unknown>): string {
+  const lines: string[] = [`# Jokers${slotLabel(payload.jokers, payload.joker_slots)}\n`]
+  appendCompactEntries(lines, payload.jokers)
+  return lines.join("\n")
+}
+
+function consumablesToMarkdown(payload: Record<string, unknown>): string {
+  const lines: string[] = [
+    `# Consumables${slotLabel(payload.consumables, payload.consumable_slots)}\n`,
+  ]
+  appendCompactEntries(lines, payload.consumables)
+  return lines.join("\n")
+}
+
+function deckToMarkdown(payload: Record<string, unknown>): string {
+  const deck = asRecord(payload.deck_summary)
+  if (!deck) return "No deck data available."
+  const lines = [
+    "# Deck\n",
+    "`b/e` = base/effective; `?N` = N face-down cards omitted from tallies.\n",
+  ]
+  appendDeckView(lines, "Remaining", deck.remaining)
+  appendDeckView(lines, "Full Deck", deck.full_deck)
+  return lines.join("\n")
+}
+
+function shopToMarkdown(payload: Record<string, unknown>): string {
   const shop = asRecord(payload.shop)
-  if (shop) appendShopSection(lines, shop)
+  if (!shop) {
+    throw unavailable(
+      "balatro://shop",
+      phaseOf(payload),
+      "The shop is not open; balatro://shop only exists during the SHOP phase.",
+    )
+  }
+  const lines: string[] = []
+  appendShopSection(lines, shop)
+  return lines.join("\n")
+}
 
+function boosterToMarkdown(payload: Record<string, unknown>): string {
   const pack = asRecord(payload.pack)
-  if (pack) appendPackSection(lines, pack)
+  if (!pack) {
+    throw unavailable(
+      "balatro://booster",
+      phaseOf(payload),
+      "No booster pack is open; balatro://booster only exists while a pack is being opened.",
+    )
+  }
+  const lines: string[] = []
+  appendPackSection(lines, pack)
+  return lines.join("\n")
+}
+
+function runToMarkdown(payload: Record<string, unknown>): string {
+  const lines: string[] = []
+
+  lines.push("# Run\n")
+
+  appendField(lines, "Ante", payload.ante)
+  if (payload.money !== undefined) lines.push(`- **Money:** $${String(payload.money)}`)
+  if (typeof payload.active_challenge === "string") {
+    lines.push(`- **Active Challenge:** ${payload.active_challenge}`)
+  }
+  if (Array.isArray(payload.disabled_entities) && payload.disabled_entities.length > 0) {
+    const names = payload.disabled_entities.map((entry) => String(entry)).join(", ")
+    lines.push(`- **Disabled Entities:** ${names}`)
+  }
+  if (payload.endless_mode === true) lines.push("- **Endless Mode:** true")
+  lines.push("")
+
+  if (Array.isArray(payload.hand_levels) && payload.hand_levels.length > 0) {
+    lines.push("## Hand Levels\n")
+    for (const entry of payload.hand_levels) {
+      const level = asRecord(entry)
+      if (!level) continue
+      const played = level.played !== undefined ? ` — played ${String(level.played)}x` : ""
+      lines.push(
+        `- **${String(level.name ?? "?")}**: Lv.${String(level.level ?? "?")} — ${String(level.chips ?? "?")} chips × ${String(level.mult ?? "?")} mult${played}`,
+      )
+    }
+    lines.push("")
+  }
+
+  if (Array.isArray(payload.used_vouchers) && payload.used_vouchers.length > 0) {
+    lines.push("## Vouchers\n")
+    for (const voucher of payload.used_vouchers) lines.push(`- \`${String(voucher)}\``)
+    lines.push("")
+  }
+
+  if (Array.isArray(payload.tags) && payload.tags.length > 0) {
+    lines.push("## Tags\n")
+    for (const entry of payload.tags) {
+      const tag = asRecord(entry)
+      if (tag) lines.push(`- ${String(tag.name ?? tag.entity_id ?? "?")}`)
+    }
+    lines.push("")
+  }
+
+  const discard = asRecord(payload.discard_summary)
+  if (discard) {
+    lines.push(`## Discard Pile (${String(discard.count ?? 0)})\n`)
+    if (Array.isArray(discard.cards) && discard.cards.length > 0) {
+      for (const card of discard.cards) {
+        const record = asRecord(card)
+        if (record) lines.push(`- ${displayHandCard(record)}`)
+      }
+    }
+    lines.push("")
+  }
+
+  return lines.join("\n").trimEnd() + "\n"
+}
+
+function anteToMarkdown(payload: Record<string, unknown>): string {
+  const selection = asRecord(payload.blind_select)
+  if (!selection) {
+    throw unavailable(
+      "balatro://ante",
+      phaseOf(payload),
+      "No blind overview is available for the current state.",
+    )
+  }
+
+  const lines: string[] = []
+
+  lines.push("# Ante\n")
+
+  appendField(lines, "Ante", payload.ante)
+  if (payload.endless_mode === true) lines.push("- **Endless Mode:** true")
+  lines.push("")
+
+  appendBlindSelectSection(lines, selection, payload.tags)
 
   return lines.join("\n")
 }
@@ -544,113 +727,97 @@ function appendDeckView(lines: string[], title: string, value: unknown): void {
   lines.push("")
 }
 
-function deckToMarkdown(data: Record<string, unknown>): string {
-  const payload = (data.payload ?? {}) as Record<string, unknown>
-  const deck = asRecord(payload.deck_summary)
-  if (!deck) return "No deck data available."
-  const lines = [
-    "# Deck\n",
-    "`b/e` = base/effective; `?N` = N face-down cards omitted from tallies.\n",
+export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
+  const definitions: Array<{
+    name: string
+    uri: string
+    title: string
+    description: string
+    render: (payload: Record<string, unknown>) => string
+  }> = [
+    {
+      name: "turn",
+      uri: "balatro://turn",
+      title: "Turn",
+      description:
+        "Live turn snapshot: phase, ante, money, round progress, legal actions, hand with selected cards, jokers, and consumables.",
+      render: turnToMarkdown,
+    },
+    {
+      name: "hand",
+      uri: "balatro://hand",
+      title: "Hand",
+      description:
+        "Current hand cards with card IDs, modifiers, and selection state; face-down cards are hidden.",
+      render: handToMarkdown,
+    },
+    {
+      name: "jokers",
+      uri: "balatro://jokers",
+      title: "Jokers",
+      description:
+        "Owned jokers with editions, costs, and live effect descriptions; face-down jokers are hidden.",
+      render: jokersToMarkdown,
+    },
+    {
+      name: "consumables",
+      uri: "balatro://consumables",
+      title: "Consumables",
+      description: "Held Tarot, Planet, and Spectral cards with usability status.",
+      render: consumablesToMarkdown,
+    },
+    {
+      name: "deck",
+      uri: "balatro://deck",
+      title: "Deck",
+      description:
+        "Balatro-style Remaining and Full Deck views with base/effective rank, suit, and card-type tallies; face-down remaining cards count as unknown.",
+      render: deckToMarkdown,
+    },
+    {
+      name: "shop",
+      uri: "balatro://shop",
+      title: "Shop",
+      description:
+        "Shop contents while the shop is open: cards, vouchers, boosters, and reroll cost. Errors UNAVAILABLE outside the SHOP phase.",
+      render: shopToMarkdown,
+    },
+    {
+      name: "booster",
+      uri: "balatro://booster",
+      title: "Booster Pack",
+      description:
+        "Currently open booster pack: kind, picks remaining, and options. Errors UNAVAILABLE when no pack is open.",
+      render: boosterToMarkdown,
+    },
+    {
+      name: "run",
+      uri: "balatro://run",
+      title: "Run",
+      description:
+        "Run-level facts: ante, money, poker-hand levels with play counts, vouchers, queued tags, discard pile, challenge, disabled entities, and endless mode.",
+      render: runToMarkdown,
+    },
+    {
+      name: "ante",
+      uri: "balatro://ante",
+      title: "Ante",
+      description:
+        "Ante overview readable throughout a run: the Small, Big, and Boss blinds with chip targets, skip rewards, on-deck blind, boss reroll cost, and queued tags.",
+      render: anteToMarkdown,
+    },
   ]
-  appendDeckView(lines, "Remaining", deck.remaining)
-  appendDeckView(lines, "Full Deck", deck.full_deck)
-  return lines.join("\n")
-}
 
-function runInfoToMarkdown(data: Record<string, unknown>): string {
-  const payload = (data.payload ?? {}) as Record<string, unknown>
-  const lines: string[] = []
-  lines.push("# Run Info\n")
-
-  if (Array.isArray(payload.hand_levels) && payload.hand_levels.length > 0) {
-    lines.push("## Hand Levels\n")
-    for (const entry of payload.hand_levels) {
-      const level = asRecord(entry)
-      if (!level) continue
-      const played = level.played !== undefined ? ` — played ${String(level.played)}x` : ""
-      lines.push(
-        `- **${String(level.name ?? "?")}**: Lv.${String(level.level ?? "?")} — ${String(level.chips ?? "?")} chips × ${String(level.mult ?? "?")} mult${played}`,
-      )
-    }
-    lines.push("")
+  for (const definition of definitions) {
+    server.registerResource(
+      definition.name,
+      definition.uri,
+      {
+        title: definition.title,
+        description: definition.description,
+        mimeType: "text/markdown",
+      },
+      (uri) => readLiveResource(bridge, uri, definition.render),
+    )
   }
-
-  if (Array.isArray(payload.used_vouchers) && payload.used_vouchers.length > 0) {
-    lines.push("## Vouchers\n")
-    for (const voucher of payload.used_vouchers) lines.push(`- \`${String(voucher)}\``)
-    lines.push("")
-  }
-
-  if (Array.isArray(payload.tags) && payload.tags.length > 0) {
-    lines.push("## Tags\n")
-    for (const entry of payload.tags) {
-      const tag = asRecord(entry)
-      if (tag) lines.push(`- ${String(tag.name ?? tag.entity_id ?? "?")}`)
-    }
-    lines.push("")
-  }
-
-  const discard = asRecord(payload.discard_summary)
-  if (discard) {
-    lines.push(`## Discard Pile (${String(discard.count ?? 0)})\n`)
-    if (Array.isArray(discard.cards) && discard.cards.length > 0) {
-      for (const card of discard.cards) {
-        const record = asRecord(card)
-        if (record) lines.push(`- ${displayHandCard(record)}`)
-      }
-    }
-    lines.push("")
-  }
-
-  return lines.join("\n").trimEnd() + "\n"
-}
-
-export function registerInspectGameState(server: McpServer, bridge: BridgeClient): void {
-  server.registerTool(
-    "balatro_inspect_game_state",
-    {
-      title: "Inspect Game State",
-      description: INSPECT_GAME_STATE_DESCRIPTION,
-      inputSchema,
-      outputSchema: gameStateOutputSchema,
-      annotations: READ_ONLY_ANNOTATIONS,
-    },
-    () =>
-      withBridgeErrors(
-        () => bridge.getState(1_500),
-        (payload) => toolResult({ payload }, stateToMarkdown),
-      ),
-  )
-
-  server.registerTool(
-    "balatro_inspect_deck",
-    {
-      title: "Inspect Deck",
-      description: INSPECT_DECK_DESCRIPTION,
-      inputSchema,
-      outputSchema: gameStateOutputSchema,
-      annotations: READ_ONLY_ANNOTATIONS,
-    },
-    () =>
-      withBridgeErrors(
-        () => bridge.getState(1_500),
-        (payload) => toolResult({ payload }, deckToMarkdown),
-      ),
-  )
-
-  server.registerTool(
-    "balatro_inspect_run_info",
-    {
-      title: "Inspect Run Info",
-      description: INSPECT_RUN_INFO_DESCRIPTION,
-      inputSchema,
-      outputSchema: gameStateOutputSchema,
-      annotations: READ_ONLY_ANNOTATIONS,
-    },
-    () =>
-      withBridgeErrors(
-        () => bridge.getState(1_500),
-        (payload) => toolResult({ payload }, runInfoToMarkdown),
-      ),
-  )
 }

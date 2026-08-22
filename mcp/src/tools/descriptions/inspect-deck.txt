@@ -1,1 +1,0 @@
-Returns Balatro-style Remaining and Full Deck views with base and effective rank, suit, and card-type tallies. Effective counts reflect Wild/Smeared/Pareidolia/debuff effects; face-down remaining cards are counted as unknown and never reveal identity or modifiers.

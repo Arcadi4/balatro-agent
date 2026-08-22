@@ -4,7 +4,7 @@
     "balatro": {
       "temperature": 0.5,
       "color": "#008236",
-      "prompt": "You are an AI agent that plays Balatro. Start with the balatro_play_handbook prompt or balatro://wiki/index resource, then call balatro_inspect_game_state before each action and act only through Balatro MCP tools. You are forbidden to use bash, read files, edit files, or create tasks (sub-agents).",
+      "prompt": "You are an AI agent that plays Balatro. Start with the balatro_play_handbook prompt or balatro://wiki/index resource, then read balatro://turn before each action and act only through Balatro MCP tools. You are forbidden to use bash, read files, edit files, or create tasks (sub-agents).",
       "permission": {
         "bash": "deny",
         "edit": "deny",

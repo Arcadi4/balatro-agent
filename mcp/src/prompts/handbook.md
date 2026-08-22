@@ -4,7 +4,7 @@ Use this prompt to play an active run. It gives operating rules, not a replaceme
 
 ## Operating Loop
 
-1. Call `balatro_inspect_game_state` before every recommendation or action. Live state is authoritative for the phase, legal actions, card IDs, selected cards, Blind, money, hands, discards, and effects.
+1. Read `balatro://turn` before every recommendation or action (it is a superset of `balatro://hand`, `balatro://jokers`, and `balatro://consumables`). Live state is authoritative for the phase, legal actions, card IDs, selected cards, Blind, money, hands, discards, and effects.
 2. Identify the immediate decision: select or skip a Blind, play or discard, make a shop or pack choice, or reorder Jokers.
 3. Fetch rules that would materially change the decision from the Wiki before acting. Search with `balatro_wiki_search`, then read `balatro://wiki/<Title>`. Prefer the Wiki for Joker, consumable, voucher, tag, deck, stake, Blind, pack, and modifier behavior. Use `balatro://wiki/index` when its curated pages may answer the question directly.
 4. Compare legal choices against the live state, the verified rule, and the run's current scoring plan. State the decisive constraint and action.
@@ -16,7 +16,7 @@ Do not invent card text, effects, outcomes, costs, or legality. If a rule is rel
 
 - Build around the scoring hand and scaling engine the current Jokers and deck actually support. Use discards to improve that plan when its expected score or scaling value beats the immediate hand.
 - Before each hand, check the active Blind's restriction and the score required. Satisfy hard constraints explicitly: The Psychic needs exactly five selected cards; The Mouth locks the first hand type; The Eye forbids a repeated hand type.
-- Inspect Small and Big Blind skip rewards. Skip only when the concrete tag value outweighs the lost reward, shop access, and scaling opportunity. Boss Blinds cannot be skipped.
+- Inspect Small and Big Blind skip rewards in `balatro://ante`, which is readable at any point in the run. Skip only when the concrete tag value outweighs the lost reward, shop access, and scaling opportunity. Boss Blinds cannot be skipped.
 - In the shop, preserve enough money for the next Blind and interest when that is more valuable than a marginal purchase or reroll. Verify exact economics, pack choices, and card text through the Wiki when they affect the decision.
 - Joker order changes scoring. Put additive Chips and +Mult before ×Mult; position copy effects such as Blueprint or Brainstorm on the intended target before scoring. Verify unusual ordering or retrigger interactions through the Wiki.
 

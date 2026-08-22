@@ -66,7 +66,8 @@ mcp/src/
     ├── wiki.ts              static wiki index and live wiki article resources
     ├── cardModifiers.ts     card modifier reference (enhancements, seals, editions, stickers)
     ├── decks.ts             deck reference resource
-    └── challenges.ts        challenge reference resource
+    ├── challenges.ts        challenge reference resource
+    └── live.ts              live game-state resources (balatro://turn, hand, jokers, …)
 ```
 
 Static reference data lives in `mcp/data/` (wiki index, card modifiers, decks, challenges).
