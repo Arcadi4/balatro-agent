@@ -7,6 +7,7 @@ import { registerHandbookPrompt } from "./prompts/handbook.js"
 import { registerCardModifiersResource } from "./resources/cardModifiers.js"
 import { registerChallengesResource } from "./resources/challenges.js"
 import { registerDecksResource } from "./resources/decks.js"
+import { registerPostgameResource } from "./resources/postgame.js"
 import { registerWikiResource } from "./resources/wiki.js"
 import { registerAllTools } from "./tools/index.js"
 
@@ -21,7 +22,7 @@ function createServer(bridge: BridgeClient): McpServer {
     },
     {
       instructions:
-        "Inspect live game state before acting. Use the balatro_play_handbook prompt for live-play guidance and the Balatro Wiki to verify relevant rules.",
+        "Inspect live game state before acting. Use the balatro_play_handbook prompt for live-play guidance and the Balatro Wiki to verify relevant rules. When a run ends, ask the user whether to record a post-game analysis with new_postgame; stored analyses are listed at postgame://.",
       cacheHints: {
         "server/discover": LIST_CACHE_HINT,
         "tools/list": LIST_CACHE_HINT,
@@ -36,6 +37,7 @@ function createServer(bridge: BridgeClient): McpServer {
   registerChallengesResource(server)
   registerDecksResource(server)
   registerWikiResource(server)
+  registerPostgameResource(server)
   registerHandbookPrompt(server)
   return server
 }
