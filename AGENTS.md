@@ -48,6 +48,7 @@ mcp/src/
 ├── index.ts                 server composition and stdio lifecycle
 ├── response.ts              MCP result rendering and bridge error mapping
 ├── wiki.ts                  Wiki HTML→Markdown conversion and MediaWiki API
+├── postgame.ts              post-game analysis storage (data dir, index, frontmatter)
 ├── text-imports.d.ts        ambient types for .txt/.md text imports
 ├── bridge/
 │   ├── protocol.ts          internal JSON-RPC framing
@@ -55,12 +56,13 @@ mcp/src/
 ├── tools/
 │   ├── actions.ts           mutating game tools
 │   ├── entities.ts          wiki search tool
-│   ├── inspectGameState.ts  state and live-card inspection
+│   ├── postgame.ts          post-game analysis tool
 │   └── descriptions/        .txt tool description files (text-imported)
 ├── prompts/
 │   ├── handbook.ts          handbook prompt registration
 │   └── handbook.md          play handbook prose
 └── resources/
+    ├── postgame.ts          stored post-game analysis list and document resources
     ├── wiki.ts              static wiki index and live wiki article resources
     ├── cardModifiers.ts     card modifier reference (enhancements, seals, editions, stickers)
     ├── decks.ts             deck reference resource
