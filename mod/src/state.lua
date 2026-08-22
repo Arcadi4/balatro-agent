@@ -830,7 +830,6 @@ local function snapshot_round()
 end
 
 local function snapshot_blind_select()
-  if not in_phase({ BLIND_SELECT = true }) then return nil end
   local round_resets = G.GAME and G.GAME.round_resets
   if not round_resets or not round_resets.blind_choices then return nil end
 
