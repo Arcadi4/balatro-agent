@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify manifest version matches tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest="$(jq -r .version mod/manifest.json)"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::Tag v${tag} does not match mod/manifest.json version ${manifest}"
+            exit 1
+          fi
+
+      - name: Validate Lua
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends lua5.4
+          find mod -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
+
+      - name: Package mod
+        run: |
+          cp -r mod balatro_mcp
+          rm -rf balatro_mcp/tests
+          zip -r "balatro_mcp-${GITHUB_REF_NAME}.zip" balatro_mcp
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes "balatro_mcp-${GITHUB_REF_NAME}.zip"
