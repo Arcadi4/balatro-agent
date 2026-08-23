@@ -1,17 +1,37 @@
 {
   "name": "balatro-mcp-server",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "MCP server for Balatro mod development",
   "license": "MIT",
   "author": "4rcadia",
   "type": "module",
-  "main": "src/index.ts",
+  "bin": {
+    "balatro-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Arcadi4/balatro-agent.git",
+    "directory": "mcp"
+  },
+  "homepage": "https://github.com/Arcadi4/balatro-agent/tree/main/mcp#readme",
+  "bugs": "https://github.com/Arcadi4/balatro-agent/issues",
+  "keywords": [
+    "balatro",
+    "mcp",
+    "modelcontextprotocol",
+    "steamodded",
+    "lovely"
+  ],
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target=node --sourcemap=external",
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "test": "bun test",
+    "prepublishOnly": "npm run typecheck && bun test && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
@@ -31,6 +51,6 @@
     "typescript": "^7.0.2"
   },
   "engines": {
-    "bun": ">=1.3.14"
+    "node": ">=20"
   }
 }
