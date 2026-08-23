@@ -8,7 +8,7 @@
 
 <!-- README-I18N:END -->
 
-[![Bun](https://img.shields.io/badge/Bun-1.3.14-f9f1e1?style=flat-square&logo=bun)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
+[![npm](https://img.shields.io/npm/v/balatro-mcp?style=flat-square)](https://www.npmjs.com/package/balatro-mcp) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-3c873a?style=flat-square)](https://nodejs.org) [![Bun](https://img.shields.io/badge/Bun-1.4.0-f9f1e1?style=flat-square&logo=bun)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
 
 </div>
 
@@ -19,7 +19,7 @@ Let an AI agent play Balatro for you. Balatro Agent connects any MCP-compatible 
 - [Balatro](https://store.steampowered.com/app/2379780/Balatro/) on Steam
 - [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
 - [Steamodded (SMODS)](https://github.com/Steamodded/smods)
-- [Bun](https://bun.sh) 1.3.14 or later to run the MCP server (will publish a npm package later so this would not be needed)
+- [Node.js](https://nodejs.org) 20 or later (the MCP server runs through npx, no clone or build needed)
 
 ## Install
 
@@ -29,7 +29,10 @@ Follow the [SMODS installation guide](https://github.com/Steamodded/smods/wiki) 
 
 ### 2. Install the Balatro Agent mod
 
-Copy the `mod` folder from this repository into Balatro's `Mods` directory:
+Download and unpack the mod into Balatro's `Mods` directory:
+
+- [Nexus Mods](https://www.nexusmods.com/balatro/mods/927): manual download, or use "Mod Manager Download" together with the [community Vortex extension](https://www.nexusmods.com/site/mods/1315), which also installs Lovely and Steamodded for you.
+- [GitHub Releases](https://github.com/Arcadi4/balatro-agent/releases/latest): grab `balatro-agent-vX.Y.Z.zip` from the latest release.
 
 | Platform | Mods directory |
 | --- | --- |
@@ -39,30 +42,29 @@ Copy the `mod` folder from this repository into Balatro's `Mods` directory:
 | Linux (Proton) | `~/.steam/steam/steamapps/compatdata/2379780/pfx/drive_c/users/steamuser/AppData/Roaming/Balatro/Mods/` |
 
 > [!TIP]
-> On macOS you can run `make install-mods` from the repository root instead of copying by hand.
+> On macOS you can clone and run `make install-mods` from the repository root instead of copying by hand.
 
 The result should look like `.../Balatro/Mods/balatro-agent/main.lua`.
 
-### 3. Install the server
+### 3. Connect your Agent
 
-```sh
-cd mcp
-bun install
-```
-
-### 4. Connect your MCP client
-
-Add the server to your MCP client configuration (Claude Code, Cursor, etc.):
+Add the server to your MCP client configuration (Claude Code, Cursor, etc.), check the corresponding tutorials/docs. The config file might look like:
 
 ```json
 {
   "mcpServers": {
     "balatro": {
-      "command": "bun",
-      "args": ["/absolute/path/to/balatro-mcp/mcp/src/index.ts"]
+      "command": "npx",
+      "args": ["-y","balatro-mcp"]
     }
   }
 }
+```
+
+The command in one line:
+
+```bash
+npx -y balatro-mcp
 ```
 
 ## Start Playing

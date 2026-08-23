@@ -8,7 +8,7 @@
 
 <!-- README-I18N:END -->
 
-[![Bun](https://img.shields.io/badge/Bun-1.3.14-f9f1e1?style=flat-square&logo=bun)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
+[![npm](https://img.shields.io/npm/v/balatro-mcp?style=flat-square)](https://www.npmjs.com/package/balatro-mcp) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-3c873a?style=flat-square)](https://nodejs.org) [![Bun](https://img.shields.io/badge/Bun-1.4.0-f9f1e1?style=flat-square&logo=bun)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
 
 </div>
 
@@ -19,7 +19,7 @@
 - Steam 版 [Balatro](https://store.steampowered.com/app/2379780/Balatro/)
 - [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
 - [Steamodded（SMODS）](https://github.com/Steamodded/smods)
-- [Bun](https://bun.sh) 1.3.14 或更高版本，用于运行 MCP 服务器（之后会发布 npm 包，届时不再需要）
+- [Node.js](https://nodejs.org) 20 或更高版本（MCP 服务器通过 npx 运行，无需克隆仓库或手动构建）
 
 ## 安装
 
@@ -29,7 +29,10 @@
 
 ### 2. 安装 Balatro Agent Mod
 
-把本仓库的 `mod` 文件夹复制到 Balatro 的 `Mods` 目录：
+下载并解压 Mod 到 Balatro 的 `Mods` 目录：
+
+- [Nexus Mods 页面](https://www.nexusmods.com/balatro/mods/927)：手动下载，或配合[社区 Vortex 扩展](https://www.nexusmods.com/site/mods/1315)使用"Mod Manager Download"，它还能帮你自动安装 Lovely 和 Steamodded。
+- [GitHub Releases](https://github.com/Arcadi4/balatro-agent/releases/latest)：从最新发布版下载 `balatro-agent-vX.Y.Z.zip`。
 
 | 平台 | Mods 目录 |
 | --- | --- |
@@ -39,30 +42,29 @@
 | Linux（Proton） | `~/.steam/steam/steamapps/compatdata/2379780/pfx/drive_c/users/steamuser/AppData/Roaming/Balatro/Mods/` |
 
 > [!TIP]
-> 在 macOS 上，也可以在仓库根目录运行 `make install-mods`，不用手动复制。
+> 在 macOS 上，也可以克隆并在仓库根目录运行 `make install-mods`，不用手动复制。
 
 复制完成后，路径应该是 `.../Balatro/Mods/balatro-agent/main.lua`。
 
-### 3. 安装服务器
+### 3. 接入 MCP
 
-```sh
-cd mcp
-bun install
-```
-
-### 4. 接入 MCP 客户端
-
-把服务器加进你的 MCP 客户端配置（Claude Code、Cursor 等）：
+把 MCP 服务器加进你的 Agent 客户端配置（Claude Code、Cursor 等），请查阅对应文档/教程。配置文件可能类似：
 
 ```json
 {
   "mcpServers": {
     "balatro": {
-      "command": "bun",
-      "args": ["/absolute/path/to/balatro-mcp/mcp/src/index.ts"]
+      "command": "npx",
+      "args": ["-y", "balatro-mcp"]
     }
   }
 }
+```
+
+命令：
+
+```bash
+npx -y balatro-mcp
 ```
 
 ## 开始游玩
