@@ -356,7 +356,7 @@ export class BridgeClient {
       this.connectReject(this.normalizeConnectError(error))
       this.clearConnectPromise()
     } else {
-      process.stderr.write(`[balatro-mcp-server] bridge socket: ${error.message}\n`)
+      process.stderr.write(`[balatro-mcp] bridge socket: ${error.message}\n`)
     }
   }
 

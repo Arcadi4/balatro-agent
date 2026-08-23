@@ -1,12 +1,12 @@
 {
-  "name": "balatro-mcp-server",
+  "name": "balatro-mcp",
   "version": "0.1.0",
   "description": "MCP server for Balatro mod development",
   "license": "MIT",
   "author": "4rcadia",
   "type": "module",
   "bin": {
-    "balatro-mcp-server": "dist/index.js"
+    "balatro-mcp": "dist/index.js"
   },
   "files": [
     "dist"

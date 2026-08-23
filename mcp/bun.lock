@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "balatro-mcp-server",
+      "name": "balatro-mcp",
       "dependencies": {
         "@modelcontextprotocol/server": "^2.0.0",
         "rehype-parse": "^9.0.1",
