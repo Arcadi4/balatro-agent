@@ -41,7 +41,7 @@ Copy the `mod` folder from this repository into Balatro's `Mods` directory:
 > [!TIP]
 > On macOS you can run `make install-mods` from the repository root instead of copying by hand.
 
-The result should look like `.../Balatro/Mods/balatro_mcp/main.lua`.
+The result should look like `.../Balatro/Mods/balatro-agent/main.lua`.
 
 ### 3. Install the server
 

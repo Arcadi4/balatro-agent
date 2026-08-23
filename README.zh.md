@@ -41,7 +41,7 @@
 > [!TIP]
 > 在 macOS 上，也可以在仓库根目录运行 `make install-mods`，不用手动复制。
 
-复制完成后，路径应该是 `.../Balatro/Mods/balatro_mcp/main.lua`。
+复制完成后，路径应该是 `.../Balatro/Mods/balatro-agent/main.lua`。
 
 ### 3. 安装服务器
 

@@ -1,6 +1,6 @@
 {
-  "id": "balatro_mcp",
-  "name": "Balatro MCP",
+  "id": "balatro-agent",
+  "name": "Balatro Agent",
   "author": ["4rcadia"],
   "description": "Exposes in-game data and functions to the MCP server.",
   "prefix": "mcp",

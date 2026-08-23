@@ -8,7 +8,7 @@ BALATRO_DIR ?= $(HOME)/Library/Application Support/Steam/steamapps/common/Balatr
 BALATRO_APP ?= $(BALATRO_DIR)/Balatro.app
 
 MODS_DIR := $(BALATRO_SAVE)/Mods
-MOD_DST := $(MODS_DIR)/balatro_mcp
+MOD_DST := $(MODS_DIR)/balatro-agent
 SMODS_DIR := $(MODS_DIR)/smods
 LOVE_BIN := $(BALATRO_APP)/Contents/MacOS/love
 LOVELY_DYLIB := $(BALATRO_DIR)/liblovely.dylib

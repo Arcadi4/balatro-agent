@@ -39,7 +39,7 @@ make install-mods
 make run
 ```
 
-Windows users install the mod under `%AppData%\Balatro\Mods\balatro_mcp` and start Balatro through Steam after Lovely/SMODS are installed.
+Windows users install the mod under `%AppData%\Balatro\Mods\balatro-agent` and start Balatro through Steam after Lovely/SMODS are installed.
 
 ## MCP server layout
 

@@ -60,7 +60,7 @@ local poll_fds = ffi.new('pollfd[1]')
 
 local function log(message)
   if sendDebugMessage then
-    sendDebugMessage('MCP: ' .. tostring(message), 'balatro_mcp')
+    sendDebugMessage('MCP: ' .. tostring(message), 'balatro-agent')
   end
 end
 

@@ -30,11 +30,11 @@ jobs:
 
       - name: Package mod
         run: |
-          cp -r mod balatro_mcp
-          rm -rf balatro_mcp/tests
-          zip -r "balatro_mcp-${GITHUB_REF_NAME}.zip" balatro_mcp
+          cp -r mod balatro-agent
+          rm -rf balatro-agent/tests
+          zip -r "balatro-agent-${GITHUB_REF_NAME}.zip" balatro-agent
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes "balatro_mcp-${GITHUB_REF_NAME}.zip"
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes "balatro-agent-${GITHUB_REF_NAME}.zip"
