@@ -8,7 +8,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun --sourcemap=external",
+    "build": "bun build ./src/index.ts --outdir ./dist --target=node --sourcemap=external",
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "typecheck": "tsc --noEmit -p ."

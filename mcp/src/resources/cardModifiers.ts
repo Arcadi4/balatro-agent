@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import type { McpServer } from "@modelcontextprotocol/server"
 
 import indexMarkdown from "../../data/card_modifiers/index.md" with { type: "text" }
@@ -8,7 +10,7 @@ import stickersMarkdown from "../../data/card_modifiers/stickers.md" with { type
 
 const CARD_MODIFIERS_URI = "balatro://card_modifiers"
 
-const CARD_MODIFIERS_VERSION = new Bun.CryptoHasher("sha256")
+const CARD_MODIFIERS_VERSION = createHash("sha256")
   .update(indexMarkdown + enhancementsMarkdown + sealsMarkdown + editionsMarkdown + stickersMarkdown)
   .digest("hex")
   .slice(0, 8)
