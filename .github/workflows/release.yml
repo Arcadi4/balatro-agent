@@ -25,8 +25,8 @@ jobs:
       - name: Validate Lua
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends lua5.4
-          find mod -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
+          sudo apt-get install -y --no-install-recommends luajit
+          find mod -name '*.lua' -exec luajit -b {} /dev/null \;
 
       - name: Package mod
         run: |
