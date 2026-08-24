@@ -703,7 +703,11 @@ handlers.continue_game = function(args)
 end
  
 handlers.new_game = function(args)
-  if not G or not G.GAME then
+  if not G or not G.STAGE or not G.STAGES or G.STAGE ~= G.STAGES.MAIN_MENU
+      or not G.STATE or not G.STATES or G.STATE ~= G.STATES.MENU then
+    return err("WRONG_PHASE", "New game is only available from the main menu")
+  end
+  if not G.GAME then
     return err("GAME_NOT_RUNNING", "Game not ready")
   end
   if not G.FUNCS or type(G.FUNCS.start_setup_run) ~= "function" then

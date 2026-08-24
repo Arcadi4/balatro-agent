@@ -507,7 +507,7 @@ local function compute_legal_actions()
   if G.STAGE == G.STAGES.RUN and G.GAME then
     actions[#actions + 1] = 'restart'
   end
-  if G.GAME then
+  if G.STAGE == G.STAGES.MAIN_MENU and gs == states.MENU then
     actions[#actions + 1] = 'new_game'
   end
   return actions
