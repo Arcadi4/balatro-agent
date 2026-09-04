@@ -402,7 +402,18 @@ local function compute_legal_actions()
     if not G.SETTINGS or G.SETTINGS.profile == nil then return false end
     return love.filesystem.getInfo(tostring(G.SETTINGS.profile) .. '/save.jkr') ~= nil
   end
-
+  local function find_cash_out_button()
+    if not G or not G.I or not G.I.UIBOX then return nil end
+    for _, uibox in ipairs(G.I.UIBOX) do
+      if uibox.get_UIE_by_ID then
+        local btn = uibox:get_UIE_by_ID('cash_out_button')
+        if btn and btn.config and btn.config.button == 'cash_out' then
+          return btn
+        end
+      end
+    end
+    return nil
+  end
   local states = G.STATES
   local pack_state = false
   for phase in pairs(PACK_KINDS) do
@@ -490,7 +501,7 @@ local function compute_legal_actions()
     actions[#actions + 1] = 'skip_booster'
 
   elseif gs == states.ROUND_EVAL then
-    if G.round_eval then
+    if G.round_eval and find_cash_out_button() then
       actions[#actions + 1] = 'cash_out'
     end
   end
