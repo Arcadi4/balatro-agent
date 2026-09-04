@@ -34,7 +34,6 @@ help:
 	@printf '  BALATRO_DIR=%s\n' '$(BALATRO_DIR)'
 	@printf '  BALATRO_SAVE=%s\n' '$(BALATRO_SAVE)'
 	@printf '  ARGS="..." passes arguments to make run\n'
-
 install-mods:
 	@bash -eu -o pipefail -c ' \
 		if [[ ! -d "$(MOD_SRC)" ]]; then \
@@ -95,8 +94,7 @@ run: install-mods
 			exit 1; \
 		fi; \
 		cd "$(BALATRO_DIR)"; \
-		export DYLD_INSERT_LIBRARIES="$(LOVELY_DYLIB)"; \
-		exec "$(LOVE_BIN)" $(ARGS) \
+		DYLD_INSERT_LIBRARIES="$(LOVELY_DYLIB)" "$(LOVE_BIN)" $(ARGS) \
 	'
 
 # Tags a release: bump the version, commit, and tag.
