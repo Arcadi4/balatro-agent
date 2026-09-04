@@ -3,8 +3,10 @@ import { access, stat } from "node:fs/promises";
 
 import { balatroDir, loveBin, lovelyDylib } from "./lib/environment.js";
 import { installMods } from "./lib/install-mods.js";
+import { repoPath } from "./lib/paths.js";
 import { run } from "./lib/process.js";
 
+await run("bun", ["run", "build"], { cwd: repoPath("mcp") });
 await installMods();
 
 try {
@@ -24,5 +26,13 @@ const args = forwarded.length > 0 ? forwarded : (process.env.ARGS?.trim().split(
 
 await run(loveBin, args, {
   cwd: balatroDir,
-  env: { ...process.env, DYLD_INSERT_LIBRARIES: lovelyDylib },
+  env: {
+    ...process.env,
+    DYLD_INSERT_LIBRARIES: lovelyDylib,
+    BALATRO_MCP_ENTRY: repoPath(
+      "mcp",
+      "dist",
+      process.platform === "win32" ? "balatro-mcp.exe" : "balatro-mcp",
+    ),
+  },
 });
