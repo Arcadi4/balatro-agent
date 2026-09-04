@@ -659,7 +659,11 @@ handlers.cash_out = function(args)
     return err("CANNOT_USE_NOW", "Cash-out button is not ready")
   end
 
+  local button_ui = button.UIBox
   G.FUNCS.cash_out(button)
+  if button_ui and button_ui ~= G.round_eval and type(button_ui.remove) == "function" then
+    button_ui:remove()
+  end
 
   return ok({ cashed_out = true })
 end
