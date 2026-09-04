@@ -40,6 +40,7 @@
     "build:release": "bun run scripts/build.ts --release"
   },
   "dependencies": {
+    "@modelcontextprotocol/node": "^2.1.2",
     "@modelcontextprotocol/server": "^2.4.0",
     "commander": "^15.1.0",
     "rehype-parse": "^9.0.1",
