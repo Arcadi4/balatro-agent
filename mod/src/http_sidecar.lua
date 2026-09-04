@@ -15,14 +15,7 @@ function Sidecar.start(version, resource_tools, port)
   if process then return end
   assert(platform, 'HTTP sidecar process platform is not configured')
 
-  local args = {
-    'npx',
-    '--yes',
-    '--ignore-scripts',
-    '--no-audit',
-    '--no-fund',
-    '--package=balatro-mcp@' .. version,
-    'balatro-mcp',
+  local tail = {
     '--transport',
     'http',
     '--port',
@@ -30,10 +23,28 @@ function Sidecar.start(version, resource_tools, port)
     '--parent-pid',
     tostring(platform.parent_pid()),
   }
-  if resource_tools then table.insert(args, '--resource-tools') end
+  if resource_tools then table.insert(tail, '--resource-tools') end
+
+  local args
+  local entry = os.getenv('BALATRO_MCP_ENTRY')
+  if entry ~= nil and entry ~= '' then
+    args = { 'node', entry }
+    for _, argument in ipairs(tail) do table.insert(args, argument) end
+  else
+    args = {
+      'npx',
+      '--yes',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--package=balatro-mcp@' .. version,
+      'balatro-mcp',
+    }
+    for _, argument in ipairs(tail) do table.insert(args, argument) end
+  end
   process = platform.spawn(args)
   if not process then
-    log('Local HTTP server could not start: Node.js 20+ with npm is required')
+    log('Local HTTP server could not start: Node.js 20+ is required (plus npm for registry mode)')
     return
   end
   log('Starting local HTTP server at http://127.0.0.1:' .. tostring(port) .. '/mcp')
