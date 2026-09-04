@@ -1,0 +1,25 @@
+Read one or more Balatro game resources by URI. This tool provides access to live game state, reference rules, cards and modifiers, Balatro Wiki articles, and post-game run analyses.
+
+When to use:
+- Inspect live game state before taking mutating actions (playing/discarding hands, buying cards, using consumables). Reading balatro://turn provides a complete overview of the current game state.
+- Look up rules, card modifiers, playable decks, and challenge constraints.
+- Look up card and mechanic details on the Balatro Wiki. If the exact article title is unknown, search with balatro_wiki_search first.
+- Review stored post-game run analyses.
+
+Supported URI patterns:
+- balatro://turn - Complete turn overview: current phase, hands/discards left, money, ante, blinds, full hand cards, jokers, consumables, and remaining deck count.
+- balatro://hand - Current hand cards with rank, suit, enhancement, seal, edition, and base chip values.
+- balatro://jokers - Owned jokers in trigger order, editions, plus joker slot count and capacity.
+- balatro://consumables - Owned tarot, planet, and spectral cards, plus consumable slot count and capacity.
+- balatro://deck - Remaining cards in the draw pile, suit/rank breakdown, drawn vs unseen cards.
+- balatro://shop - Current shop inventory (jokers, tarot/planet cards, vouchers, booster packs) and reroll cost.
+- balatro://booster - Currently open booster pack contents and picks remaining (available only during booster opening).
+- balatro://run - Run-level facts: stake, active vouchers, queued tags, poker hand levels and play counts, discard pile.
+- balatro://ante - Ante overview: Small, Big, and Boss blinds with chip targets, skip tags, and boss reroll cost.
+- balatro://decks - Reference of every playable deck, unique passive effects, and starting modifiers.
+- balatro://challenges - Reference of every challenge scenario, special rules, and restrictions.
+- balatro://card_modifiers - Card modifier reference index (enhancements, seals, editions, stickers). Subpaths: balatro://card_modifiers/enhancements, balatro://card_modifiers/seals, balatro://card_modifiers/editions, balatro://card_modifiers/stickers.
+- balatro://wiki/index - Curated index of key Balatro Wiki pages and gameplay mechanics.
+- balatro://wiki/<Title> - Live Balatro Wiki article rendered as Markdown (e.g. balatro://wiki/Joker, balatro://wiki/The_Wall).
+- postgame:// - Index of all stored post-game run analysis documents.
+- postgame://<index> - Stored post-game run analysis document by positive integer index (e.g. postgame://1).
