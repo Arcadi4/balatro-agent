@@ -631,6 +631,19 @@ handlers.leave_shop = function(args)
   return ok({ left_shop = true })
 end
 
+local function find_cash_out_button()
+  if not G or not G.I or not G.I.UIBOX then return nil end
+  for _, uibox in ipairs(G.I.UIBOX) do
+    if uibox.get_UIE_by_ID then
+      local btn = uibox:get_UIE_by_ID("cash_out_button")
+      if btn and btn.config and btn.config.button == "cash_out" then
+        return btn
+      end
+    end
+  end
+  return nil
+end
+
 handlers.cash_out = function(args)
   local phase_err = check_phase({ "ROUND_EVAL" })
   if phase_err then return phase_err end
@@ -641,10 +654,16 @@ handlers.cash_out = function(args)
   if not G.round_eval then
     return err("CANNOT_USE_NOW", "Cash-out screen is not ready")
   end
-  -- The cash_out_button is rendered in a separate UIBox (major = G.round_eval),
-  -- not as a child of G.round_eval, so get_UIE_by_ID never finds it.
-  -- G.FUNCS.cash_out only writes e.config.button, so a synthetic table suffices.
-  G.FUNCS.cash_out({ config = {} })
+  local button = find_cash_out_button()
+  if not button then
+    return err("CANNOT_USE_NOW", "Cash-out button is not ready")
+  end
+
+  local button_ui = button.UIBox
+  G.FUNCS.cash_out(button)
+  if button_ui and button_ui ~= G.round_eval and type(button_ui.remove) == "function" then
+    button_ui:remove()
+  end
 
   return ok({ cashed_out = true })
 end

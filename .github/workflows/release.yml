@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write # OIDC for npm trusted publishing
 
 jobs:
   release:
@@ -13,12 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Verify manifest version matches tag
+      - name: Verify release versions
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          manifest="$(jq -r .version mod/manifest.json)"
-          if [ "$tag" != "$manifest" ]; then
-            echo "::error::Tag v${tag} does not match mod/manifest.json version ${manifest}"
+          mod_version="$(jq -r .version mod/manifest.json)"
+          mcp_version="$(jq -r .version mcp/package.json)"
+          if [ "$tag" != "$mod_version" ] || [ "$tag" != "$mcp_version" ]; then
+            echo "::error::Tag $tag, mod $mod_version, and MCP $mcp_version must match"
             exit 1
           fi
 
@@ -27,6 +29,23 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends luajit
           find mod -name '*.lua' -exec luajit -b {} /dev/null \;
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install MCP dependencies
+        working-directory: mcp
+        run: bun install --frozen-lockfile
+
+      - name: Stage MCP package
+        # OIDC trusted publishing: no NODE_AUTH_TOKEN, npm mints a short-lived token.
+        # Human approves the staged version on npmjs (2FA) to complete the release.
+        working-directory: mcp
+        run: npm stage publish --provenance --access public
 
       - name: Package mod
         run: |
