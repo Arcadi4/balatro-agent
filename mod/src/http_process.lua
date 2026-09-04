@@ -29,6 +29,27 @@ function Process.parent_pid()
   return tonumber(ffi.C.getpid())
 end
 
+local function clean_environment()
+  local raw_env = ffi.os == 'OSX' and ffi.C._NSGetEnviron()[0] or ffi.C.environ
+  local kept = {}
+  local index = 0
+  while raw_env[index] ~= nil do
+    local entry = ffi.string(raw_env[index])
+    local key = entry:match('^([^=]+)=')
+    if not (key and (key:match('^DYLD_') or key == 'LD_PRELOAD')) then
+      table.insert(kept, raw_env[index])
+    end
+    index = index + 1
+  end
+
+  local env = ffi.new('char *[?]', #kept + 1)
+  for i, ptr in ipairs(kept) do
+    env[i - 1] = ptr
+  end
+  env[#kept] = nil
+  return env
+end
+
 function Process.spawn(args)
   local argv = ffi.new('char *[?]', #args + 1)
   for index, argument in ipairs(args) do
@@ -44,7 +65,7 @@ function Process.spawn(args)
   end
 
   local pid = ffi.new('pid_t[1]')
-  local environment = ffi.os == 'OSX' and ffi.C._NSGetEnviron()[0] or ffi.C.environ
+  local environment = clean_environment()
   local result = ffi.C.posix_spawnp(pid, args[1], nil, attributes, argv, environment)
   ffi.C.posix_spawnattr_destroy(attributes)
   if result ~= 0 then return nil end
