@@ -3,7 +3,6 @@ import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server"
 
 import { BridgeError, type BridgeClient } from "../bridge/socket-client.js"
 import { asRecord } from "../response.js"
-
 const STATE_TIMEOUT_MS = 1_500
 
 const MENU_PHASES: ReadonlySet<string> = new Set(["MENU", "SPLASH", "TUTORIAL", "DEMO_CTA"])
@@ -20,32 +19,41 @@ function unavailable(uri: string, phase: string, message: string): ProtocolError
   })
 }
 
-function markdownContents(
-  uri: URL,
-  markdown: string,
-): { contents: Array<{ uri: string; mimeType: string; text: string }> } {
+interface LiveResource {
+  name: string
+  uri: string
+  title: string
+  description: string
+  render: (payload: Record<string, unknown>) => string
+}
+
+function markdownContents(uri: URL, markdown: string) {
   return { contents: [{ uri: uri.toString(), mimeType: "text/markdown", text: markdown }] }
 }
 
-async function readLiveResource(
+export async function readLiveResource(
   bridge: BridgeClient,
-  uri: URL,
-  render: (payload: Record<string, unknown>) => string,
-): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  uri: URL | string,
+  render: LiveResource["render"],
+  cachedState?: Record<string, unknown>,
+): Promise<{ payload: Record<string, unknown>; markdown: string }> {
   const uriString = uri.toString()
   let payload: Record<string, unknown>
-  try {
-    payload = await bridge.getState(STATE_TIMEOUT_MS)
-  } catch (error) {
-    if (error instanceof BridgeError) {
-      throw new ProtocolError(ProtocolErrorCode.InternalError, error.message, {
-        error_code: error.code,
-        uri: uriString,
-      })
+  if (cachedState !== undefined) {
+    payload = cachedState
+  } else {
+    try {
+      payload = await bridge.getState(STATE_TIMEOUT_MS)
+    } catch (error) {
+      if (error instanceof BridgeError) {
+        throw new ProtocolError(ProtocolErrorCode.InternalError, error.message, {
+          error_code: error.code,
+          uri: uriString,
+        })
+      }
+      throw error
     }
-    throw error
   }
-
   const phase = phaseOf(payload)
   if (MENU_PHASES.has(phase)) {
     throw unavailable(
@@ -54,7 +62,18 @@ async function readLiveResource(
       "Balatro is not in a run; start or continue a game to read this resource.",
     )
   }
-  return markdownContents(uri, render(payload))
+  return { payload, markdown: render(payload) }
+}
+
+export async function readLiveResourceUri(
+  bridge: BridgeClient,
+  uri: string,
+  cachedState?: Record<string, unknown>,
+): Promise<{ uri: string; markdown: string; state: Record<string, unknown> } | undefined> {
+  const definition = LIVE_RESOURCES.find((def) => def.uri === uri)
+  if (!definition) return undefined
+  const result = await readLiveResource(bridge, uri, definition.render, cachedState)
+  return { uri: definition.uri, markdown: result.markdown, state: result.payload }
 }
 
 const EDITION_NAMES: Record<string, string> = {
@@ -727,88 +746,82 @@ function appendDeckView(lines: string[], title: string, value: unknown): void {
   lines.push("")
 }
 
-export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
-  const definitions: Array<{
-    name: string
-    uri: string
-    title: string
-    description: string
-    render: (payload: Record<string, unknown>) => string
-  }> = [
-    {
-      name: "turn",
-      uri: "balatro://turn",
-      title: "Turn",
-      description:
-        "Live turn snapshot: phase, ante, money, round progress, legal actions, hand with selected cards, jokers, and consumables.",
-      render: turnToMarkdown,
-    },
-    {
-      name: "hand",
-      uri: "balatro://hand",
-      title: "Hand",
-      description:
-        "Current hand cards with card IDs, modifiers, and selection state; face-down cards are hidden.",
-      render: handToMarkdown,
-    },
-    {
-      name: "jokers",
-      uri: "balatro://jokers",
-      title: "Jokers",
-      description:
-        "Owned jokers with editions, costs, and live effect descriptions; face-down jokers are hidden.",
-      render: jokersToMarkdown,
-    },
-    {
-      name: "consumables",
-      uri: "balatro://consumables",
-      title: "Consumables",
-      description: "Held Tarot, Planet, and Spectral cards with usability status.",
-      render: consumablesToMarkdown,
-    },
-    {
-      name: "deck",
-      uri: "balatro://deck",
-      title: "Deck",
-      description:
-        "Balatro-style Remaining and Full Deck views with base/effective rank, suit, and card-type tallies; face-down remaining cards count as unknown.",
-      render: deckToMarkdown,
-    },
-    {
-      name: "shop",
-      uri: "balatro://shop",
-      title: "Shop",
-      description:
-        "Shop contents while the shop is open: cards, vouchers, boosters, and reroll cost. Errors UNAVAILABLE outside the SHOP phase.",
-      render: shopToMarkdown,
-    },
-    {
-      name: "booster",
-      uri: "balatro://booster",
-      title: "Booster Pack",
-      description:
-        "Currently open booster pack: kind, picks remaining, and options. Errors UNAVAILABLE when no pack is open.",
-      render: boosterToMarkdown,
-    },
-    {
-      name: "run",
-      uri: "balatro://run",
-      title: "Run",
-      description:
-        "Run-level facts: ante, money, poker-hand levels with play counts, vouchers, queued tags, discard pile, challenge, disabled entities, and endless mode.",
-      render: runToMarkdown,
-    },
-    {
-      name: "ante",
-      uri: "balatro://ante",
-      title: "Ante",
-      description:
-        "Ante overview readable throughout a run: the Small, Big, and Boss blinds with chip targets, skip rewards, on-deck blind, boss reroll cost, and queued tags.",
-      render: anteToMarkdown,
-    },
-  ]
+const LIVE_RESOURCES: LiveResource[] = [
+  {
+    name: "turn",
+    uri: "balatro://turn",
+    title: "Turn",
+    description:
+      "Live turn snapshot: phase, ante, money, round progress, legal actions, hand with selected cards, jokers, and consumables.",
+    render: turnToMarkdown,
+  },
+  {
+    name: "hand",
+    uri: "balatro://hand",
+    title: "Hand",
+    description:
+      "Current hand cards with card IDs, modifiers, and selection state; face-down cards are hidden.",
+    render: handToMarkdown,
+  },
+  {
+    name: "jokers",
+    uri: "balatro://jokers",
+    title: "Jokers",
+    description:
+      "Owned jokers with editions, costs, and live effect descriptions; face-down jokers are hidden.",
+    render: jokersToMarkdown,
+  },
+  {
+    name: "consumables",
+    uri: "balatro://consumables",
+    title: "Consumables",
+    description: "Held Tarot, Planet, and Spectral cards with usability status.",
+    render: consumablesToMarkdown,
+  },
+  {
+    name: "deck",
+    uri: "balatro://deck",
+    title: "Deck",
+    description:
+      "Balatro-style Remaining and Full Deck views with base/effective rank, suit, and card-type tallies; face-down remaining cards count as unknown.",
+    render: deckToMarkdown,
+  },
+  {
+    name: "shop",
+    uri: "balatro://shop",
+    title: "Shop",
+    description:
+      "Shop contents while the shop is open: cards, vouchers, boosters, and reroll cost. Errors UNAVAILABLE outside the SHOP phase.",
+    render: shopToMarkdown,
+  },
+  {
+    name: "booster",
+    uri: "balatro://booster",
+    title: "Booster Pack",
+    description:
+      "Currently open booster pack: kind, picks remaining, and options. Errors UNAVAILABLE when no pack is open.",
+    render: boosterToMarkdown,
+  },
+  {
+    name: "run",
+    uri: "balatro://run",
+    title: "Run",
+    description:
+      "Run-level facts: ante, money, poker-hand levels with play counts, vouchers, queued tags, discard pile, challenge, disabled entities, and endless mode.",
+    render: runToMarkdown,
+  },
+  {
+    name: "ante",
+    uri: "balatro://ante",
+    title: "Ante",
+    description:
+      "Ante overview readable throughout a run: the Small, Big, and Boss blinds with chip targets, skip rewards, on-deck blind, boss reroll cost, and queued tags.",
+    render: anteToMarkdown,
+  },
+]
 
-  for (const definition of definitions) {
+export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
+  for (const definition of LIVE_RESOURCES) {
     server.registerResource(
       definition.name,
       definition.uri,
@@ -817,7 +830,10 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
         description: definition.description,
         mimeType: "text/markdown",
       },
-      (uri) => readLiveResource(bridge, uri, definition.render),
+      async (uri) => {
+        const result = await readLiveResource(bridge, uri, definition.render)
+        return markdownContents(uri, result.markdown)
+      },
     )
   }
 }

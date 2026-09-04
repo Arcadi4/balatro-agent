@@ -177,10 +177,7 @@ export class BridgeClient {
     return result.data
   }
 
-  async sendCommand(options: {
-    kind: string
-    args?: Record<string, unknown>
-  }): Promise<number> {
+  async sendCommand(options: { kind: string; args?: Record<string, unknown> }): Promise<number> {
     this.assertConnected()
     const id = ++this.commandSeq
     const pending = this.createPendingRequest(id)
@@ -463,7 +460,10 @@ export class BridgeClient {
     // so a queued write never hangs its caller.
     await new Promise<void>((resolve, reject) => {
       const onClose = () => {
-        reject(this.lastDisconnectError ?? gameNotRunning("Bridge connection closed before the command was written"))
+        reject(
+          this.lastDisconnectError ??
+            gameNotRunning("Bridge connection closed before the command was written"),
+        )
       }
       socket.once("close", onClose)
       socket.write(serializeFrame(request), (error) => {

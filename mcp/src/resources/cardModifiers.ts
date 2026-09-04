@@ -2,16 +2,18 @@ import { createHash } from "node:crypto"
 
 import type { McpServer } from "@modelcontextprotocol/server"
 
-import indexMarkdown from "../../data/card_modifiers/index.md" with { type: "text" }
-import enhancementsMarkdown from "../../data/card_modifiers/enhancements.md" with { type: "text" }
-import sealsMarkdown from "../../data/card_modifiers/seals.md" with { type: "text" }
 import editionsMarkdown from "../../data/card_modifiers/editions.md" with { type: "text" }
+import enhancementsMarkdown from "../../data/card_modifiers/enhancements.md" with { type: "text" }
+import indexMarkdown from "../../data/card_modifiers/index.md" with { type: "text" }
+import sealsMarkdown from "../../data/card_modifiers/seals.md" with { type: "text" }
 import stickersMarkdown from "../../data/card_modifiers/stickers.md" with { type: "text" }
 
-const CARD_MODIFIERS_URI = "balatro://card_modifiers"
+export const CARD_MODIFIERS_URI = "balatro://card_modifiers"
 
 const CARD_MODIFIERS_VERSION = createHash("sha256")
-  .update(indexMarkdown + enhancementsMarkdown + sealsMarkdown + editionsMarkdown + stickersMarkdown)
+  .update(
+    indexMarkdown + enhancementsMarkdown + sealsMarkdown + editionsMarkdown + stickersMarkdown,
+  )
   .digest("hex")
   .slice(0, 8)
 
@@ -36,6 +38,25 @@ function registerCardModifiersSubresource(
       contents: [{ uri, mimeType: "text/markdown", text: markdown }],
     }),
   )
+}
+
+const modifierPages = {
+  index: { uri: CARD_MODIFIERS_URI, markdown: indexMarkdown },
+  enhancements: { uri: `${CARD_MODIFIERS_URI}/enhancements`, markdown: enhancementsMarkdown },
+  seals: { uri: `${CARD_MODIFIERS_URI}/seals`, markdown: sealsMarkdown },
+  editions: { uri: `${CARD_MODIFIERS_URI}/editions`, markdown: editionsMarkdown },
+  stickers: { uri: `${CARD_MODIFIERS_URI}/stickers`, markdown: stickersMarkdown },
+} as const
+
+export function readCardModifiersResource(
+  subpath?: string,
+): { uri: string; markdown: string } | undefined {
+  if (!subpath || subpath === "" || subpath === "index") return modifierPages.index
+  if (subpath === "enhancements") return modifierPages.enhancements
+  if (subpath === "seals") return modifierPages.seals
+  if (subpath === "editions") return modifierPages.editions
+  if (subpath === "stickers") return modifierPages.stickers
+  return undefined
 }
 
 export function registerCardModifiersResource(server: McpServer): void {
