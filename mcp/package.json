@@ -41,6 +41,7 @@
     "release:setup": "bun run scripts/setup-release.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
     "rehype-parse": "^9.0.1",
     "rehype-remark": "^10.0.1",

@@ -21,12 +21,11 @@ help:
 	@printf 'Targets:\n'
 	@printf '  make doctor        Check local Balatro/Lovely/SMODS paths\n'
 	@printf '  make install-mods  Sync the repo mod into the Balatro Mods directory\n'
-	@printf '  make run           Sync the mod, then launch Balatro with Lovely\n'
+	@printf '  make run           Sync the mod and launch Balatro\n'
 	@printf '\nConfiguration:\n'
 	@printf '  BALATRO_DIR=%s\n' '$(BALATRO_DIR)'
 	@printf '  BALATRO_SAVE=%s\n' '$(BALATRO_SAVE)'
 	@printf '  ARGS="..." passes arguments to make run\n'
-
 install-mods:
 	@bash -eu -o pipefail -c ' \
 		if [[ ! -d "$(MOD_SRC)" ]]; then \
@@ -87,6 +86,5 @@ run: install-mods
 			exit 1; \
 		fi; \
 		cd "$(BALATRO_DIR)"; \
-		export DYLD_INSERT_LIBRARIES="$(LOVELY_DYLIB)"; \
-		exec "$(LOVE_BIN)" $(ARGS) \
+		DYLD_INSERT_LIBRARIES="$(LOVELY_DYLIB)" "$(LOVE_BIN)" $(ARGS) \
 	'
