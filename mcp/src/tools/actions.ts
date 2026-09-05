@@ -2,7 +2,7 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import { asRecord, commandResult, type CommandResultOptions } from "../response.js"
+import { asRecord, type CommandResultOptions } from "../response.js"
 import BUY_BOOSTER_DESCRIPTION from "./descriptions/buy-booster.txt" with { type: "text" }
 import BUY_CARD_DESCRIPTION from "./descriptions/buy-card.txt" with { type: "text" }
 import BUY_CONSUMABLE_DESCRIPTION from "./descriptions/buy-consumable.txt" with { type: "text" }
@@ -25,6 +25,7 @@ import SKIP_BLIND_DESCRIPTION from "./descriptions/skip-blind.txt" with { type: 
 import SKIP_BOOSTER_DESCRIPTION from "./descriptions/skip-booster.txt" with { type: "text" }
 import SORT_HAND_DESCRIPTION from "./descriptions/sort-hand.txt" with { type: "text" }
 import USE_CONSUMABLE_DESCRIPTION from "./descriptions/use-consumable.txt" with { type: "text" }
+import { commandWithSuccessor } from "./successor.js"
 
 const emptySchema = z.object({}).strict()
 const cardIdSchema = z
@@ -76,7 +77,17 @@ const newGameSchema = z
     challenge: z.string().min(1).optional().describe("Challenge id (e.g. c_omelette_1)."),
   })
   .strict()
-const commandOutputSchema = z.object({ ok: z.literal(true), data: z.unknown() }).strict()
+const successorSchema = z
+  .object({
+    uri: z.string(),
+    phase: z.string(),
+    settled: z.boolean(),
+    state: z.unknown(),
+  })
+  .strict()
+const commandOutputSchema = z
+  .object({ ok: z.literal(true), data: z.unknown(), next: successorSchema.optional() })
+  .strict()
 
 const annotations = (destructive: boolean, idempotent: boolean): ToolAnnotations => ({
   readOnlyHint: false,
@@ -257,7 +268,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
         outputSchema: commandOutputSchema,
         annotations: tool.annotations,
       },
-      () => commandResult(bridge, tool.command, undefined, tool.options),
+      () => commandWithSuccessor(bridge, tool.command, undefined, tool.options),
     )
   }
 
@@ -271,7 +282,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
         outputSchema: commandOutputSchema,
         annotations: tool.annotations,
       },
-      ({ card_id }) => commandResult(bridge, tool.command, { card_id: String(card_id) }),
+      ({ card_id }) => commandWithSuccessor(bridge, tool.command, { card_id: String(card_id) }),
     )
   }
 
@@ -285,7 +296,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       annotations: annotations(false, true),
     },
     ({ card_ids }) =>
-      commandResult(bridge, "select_hand_cards", { card_ids: card_ids.map(String) }),
+      commandWithSuccessor(bridge, "select_hand_cards", { card_ids: card_ids.map(String) }),
   )
 
   server.registerTool(
@@ -297,7 +308,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(false, true),
     },
-    ({ order }) => commandResult(bridge, "sort_hand", { order }),
+    ({ order }) => commandWithSuccessor(bridge, "sort_hand", { order }),
   )
 
   server.registerTool(
@@ -310,7 +321,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       annotations: annotations(true, false),
     },
     ({ card_id, targets }) =>
-      commandResult(bridge, "use_consumable", {
+      commandWithSuccessor(bridge, "use_consumable", {
         card_id: String(card_id),
         targets: targets?.map(String),
       }),
@@ -326,7 +337,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       annotations: annotations(true, false),
     },
     ({ card_id, use, targets }) =>
-      commandResult(bridge, "buy_consumable", {
+      commandWithSuccessor(bridge, "buy_consumable", {
         card_id: String(card_id),
         use,
         targets: targets?.map(String),
@@ -343,7 +354,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       annotations: annotations(true, false),
     },
     ({ card_id, targets }) =>
-      commandResult(bridge, "select_booster_card", {
+      commandWithSuccessor(bridge, "select_booster_card", {
         card_id: String(card_id),
         targets: targets?.map(String),
       }),
@@ -358,7 +369,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(false, true),
     },
-    ({ order }) => commandResult(bridge, "reorder_jokers", { card_ids: order.map(String) }),
+    ({ order }) => commandWithSuccessor(bridge, "reorder_jokers", { card_ids: order.map(String) }),
   )
 
   server.registerTool(
@@ -371,6 +382,6 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       annotations: annotations(true, false),
     },
     ({ deck, stake, seed, challenge }) =>
-      commandResult(bridge, "new_game", { deck, stake, seed, challenge }),
+      commandWithSuccessor(bridge, "new_game", { deck, stake, seed, challenge }),
   )
 }

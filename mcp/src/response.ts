@@ -9,7 +9,7 @@ export interface CommandResultOptions {
   toMarkdown?: MarkdownFormatter
 }
 
-function defaultMarkdown(data: Record<string, unknown>): string {
+export function defaultMarkdown(data: Record<string, unknown>): string {
   return "```json\n" + JSON.stringify(data, null, 2) + "\n```"
 }
 

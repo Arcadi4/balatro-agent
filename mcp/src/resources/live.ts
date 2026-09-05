@@ -727,88 +727,114 @@ function appendDeckView(lines: string[], title: string, value: unknown): void {
   lines.push("")
 }
 
-export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
-  const definitions: Array<{
-    name: string
-    uri: string
-    title: string
-    description: string
-    render: (payload: Record<string, unknown>) => string
-  }> = [
-    {
-      name: "turn",
-      uri: "balatro://turn",
-      title: "Turn",
-      description:
-        "Live turn snapshot: phase, ante, money, round progress, legal actions, hand with selected cards, jokers, and consumables.",
-      render: turnToMarkdown,
-    },
-    {
-      name: "hand",
-      uri: "balatro://hand",
-      title: "Hand",
-      description:
-        "Current hand cards with card IDs, modifiers, and selection state; face-down cards are hidden.",
-      render: handToMarkdown,
-    },
-    {
-      name: "jokers",
-      uri: "balatro://jokers",
-      title: "Jokers",
-      description:
-        "Owned jokers with editions, costs, and live effect descriptions; face-down jokers are hidden.",
-      render: jokersToMarkdown,
-    },
-    {
-      name: "consumables",
-      uri: "balatro://consumables",
-      title: "Consumables",
-      description: "Held Tarot, Planet, and Spectral cards with usability status.",
-      render: consumablesToMarkdown,
-    },
-    {
-      name: "deck",
-      uri: "balatro://deck",
-      title: "Deck",
-      description:
-        "Balatro-style Remaining and Full Deck views with base/effective rank, suit, and card-type tallies; face-down remaining cards count as unknown.",
-      render: deckToMarkdown,
-    },
-    {
-      name: "shop",
-      uri: "balatro://shop",
-      title: "Shop",
-      description:
-        "Shop contents while the shop is open: cards, vouchers, boosters, and reroll cost. Errors UNAVAILABLE outside the SHOP phase.",
-      render: shopToMarkdown,
-    },
-    {
-      name: "booster",
-      uri: "balatro://booster",
-      title: "Booster Pack",
-      description:
-        "Currently open booster pack: kind, picks remaining, and options. Errors UNAVAILABLE when no pack is open.",
-      render: boosterToMarkdown,
-    },
-    {
-      name: "run",
-      uri: "balatro://run",
-      title: "Run",
-      description:
-        "Run-level facts: ante, money, poker-hand levels with play counts, vouchers, queued tags, discard pile, challenge, disabled entities, and endless mode.",
-      render: runToMarkdown,
-    },
-    {
-      name: "ante",
-      uri: "balatro://ante",
-      title: "Ante",
-      description:
-        "Ante overview readable throughout a run: the Small, Big, and Boss blinds with chip targets, skip rewards, on-deck blind, boss reroll cost, and queued tags.",
-      render: anteToMarkdown,
-    },
-  ]
+type LiveRenderer = (payload: Record<string, unknown>) => string
 
-  for (const definition of definitions) {
+interface LiveResourceDefinition {
+  name: string
+  uri: string
+  title: string
+  description: string
+  render: LiveRenderer
+}
+
+const LIVE_RESOURCES: LiveResourceDefinition[] = [
+  {
+    name: "turn",
+    uri: "balatro://turn",
+    title: "Turn",
+    description:
+      "Live turn snapshot: phase, ante, money, round progress, legal actions, hand with selected cards, jokers, and consumables.",
+    render: turnToMarkdown,
+  },
+  {
+    name: "hand",
+    uri: "balatro://hand",
+    title: "Hand",
+    description:
+      "Current hand cards with card IDs, modifiers, and selection state; face-down cards are hidden.",
+    render: handToMarkdown,
+  },
+  {
+    name: "jokers",
+    uri: "balatro://jokers",
+    title: "Jokers",
+    description:
+      "Owned jokers with editions, costs, and live effect descriptions; face-down jokers are hidden.",
+    render: jokersToMarkdown,
+  },
+  {
+    name: "consumables",
+    uri: "balatro://consumables",
+    title: "Consumables",
+    description: "Held Tarot, Planet, and Spectral cards with usability status.",
+    render: consumablesToMarkdown,
+  },
+  {
+    name: "deck",
+    uri: "balatro://deck",
+    title: "Deck",
+    description:
+      "Balatro-style Remaining and Full Deck views with base/effective rank, suit, and card-type tallies; face-down remaining cards count as unknown.",
+    render: deckToMarkdown,
+  },
+  {
+    name: "shop",
+    uri: "balatro://shop",
+    title: "Shop",
+    description:
+      "Shop contents while the shop is open: cards, vouchers, boosters, and reroll cost. Errors UNAVAILABLE outside the SHOP phase.",
+    render: shopToMarkdown,
+  },
+  {
+    name: "booster",
+    uri: "balatro://booster",
+    title: "Booster Pack",
+    description:
+      "Currently open booster pack: kind, picks remaining, and options. Errors UNAVAILABLE when no pack is open.",
+    render: boosterToMarkdown,
+  },
+  {
+    name: "run",
+    uri: "balatro://run",
+    title: "Run",
+    description:
+      "Run-level facts: ante, money, poker-hand levels with play counts, vouchers, queued tags, discard pile, challenge, disabled entities, and endless mode.",
+    render: runToMarkdown,
+  },
+  {
+    name: "ante",
+    uri: "balatro://ante",
+    title: "Ante",
+    description:
+      "Ante overview readable throughout a run: the Small, Big, and Boss blinds with chip targets, skip rewards, on-deck blind, boss reroll cost, and queued tags.",
+    render: anteToMarkdown,
+  },
+]
+
+const LIVE_RENDERERS: Record<string, LiveRenderer> = {}
+for (const definition of LIVE_RESOURCES) LIVE_RENDERERS[definition.uri] = definition.render
+
+// Renders already-fetched state for tool successor context. Section
+// renderers throw UNAVAILABLE when their snapshot is absent (e.g. SHOP
+// phase before the shop snapshot lands); turn never throws, so it is the
+// honest fallback and the returned uri names what was actually rendered.
+export function renderSuccessor(
+  uri: string,
+  payload: Record<string, unknown>,
+): { uri: string; markdown: string } {
+  const render = LIVE_RENDERERS[uri]
+  if (render !== undefined) {
+    try {
+      return { uri, markdown: render(payload) }
+    } catch {
+      // Fall through to the turn snapshot below.
+    }
+  }
+  return { uri: "balatro://turn", markdown: turnToMarkdown(payload) }
+}
+
+export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
+  for (const definition of LIVE_RESOURCES) {
     server.registerResource(
       definition.name,
       definition.uri,
