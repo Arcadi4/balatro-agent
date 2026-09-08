@@ -2,16 +2,18 @@ import { createHash } from "node:crypto"
 
 import type { McpServer } from "@modelcontextprotocol/server"
 
-import indexMarkdown from "../../data/card_modifiers/index.md" with { type: "text" }
-import enhancementsMarkdown from "../../data/card_modifiers/enhancements.md" with { type: "text" }
-import sealsMarkdown from "../../data/card_modifiers/seals.md" with { type: "text" }
 import editionsMarkdown from "../../data/card_modifiers/editions.md" with { type: "text" }
+import enhancementsMarkdown from "../../data/card_modifiers/enhancements.md" with { type: "text" }
+import indexMarkdown from "../../data/card_modifiers/index.md" with { type: "text" }
+import sealsMarkdown from "../../data/card_modifiers/seals.md" with { type: "text" }
 import stickersMarkdown from "../../data/card_modifiers/stickers.md" with { type: "text" }
 
 const CARD_MODIFIERS_URI = "balatro://card_modifiers"
 
 const CARD_MODIFIERS_VERSION = createHash("sha256")
-  .update(indexMarkdown + enhancementsMarkdown + sealsMarkdown + editionsMarkdown + stickersMarkdown)
+  .update(
+    indexMarkdown + enhancementsMarkdown + sealsMarkdown + editionsMarkdown + stickersMarkdown,
+  )
   .digest("hex")
   .slice(0, 8)
 

@@ -6,10 +6,7 @@ import challengesMarkdown from "../../data/reference/challenges.md" with { type:
 
 const CHALLENGES_URI = "balatro://challenges"
 
-const CHALLENGES_VERSION = createHash("sha256")
-  .update(challengesMarkdown)
-  .digest("hex")
-  .slice(0, 8)
+const CHALLENGES_VERSION = createHash("sha256").update(challengesMarkdown).digest("hex").slice(0, 8)
 
 export function registerChallengesResource(server: McpServer): void {
   server.registerResource(
