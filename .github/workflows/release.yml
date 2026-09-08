@@ -5,14 +5,16 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
-  id-token: write # OIDC for npm trusted publishing
+  contents: read
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
 
       - name: Verify release versions
         run: |
@@ -28,25 +30,67 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends luajit
-          find mod -name '*.lua' -exec luajit -b {} /dev/null \;
+          find mod -name '*.lua' -print0 | xargs -0 -n1 sh -c 'luajit -b "$1" /dev/null' _
 
+      - name: Build native MCP packages
+        working-directory: mcp
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun run build:release
+
+      - name: Archive native binaries
+        working-directory: mcp/dist/npm
+        run: |
+          mkdir -p ../archives
+          for binary_dir in */bin; do
+            package="${binary_dir%/bin}"
+            tar -czf "../archives/balatro-mcp-${package}-${GITHUB_REF_NAME}.tar.gz" -C "$package/bin" .
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-release
+          path: mcp/dist/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcp-release
+          path: mcp/dist
+      # Node/npm are used only for registry OIDC staging, never for development or builds.
       - uses: actions/setup-node@v4
         with:
-          # npm stage requires npm >= 11.15.0; Node 24 bundles it, Node 20 ships npm 10.
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Publish native packages automatically
+        working-directory: mcp/dist/npm
+        run: |
+          for binary_dir in */bin; do
+            package="${binary_dir%/bin}"
+            name="$(jq -r .name "$package/package.json")"
+            version="$(jq -r .version "$package/package.json")"
+            chmod +x "$binary_dir"/*
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already published"
+            else
+              (cd "$package" && npm publish --ignore-scripts --provenance --access public)
+            fi
+          done
 
-      - name: Install MCP dependencies
-        working-directory: mcp
-        run: bun install --frozen-lockfile
-
-      - name: Stage MCP package
-        # OIDC trusted publishing: no NODE_AUTH_TOKEN, npm mints a short-lived token.
-        # Human approves the staged version on npmjs (2FA) to complete the release.
-        working-directory: mcp
-        run: npm stage publish --provenance --access public
+      - name: Stage launcher for one approval
+        working-directory: mcp/dist/npm/balatro-mcp
+        run: |
+          chmod +x cli.cjs
+          npm stage publish --ignore-scripts --provenance --access public
 
       - name: Package mod
         run: |
@@ -57,4 +101,4 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes "balatro-agent-${GITHUB_REF_NAME}.zip"
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes "balatro-agent-${GITHUB_REF_NAME}.zip" mcp/dist/archives/*

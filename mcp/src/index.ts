@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { McpServer } from "@modelcontextprotocol/server"
 import { serveStdio } from "@modelcontextprotocol/server/stdio"
@@ -78,8 +78,12 @@ async function main(): Promise<void> {
   process.stdin.once("end", () => void shutdown())
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? (error.stack ?? error.message) : String(error)
-  process.stderr.write(`[balatro-mcp] fatal: ${message}\n`)
-  process.exitCode = 1
-})
+if (Bun.argv.includes("--version")) {
+  console.log(`${packageJson.name} ${packageJson.version}`)
+} else {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error)
+    process.stderr.write(`[balatro-mcp] fatal: ${message}\n`)
+    process.exitCode = 1
+  })
+}

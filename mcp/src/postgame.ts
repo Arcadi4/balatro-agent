@@ -1,4 +1,3 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
@@ -39,54 +38,34 @@ export function postgameDir(): string {
   return path.join(dataHome(), "balatro-mcp", "postgame")
 }
 
-async function ensureDir(): Promise<string> {
-  const dir = postgameDir()
-  await mkdir(dir, { recursive: true })
-  return dir
-}
-
 async function existingIndices(dir: string): Promise<number[]> {
-  const names = await readdir(dir)
   const indices: number[] = []
-  for (const name of names) {
-    const match = FILENAME_PATTERN.exec(name)
-    if (!match) continue
-    const index = Number.parseInt(match[1] ?? "", 10)
-    if (Number.isInteger(index)) indices.push(index)
+  try {
+    for await (const name of new Bun.Glob("*.md").scan({ cwd: dir, onlyFiles: true })) {
+      const match = FILENAME_PATTERN.exec(name)
+      if (!match) continue
+      const index = Number.parseInt(match[1] ?? "", 10)
+      if (Number.isInteger(index)) indices.push(index)
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
   }
   return indices.sort((a, b) => a - b)
 }
 
-function yamlScalar(value: string): string {
-  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`
-}
-
-function yamlUnscalar(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed.startsWith('"') || !trimmed.endsWith('"') || trimmed.length < 2) return trimmed
-  return trimmed
-    .slice(1, -1)
-    .replaceAll("\\n", "\n")
-    .replace(/\\(.)/g, (_, char: string) => char)
-}
-
 function renderDocument(title: string, summary: string, content: string): string {
-  const body = `${content.trimEnd()}\n`
-  return `---\ntitle: ${yamlScalar(title)}\nsummary: ${yamlScalar(summary)}\n---\n\n${body}`
+  const frontmatter = Bun.YAML.stringify({ title, summary }, null, 2).trimEnd()
+  return `---\n${frontmatter}\n---\n\n${content.trimEnd()}\n`
 }
 
 function parseFrontmatter(text: string): Partial<PostgameEntry> | undefined {
   const match = FRONTMATTER_PATTERN.exec(text)
-  if (!match) return undefined
-  const fields: Record<string, string> = {}
-  for (const line of (match[1] ?? "").split(/\r?\n/)) {
-    const separator = line.indexOf(":")
-    if (separator <= 0) continue
-    fields[line.slice(0, separator)] = line.slice(separator + 1)
-  }
+  if (!match?.[1]) return undefined
+  const fields: unknown = Bun.YAML.parse(match[1])
+  if (typeof fields !== "object" || fields === null) return undefined
   return {
-    title: yamlUnscalar(fields.title ?? ""),
-    summary: yamlUnscalar(fields.summary ?? ""),
+    title: "title" in fields && typeof fields.title === "string" ? fields.title : "",
+    summary: "summary" in fields && typeof fields.summary === "string" ? fields.summary : "",
   }
 }
 
@@ -109,11 +88,13 @@ async function writeNextPostgame(input: {
   summary: string
   content: string
 }): Promise<PostgameRef> {
-  const dir = await ensureDir()
+  const dir = postgameDir()
   const indices = await existingIndices(dir)
   const index = indices.reduce((max, current) => Math.max(max, current), 0) + 1
   const filepath = path.join(dir, `${index}.md`)
-  await writeFile(filepath, renderDocument(input.title, input.summary, input.content), "utf8")
+  await Bun.write(filepath, renderDocument(input.title, input.summary, input.content), {
+    createPath: true,
+  })
   return { index, uri: `${POSTGAME_URI_SCHEME}${index}`, filepath }
 }
 
@@ -128,7 +109,7 @@ export async function listPostgames(): Promise<PostgameListing> {
   const entries: PostgameEntry[] = []
   for (const index of indices) {
     try {
-      const text = await readFile(path.join(dir, `${index}.md`), "utf8")
+      const text = await Bun.file(path.join(dir, `${index}.md`)).text()
       const fields = parseFrontmatter(text)
       if (!fields) continue
       entries.push({
@@ -137,7 +118,7 @@ export async function listPostgames(): Promise<PostgameListing> {
         summary: fields.summary ?? "",
       })
     } catch {
-      // File vanished between listing and reading; skip it.
+      // Skip unreadable files and malformed frontmatter.
     }
   }
   return { dir, entries }
@@ -146,7 +127,7 @@ export async function listPostgames(): Promise<PostgameListing> {
 /** Returns the raw document text, or null when no analysis exists at that index. */
 export async function readPostgame(index: number): Promise<string | null> {
   try {
-    return await readFile(path.join(postgameDir(), `${index}.md`), "utf8")
+    return await Bun.file(path.join(postgameDir(), `${index}.md`)).text()
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
     throw error

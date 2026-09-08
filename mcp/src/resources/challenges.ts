@@ -1,12 +1,10 @@
-import { createHash } from "node:crypto"
-
 import type { McpServer } from "@modelcontextprotocol/server"
 
 import challengesMarkdown from "../../data/reference/challenges.md" with { type: "text" }
 
 const CHALLENGES_URI = "balatro://challenges"
 
-const CHALLENGES_VERSION = createHash("sha256").update(challengesMarkdown).digest("hex").slice(0, 8)
+const CHALLENGES_VERSION = Bun.CryptoHasher.hash("sha256", challengesMarkdown, "hex").slice(0, 8)
 
 export function registerChallengesResource(server: McpServer): void {
   server.registerResource(

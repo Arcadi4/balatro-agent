@@ -21,7 +21,7 @@ Let an AI agent play Balatro. Balatro Agent connects any MCP-compatible AI clien
 - [Balatro](https://store.steampowered.com/app/2379780/Balatro/) on Steam
 - [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
 - [Steamodded (SMODS)](https://github.com/Steamodded/smods)
-- [Node.js](https://nodejs.org) 20 or later (the MCP server runs through npx, no clone or build needed)
+- [Node.js](https://nodejs.org) 20 or later for npx (it launches a native MCP binary; Bun, cloning, and building are not required). Native archives from GitHub Releases also run without Node.
 
 ## Install
 

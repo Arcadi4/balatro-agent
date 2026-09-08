@@ -21,7 +21,7 @@
 - Steam 版 [Balatro](https://store.steampowered.com/app/2379780/Balatro/)
 - [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector)
 - [Steamodded（SMODS）](https://github.com/Steamodded/smods)
-- [Node.js](https://nodejs.org) 20 或更高版本（MCP 服务器通过 npx 运行，无需克隆仓库或手动构建）
+- [Node.js](https://nodejs.org) 20 或更高版本，用于 npx（启动原生 MCP 可执行文件，无需安装 Bun、克隆仓库或手动构建）。GitHub Releases 中的原生程序也可直接运行，无需 Node。
 
 ## 安装
 

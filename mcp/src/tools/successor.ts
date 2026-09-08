@@ -94,12 +94,6 @@ export function resolveSuccessorUri(payload: Record<string, unknown>): string {
   return "balatro://turn"
 }
 
-function sleep(ms: number): Promise<void> {
-  const { promise, resolve } = Promise.withResolvers<void>()
-  setTimeout(resolve, ms)
-  return promise
-}
-
 interface SettledState {
   payload?: Record<string, unknown>
   settled: boolean
@@ -126,7 +120,7 @@ async function settleState(
     return { settled: false }
   }
   while (!isSettled(phaseOf(payload)) && Date.now() < deadline) {
-    await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())))
+    await Bun.sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())))
     try {
       payload = await bridge.getState()
     } catch {

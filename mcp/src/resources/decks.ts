@@ -1,12 +1,10 @@
-import { createHash } from "node:crypto"
-
 import type { McpServer } from "@modelcontextprotocol/server"
 
 import decksMarkdown from "../../data/reference/decks.md" with { type: "text" }
 
 const DECKS_URI = "balatro://decks"
 
-const DECKS_VERSION = createHash("sha256").update(decksMarkdown).digest("hex").slice(0, 8)
+const DECKS_VERSION = Bun.CryptoHasher.hash("sha256", decksMarkdown, "hex").slice(0, 8)
 
 export function registerDecksResource(server: McpServer): void {
   server.registerResource(

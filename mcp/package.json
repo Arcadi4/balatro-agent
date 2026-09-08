@@ -1,6 +1,7 @@
 {
   "name": "balatro-mcp",
   "version": "0.1.1",
+  "private": true,
   "description": "MCP server connecting AI agents to play Balatro",
   "keywords": [
     "agent",
@@ -28,21 +29,16 @@
     "url": "git+https://github.com/Arcadi4/balatro-agent.git",
     "directory": "mcp"
   },
-  "bin": {
-    "balatro-mcp": "dist/index.js"
-  },
-  "files": [
-    "dist"
-  ],
   "type": "module",
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target=node --sourcemap=external",
+    "build": "bun run scripts/build.ts",
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
-    "typecheck": "tsc --noEmit -p .",
+    "typecheck": "bun --bun tsc --noEmit -p .",
     "test": "bun test",
-    "format": "oxfmt package.json src",
-    "prepublishOnly": "bun run typecheck && bun test && bun run build"
+    "format": "bun --bun oxfmt package.json src scripts",
+    "build:release": "bun run scripts/build.ts --release",
+    "release:setup": "bun run scripts/setup-release.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
@@ -62,6 +58,6 @@
     "typescript": "^7.0.2"
   },
   "engines": {
-    "node": ">=20"
+    "bun": ">=1.4.2"
   }
 }
