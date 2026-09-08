@@ -12,7 +12,9 @@
 
 </div>
 
-Let an AI agent play Balatro for you. Balatro Agent connects any MCP-compatible AI client to a running game: the agent reads the live game state, picks blinds, plays and discards hands, shops for jokers, and manages your run. No screen capture or model vision required, everything works over text.
+Let an AI agent play Balatro. Balatro Agent connects any MCP-compatible AI client to a running game. The agent may read the live game state, pick blinds, play and discard hands, purchase jokers, and anything a human player is capable of. No screen capture or model vision required, everything works over text-based tool calls.
+
+<https://github.com/user-attachments/assets/bcb40bd1-a9f8-491c-9a98-6f1a11c90fab>
 
 ## Requirements
 
