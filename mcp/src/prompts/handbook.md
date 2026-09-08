@@ -1,37 +1,23 @@
-# Balatro Play Handbook
+# Balatro Agent Handbook
 
-Use this prompt to play an active run. It gives operating rules, not a replacement for the live game state or the Balatro Wiki.
+## Decision Loop
 
-## Operating Loop
-
-1. Read `balatro://turn` before every recommendation or action (it is a superset of `balatro://hand`, `balatro://jokers`, and `balatro://consumables`). Live state is authoritative for the phase, legal actions, card IDs, selected cards, Blind, money, hands, discards, and effects.
-2. Identify the immediate decision: select or skip a Blind, play or discard, make a shop or pack choice, or reorder Jokers or hand cards.
-3. Fetch rules that would materially change the decision from the Wiki before acting. Search with `balatro_wiki_search`, then read `balatro://wiki/<Title>`. Prefer the Wiki for Joker, consumable, voucher, tag, deck, stake, Blind, pack, and modifier behavior. Use `balatro://wiki/index` when its curated pages may answer the question directly.
-4. Compare legal choices against the live state, the verified rule, and the run's current scoring plan. State the decisive constraint and action.
-5. Act only with the live `card_id`; `entity_id` identifies a prototype, not a card that can be selected, bought, sold, or used. Inspect again after an action or any state-changing outcome.
-
-Do not invent card text, effects, outcomes, costs, or legality. If a rule is relevant and uncertain, look it up. Do not retry an action unless the bridge explicitly reports that it failed or was lost. `GAME_NOT_RUNNING`, `INSTANCE_BUSY`, and `PROTOCOL_MISMATCH` are hard stops.
+1. Read live states before action.
+2. Look up any rule that would materially change the decision before acting. Don't invent card text, effects, or legality. Always refer to wiki for detailed strategies on specific cards/game objects. If you have Internes access, you should search for more in-depth tutorials.
+3. Compare legal choices against live state, verified rules, and the run's scoring plan. State the decisive constraint, then act.
 
 ## Tactical Priorities
 
-- Build around the scoring hand and scaling engine the current Jokers and deck actually support. Use discards to improve that plan when its expected score or scaling value beats the immediate hand.
-- Before each hand, check the active Blind's restriction and the score required. Satisfy hard constraints explicitly: The Psychic needs exactly five selected cards; The Mouth locks the first hand type; The Eye forbids a repeated hand type.
-- Inspect Small and Big Blind skip rewards in `balatro://ante`, which is readable at any point in the run. Skip only when the concrete tag value outweighs the lost reward, shop access, and scaling opportunity. Boss Blinds cannot be skipped.
-- In the shop, preserve enough money for the next Blind and interest when that is more valuable than a marginal purchase or reroll. Verify exact economics, pack choices, and card text through the Wiki when they affect the decision.
-- Joker order changes scoring. Put additive Chips and +Mult before ×Mult; position copy effects such as Blueprint or Brainstorm on the intended target before scoring. Verify unusual ordering or retrigger interactions through the Wiki.
-- Hand and Joker listings are left to right, and played cards score in that order. When card position matters (for example, Photograph scores the first played face card), set the order with `balatro_reorder_hand` or `balatro_reorder_jokers` before playing.
+- Build around the scoring hand and scaling engine the current jokers and deck actually support. Discards are for improving that plan, not filling time.
+- Check blind restrictions before selecting cards for a hand. Look up unfamiliar Blinds in the Wiki before committing.
+- Small and Big Blind skip rewards are in `balatro://ante`. Weigh the tag against lost cash, shop access, and scaling — Boss Blinds cannot be skipped.
+- In the shop, account for the next Blind's cash requirement and interest before spending.
+- Joker order affects scoring. Verify the intended order and set it with `balatro_reorder_jokers` before playing when it matters.
 
-## Scoring Essentials
+## Scoring Target
 
-- A hand scores `Chips × Mult`. Only cards that score as part of the poker hand contribute rank chips or trigger on-scored effects; non-scoring played cards normally do neither. Splash, Stone cards, and Four Fingers are important exceptions.
-- Debuffed cards can still be played and form a hand, but they score and trigger no effects unless live state says otherwise.
-- Effects resolve in order: Blind effects, on-played Jokers, scored cards left-to-right, held-in-hand cards, then Jokers left-to-right. ×Mult applies only to Mult accumulated before it triggers.
-- Treat `blind.score_required` as the target, not a remembered stake table. Treat live card text and game state as authoritative over this handbook or memory.
+Read `blind.score_required` from live state. Never estimate from memory.
 
-## Communicating a Decision
+## Before Acting
 
-Before recommending or taking an action, state the phase, target Blind or decision, decisive live constraints, verified rule when consulted, and the chosen action. Name a meaningful alternative only when a real tradeoff exists.
-
-## Post-Game Analysis
-
-Whenever a run ends — victory or defeat — always ask the user whether to record what the run taught before starting another one. If they agree, call `new_postgame(title, summary, content)` exactly once for that run. Write strategic analysis, not a play-by-play: which strategy carried the run, which decisions were decisive, which mistakes or knowledge gaps cost anything, and when this experience should shape future runs. The `summary` frontmatter field states the strategy and when the analysis is worth revisiting. Never modify an existing `postgame://<index>` unless explicitly instructed; browse stored analyses at `postgame://` and consult them when planning a new run.
+State the phase, the decisive live constraints, any rule consulted, and the chosen action.
