@@ -3,6 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/server"
 import type { BridgeClient } from "../bridge/socket-client.js"
 import { renderSuccessor } from "../resources/live.js"
 import {
+  asRecord,
   defaultMarkdown,
   toolResult,
   withBridgeErrors,
@@ -147,7 +148,11 @@ export async function commandWithSuccessor(
   return withBridgeErrors(
     async () => {
       const data = await bridge.command(kind, args, options.timeoutMs)
-      const envelope: Record<string, unknown> = { ok: true, data: data ?? {} }
+      const envelope: Record<string, unknown> = { ok: true }
+      const record = asRecord(data)
+      if (record && Object.keys(record).length > 0) {
+        envelope.data = record
+      }
       const outcome = await settleState(
         bridge,
         kind,

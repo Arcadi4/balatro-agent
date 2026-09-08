@@ -62,6 +62,13 @@ export async function commandResult(
 ): Promise<CallToolResult> {
   return withBridgeErrors(
     () => bridge.command(kind, args, options.timeoutMs),
-    (data) => toolResult({ ok: true, data: data ?? {} }, options.toMarkdown),
+    (data) => {
+      const envelope: Record<string, unknown> = { ok: true }
+      const record = asRecord(data)
+      if (record && Object.keys(record).length > 0) {
+        envelope.data = record
+      }
+      return toolResult(envelope, options.toMarkdown)
+    },
   )
 }

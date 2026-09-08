@@ -92,7 +92,7 @@ const successorSchema = z
   })
   .strict()
 const commandOutputSchema = z
-  .object({ ok: z.literal(true), data: z.unknown(), next: successorSchema.optional() })
+  .object({ ok: z.literal(true), data: z.unknown().optional(), next: successorSchema.optional() })
   .strict()
 
 const annotations = (destructive: boolean, idempotent: boolean): ToolAnnotations => ({

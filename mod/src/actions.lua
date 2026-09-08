@@ -9,7 +9,7 @@ local function err(error_code, message)
 end
 
 local function ok(data)
-  return { ok = true, data = data }
+  return { ok = true, data = data or {} }
 end
 
 local function card_id(card)
@@ -295,6 +295,7 @@ local RUN_PHASES = {
 -- Settle builders: async actions return these so the dispatcher holds the
 -- response until the game can act on the result.
 local function settle_result(data, timed_out)
+  data = data or {}
   data.timed_out = timed_out or nil
   return { ok = true, data = data }
 end
@@ -477,7 +478,7 @@ handlers.select_hand_cards = function(args)
   local selected_ids, _, selection_err = replace_requested_highlights(cards_to_select, requested)
   if selection_err then return selection_err end
 
-  return ok({ selected_count = #selected_ids, selected_card_ids = selected_ids })
+  return ok()
 end
 
 handlers.sort_hand = function(args)
@@ -486,7 +487,7 @@ handlers.sort_hand = function(args)
 
   local callback = args.order == 'rank' and G.FUNCS.sort_hand_value or G.FUNCS.sort_hand_suit
   callback()
-  return ok({ sorted_by = args.order })
+  return ok()
 end
 
 handlers.reorder_hand = function(args)
@@ -528,7 +529,7 @@ handlers.reorder_hand = function(args)
 
   G.hand:set_ranks()
 
-  return ok({ reordered = true, count = current_count })
+  return ok()
 end
 
 local function current_score()
@@ -653,7 +654,7 @@ handlers.use_consumable = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return anim_settle({ used = card_id }, 8)
+  return anim_settle({}, 8)
 end
 
 handlers.sell_card = function(args)
@@ -679,7 +680,7 @@ handlers.sell_card = function(args)
 
   G.FUNCS.sell_card({ config = { ref_table = card } })
 
-  return anim_settle({ sold = card_id, sell_value = card.sell_cost }, 8)
+  return anim_settle({ sell_value = card.sell_cost }, 8)
 end
 
 handlers.buy_card = function(args)
@@ -711,7 +712,7 @@ handlers.buy_card = function(args)
   local buy_err = purchase_from_shop(card, false)
   if buy_err then return buy_err end
 
-  return anim_settle({ bought = card_id, cost = cost, kind = is_joker and "joker" or "playing_card" }, 8)
+  return anim_settle({ cost = cost, kind = is_joker and "joker" or "playing_card" }, 8)
 end
 
 handlers.buy_consumable = function(args)
@@ -756,7 +757,7 @@ handlers.buy_consumable = function(args)
     return buy_err
   end
 
-  return anim_settle({ bought = card_id, cost = cost, used = args.use }, 8)
+  return anim_settle({ cost = cost }, 8)
 end
 
 handlers.buy_voucher = function(args)
@@ -794,7 +795,7 @@ handlers.buy_voucher = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return anim_settle({ redeemed = card_id, cost = cost, voucher_key = voucher_key }, 8)
+  return anim_settle({ cost = cost, voucher_key = voucher_key }, 8)
 end
 
 handlers.reroll_shop = function(args)
@@ -1011,7 +1012,7 @@ handlers.buy_booster = function(args)
 
   return phase_settle(
     PACK_PHASES,
-    { opened = card_id, cost = cost, pack = card.ability and card.ability.name },
+    { cost = cost, pack = card.ability and card.ability.name },
     8
   )
 end
@@ -1046,7 +1047,7 @@ handlers.select_booster_card = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return anim_settle({ selected = card_id }, 8)
+  return anim_settle({}, 8)
 end
 
 handlers.skip_booster = function(args)
@@ -1097,7 +1098,7 @@ handlers.reorder_jokers = function(args)
 
   G.jokers:set_ranks()
 
-  return ok({ reordered = true, count = current_count })
+  return ok()
 end
 
 function handlers.configure(ids, eval, get_connect_info)
