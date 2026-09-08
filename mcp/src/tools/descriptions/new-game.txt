@@ -1,1 +1,1 @@
-Start a new run. Pass deck and stake for a normal run, or challenge for a challenge run. See balatro://decks and balatro://challenges for valid values.
+Start a new run. Pass deck and stake for a normal run, or challenge for a challenge run. See balatro://decks, balatro://stakes, and balatro://challenges for valid values.

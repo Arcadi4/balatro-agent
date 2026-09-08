@@ -66,11 +66,12 @@ mcp/src/
     ├── wiki.ts              static wiki index and live wiki article resources
     ├── cardModifiers.ts     card modifier reference (enhancements, seals, editions, stickers)
     ├── decks.ts             deck reference resource
+    ├── stakes.ts            stake reference resource
     ├── challenges.ts        challenge reference resource
     └── live.ts              live game-state resources (balatro://turn, hand, jokers, …)
 ```
 
-Static reference data lives in `mcp/data/` (wiki index, card modifiers, decks, challenges).
+Static reference data lives in `mcp/data/` (wiki index, card modifiers, decks, stakes, challenges).
 
 Run directly from TypeScript with `bun run start`; bundling is optional and embeds text imports such as the handbook prompt.
 

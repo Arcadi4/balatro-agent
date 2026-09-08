@@ -11,6 +11,7 @@ import { registerChallengesResource } from "./resources/challenges.js"
 import { registerDecksResource } from "./resources/decks.js"
 import { registerLiveResources } from "./resources/live.js"
 import { registerPostgameResource } from "./resources/postgame.js"
+import { registerStakesResource } from "./resources/stakes.js"
 import { registerWikiResource } from "./resources/wiki.js"
 import { registerAllTools } from "./tools/index.js"
 
@@ -39,6 +40,7 @@ function createServer(bridge: BridgeClient): McpServer {
   registerCardModifiersResource(server)
   registerChallengesResource(server)
   registerDecksResource(server)
+  registerStakesResource(server)
   registerLiveResources(server, bridge)
   registerWikiResource(server)
   registerPostgameResource(server)
