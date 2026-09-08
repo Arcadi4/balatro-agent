@@ -15,16 +15,7 @@ export interface SuccessorOptions extends CommandResultOptions {
   pollMs?: number
 }
 
-// Phases that only exist while G.E_MANAGER animations resolve across ticks.
-// A resting game is never observed here, so polling past them is settling,
-// not guessing.
-const TRANSIENT_PHASES: Record<string, true> = {
-  HAND_PLAYED: true,
-  DRAW_TO_HAND: true,
-  NEW_ROUND: true,
-}
-
-const PACK_PHASES: Record<string, true> = {
+const BOOSTER_PHASES: Record<string, true> = {
   TAROT_PACK: true,
   PLANET_PACK: true,
   SPECTRAL_PACK: true,
@@ -36,63 +27,55 @@ const PACK_PHASES: Record<string, true> = {
 const SETTLE_TIMEOUT_MS = 10_000
 const SETTLE_POLL_MS = 250
 
-// Target phases per command. The hook waits until the observed phase joins
-// the set instead of trusting any resting phase: ROUND_EVAL is stable, but
-// on the cash_out path it is only a stopover before SHOP. Commands without
-// an entry (restart, continue_game, new_game) land in no single phase, so
-// they settle past animation transients instead.
-const AWAIT_PHASES: Record<string, Record<string, true>> = {
-  select_blind: { SELECTING_HAND: true },
-  skip_blind: { BLIND_SELECT: true },
-  play_hand: { SELECTING_HAND: true, ROUND_EVAL: true, GAME_OVER: true },
-  discard_hand: { SELECTING_HAND: true },
-  use_consumable: { SELECTING_HAND: true, SHOP: true },
-  sell_card: { BLIND_SELECT: true, SELECTING_HAND: true, ROUND_EVAL: true, SHOP: true },
-  buy_card: { SHOP: true },
-  buy_consumable: { SHOP: true },
-  buy_voucher: { SHOP: true },
-  reroll_shop: { SHOP: true },
-  reroll_boss: { BLIND_SELECT: true },
-  leave_shop: { BLIND_SELECT: true },
-  cash_out: { SHOP: true },
+interface SuccessorRule {
+  uri: string
+  awaitedPhases: Record<string, true>
+  contextPhases: Record<string, true>
+}
+
+// Only attach context where the immediately useful resource is deterministic
+// and actionable. Other commands return their command result alone.
+const SUCCESSOR_RULES: Record<string, SuccessorRule> = {
+  select_blind: {
+    uri: "balatro://hand",
+    awaitedPhases: { SELECTING_HAND: true },
+    contextPhases: { SELECTING_HAND: true },
+  },
+  play_hand: {
+    uri: "balatro://hand",
+    awaitedPhases: { SELECTING_HAND: true, ROUND_EVAL: true, GAME_OVER: true },
+    contextPhases: { SELECTING_HAND: true },
+  },
+  discard_hand: {
+    uri: "balatro://hand",
+    awaitedPhases: { SELECTING_HAND: true },
+    contextPhases: { SELECTING_HAND: true },
+  },
+  sort_hand: {
+    uri: "balatro://hand",
+    awaitedPhases: { SELECTING_HAND: true },
+    contextPhases: { SELECTING_HAND: true },
+  },
+  reorder_hand: {
+    uri: "balatro://hand",
+    awaitedPhases: { SELECTING_HAND: true },
+    contextPhases: { SELECTING_HAND: true },
+  },
+  reroll_shop: {
+    uri: "balatro://shop",
+    awaitedPhases: { SHOP: true },
+    contextPhases: { SHOP: true },
+  },
+  cash_out: {
+    uri: "balatro://shop",
+    awaitedPhases: { SHOP: true },
+    contextPhases: { SHOP: true },
+  },
   buy_booster: {
-    TAROT_PACK: true,
-    PLANET_PACK: true,
-    SPECTRAL_PACK: true,
-    STANDARD_PACK: true,
-    BUFFOON_PACK: true,
-    SMODS_BOOSTER_OPENED: true,
+    uri: "balatro://booster",
+    awaitedPhases: BOOSTER_PHASES,
+    contextPhases: BOOSTER_PHASES,
   },
-  select_booster_card: {
-    TAROT_PACK: true,
-    PLANET_PACK: true,
-    SPECTRAL_PACK: true,
-    STANDARD_PACK: true,
-    BUFFOON_PACK: true,
-    SMODS_BOOSTER_OPENED: true,
-    SHOP: true,
-  },
-  skip_booster: { SHOP: true },
-  select_hand_cards: { SELECTING_HAND: true },
-  sort_hand: { SELECTING_HAND: true },
-  reorder_hand: { SELECTING_HAND: true },
-  reorder_jokers: { SELECTING_HAND: true, SHOP: true },
-}
-
-function phaseOf(payload: Record<string, unknown>): string {
-  return typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
-}
-
-// Deterministic next decision for an observed post-action phase. Phases
-// without a dedicated resource (ROUND_EVAL, GAME_OVER, menu states) fall
-// back to balatro://turn, which is a superset of the per-section reads.
-export function resolveSuccessorUri(payload: Record<string, unknown>): string {
-  const phase = phaseOf(payload)
-  if (phase === "SHOP") return "balatro://shop"
-  if (phase === "SELECTING_HAND" || TRANSIENT_PHASES[phase] === true) return "balatro://hand"
-  if (phase === "BLIND_SELECT") return "balatro://ante"
-  if (PACK_PHASES[phase] === true) return "balatro://booster"
-  return "balatro://turn"
 }
 
 interface SettledState {
@@ -100,35 +83,34 @@ interface SettledState {
   settled: boolean
 }
 
-// Polls getState until the observed phase joins the command's target set,
-// or the budget runs out. Commands without a target set settle past
-// animation transients. Never throws: a missing successor must not fail a
+// Polls getState until a retained successor rule's target phase is observed,
+// or the budget runs out. Never throws: a missing successor must not fail a
 // command that already succeeded.
 async function settleState(
   bridge: BridgeClient,
-  kind: string,
+  rule: SuccessorRule,
   timeoutMs: number,
   pollMs: number,
 ): Promise<SettledState> {
-  const awaited = AWAIT_PHASES[kind]
-  const isSettled = (phase: string): boolean =>
-    awaited !== undefined ? awaited[phase] === true : TRANSIENT_PHASES[phase] !== true
   const deadline = Date.now() + timeoutMs
   let payload: Record<string, unknown>
+  let phase: string
   try {
     payload = await bridge.getState()
+    phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
   } catch {
     return { settled: false }
   }
-  while (!isSettled(phaseOf(payload)) && Date.now() < deadline) {
+  while (!rule.awaitedPhases[phase] && Date.now() < deadline) {
     await Bun.sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())))
     try {
       payload = await bridge.getState()
+      phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
     } catch {
       return { payload, settled: false }
     }
   }
-  return { payload, settled: isSettled(phaseOf(payload)) }
+  return { payload, settled: rule.awaitedPhases[phase] === true }
 }
 
 interface SuccessorSection {
@@ -153,17 +135,21 @@ export async function commandWithSuccessor(
       if (record && Object.keys(record).length > 0) {
         envelope.data = record
       }
+      const rule = SUCCESSOR_RULES[kind]
+      if (rule === undefined) return { envelope, successor: undefined }
       const outcome = await settleState(
         bridge,
-        kind,
+        rule,
         options.settleTimeoutMs ?? SETTLE_TIMEOUT_MS,
         options.pollMs ?? SETTLE_POLL_MS,
       )
       if (outcome.payload === undefined) return { envelope, successor: undefined }
-      const rendered = renderSuccessor(resolveSuccessorUri(outcome.payload), outcome.payload)
+      const phase = typeof outcome.payload.phase === "string" ? outcome.payload.phase : "UNKNOWN"
+      if (rule.contextPhases[phase] !== true) return { envelope, successor: undefined }
+      const rendered = renderSuccessor(rule.uri, outcome.payload)
       envelope.next = {
         uri: rendered.uri,
-        phase: phaseOf(outcome.payload),
+        phase,
         settled: outcome.settled,
       }
       const successor: SuccessorSection = {
