@@ -5,6 +5,6 @@
   "description": "Exposes in-game data and functions to the MCP server.",
   "prefix": "mcp",
   "main_file": "main.lua",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "priority": 0
 }
