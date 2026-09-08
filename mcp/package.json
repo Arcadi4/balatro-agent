@@ -1,37 +1,48 @@
 {
   "name": "balatro-mcp",
   "version": "0.1.0",
-  "description": "MCP server for Balatro mod development",
+  "description": "MCP server connecting AI agents to play Balatro",
+  "keywords": [
+    "agent",
+    "ai",
+    "ai-agent",
+    "balatro",
+    "lovely",
+    "mcp",
+    "mcp-server",
+    "modelcontextprotocol",
+    "smods",
+    "steamodded"
+  ],
+  "homepage": "https://www.nexusmods.com/balatro/mods/927",
+  "bugs": {
+    "url": "https://github.com/Arcadi4/balatro-agent/issues"
+  },
   "license": "MIT",
-  "author": "4rcadia",
-  "type": "module",
+  "author": {
+    "name": "4rcadia",
+    "url": "https://github.com/Arcadi4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Arcadi4/balatro-agent.git",
+    "directory": "mcp"
+  },
   "bin": {
     "balatro-mcp": "dist/index.js"
   },
   "files": [
     "dist"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Arcadi4/balatro-agent.git",
-    "directory": "mcp"
-  },
-  "homepage": "https://github.com/Arcadi4/balatro-agent/tree/main/mcp#readme",
-  "bugs": "https://github.com/Arcadi4/balatro-agent/issues",
-  "keywords": [
-    "balatro",
-    "mcp",
-    "modelcontextprotocol",
-    "steamodded",
-    "lovely"
-  ],
+  "type": "module",
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target=node --sourcemap=external",
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "typecheck": "tsc --noEmit -p .",
     "test": "bun test",
-    "prepublishOnly": "npm run typecheck && bun test && npm run build"
+    "format": "oxfmt package.json src",
+    "prepublishOnly": "bun run typecheck && bun test && bun run build"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
