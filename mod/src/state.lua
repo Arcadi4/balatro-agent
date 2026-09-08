@@ -174,12 +174,44 @@ local function rendered_rows_to_description(rows)
   return table.concat(lines, ' ')
 end
 
-local function get_rendered_card_description(card)
-  if not card or type(card.generate_UIBox_ability_table) ~= 'function' then return nil end
+-- generate_UIBox_ability_table builds real DynaText/Moveable objects; every
+-- Moveable self-registers into G.MOVEABLES, G.I.MOVEABLE and
+-- G.STAGE_OBJECTS[G.STAGE] on creation, and Game:update iterates
+-- G.MOVEABLES every frame. The returned tree is never parented into a
+-- managed UIBox, so nothing would ever remove those nodes. Registrations
+-- are synchronous appends, so truncating the tails reverts the registries.
+local function generate_ability_table_untracked(card)
+  local tracked = {
+    { G.MOVEABLES, #G.MOVEABLES },
+    { G.I and G.I.MOVEABLE, G.I and G.I.MOVEABLE and #G.I.MOVEABLE or 0 },
+  }
+  local stage_bucket = G.STAGE_OBJECTS and G.STAGE and G.STAGE_OBJECTS[G.STAGE]
+  if stage_bucket then
+    tracked[#tracked + 1] = { stage_bucket, #stage_bucket }
+  end
+
   local ok, ui = pcall(function()
     return card:generate_UIBox_ability_table()
   end)
+
+  for _, entry in ipairs(tracked) do
+    local tab, base = entry[1], entry[2]
+    if tab then
+      for i = #tab, base + 1, -1 do
+        tab[i] = nil
+      end
+    end
+  end
+
   if not ok or type(ui) ~= 'table' then return nil end
+  return ui
+end
+
+local function get_rendered_card_description(card)
+  if not card or type(card.generate_UIBox_ability_table) ~= 'function' then return nil end
+  if not G or not G.MOVEABLES then return nil end
+  local ui = generate_ability_table_untracked(card)
+  if not ui then return nil end
   return rendered_rows_to_description(ui.main)
 end
 
