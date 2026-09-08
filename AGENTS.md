@@ -4,7 +4,7 @@
 
 Two runtime components:
 
-- `mcp/`: Bun TypeScript stdio server (MCP 2026-07-28 SDK)
+- `mcp/`: Bun TypeScript stdio MCP server
 - `mod/`: Lua Steamodded mod running inside Balatro
 
 IPC: newline-delimited JSON-RPC 2.0 over `/tmp/balatro-mcp.sock` (macOS/Linux) or `\\.\pipe\balatro-mcp` (Windows). `BALATRO_BRIDGE_SOCKET` overrides either; must match both processes.
@@ -18,7 +18,8 @@ find mod -name '*.lua' -print0 | xargs -0 -n1 luac -p
 
 Typecheck and Lua validation are mandatory before completion. Gameplay changes require manual testing with Balatro + Lovely + SMODS; restart Balatro after reinstalling the mod.
 
-macOS: `make doctor && make install-mods && make run`. Windows: install mod under `%AppData%\Balatro\Mods\balatro-agent`, launch via Steam.
+- macOS: `make doctor && make install-mods && make run`.
+- Windows: install mod under `%AppData%\Balatro\Mods\balatro-agent`, launch via Steam.
 
 ## MCP server layout
 
@@ -26,11 +27,12 @@ macOS: `make doctor && make install-mods && make run`. Windows: install mod unde
 mcp/src/
 ├── index.ts          server + stdio lifecycle
 ├── response.ts       MCP result rendering, bridge error mapping
+├── gate.ts           availability switch for the live-game tool/resource surface
 ├── wiki.ts           Wiki HTML→Markdown, MediaWiki API
 ├── postgame.ts       post-game analysis storage
 ├── text-imports.d.ts ambient types for .txt/.md imports
-├── bridge/           JSON-RPC framing + cross-platform IPC client
-├── tools/            actions.ts, entities.ts, postgame.ts, descriptions/
+├── bridge/           JSON-RPC framing + connect handshake + IPC client
+├── tools/            connect.ts, actions.ts, entities.ts, postgame.ts, descriptions/
 ├── prompts/          handbook.ts + handbook.md
 └── resources/        live.ts, wiki.ts, postgame.ts, cardModifiers.ts, decks.ts, stakes.ts, challenges.ts
 ```
@@ -72,14 +74,9 @@ Platform transport is selected before FFI declarations load; keep protocol behav
 
 Validate input shape once in the MCP Zod schema. Lua validates only game-authoritative facts: current phase, live card identity, funds, slots, stickers, callback readiness. `commands.lua` owns the single action `pcall`; no nested catch-and-rethrow. Comments explain non-obvious runtime constraints only; delete banners, narration, and restatements.
 
-## Behavioral contracts
+## Testing
 
-- Inspect state before acting; Lua is authoritative if state changes between calls.
-- `card_id` = live card; `entity_id` = prototype.
-- Stable error codes: `GAME_NOT_RUNNING`, `INSTANCE_BUSY`, `WRONG_PHASE`, `INVALID_TARGET`, `INSUFFICIENT_FUNDS`.
-- Bridge accepts one client; extras receive `INSTANCE_BUSY` and retry at a slower interval.
-- Writes byte-correct and serialized; NDJSON frames end with `\n`.
-- `play_hand` responds after scoring settles, or with `timed_out: true` and latest observed score.
+You may create minimal PoC tests and dispose them once the targeted module passes verification. No persisted and serious tests unless explicitly asked.
 
 ## Windows compatibility
 
