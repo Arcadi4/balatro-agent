@@ -11,7 +11,6 @@ import {
 } from "./protocol.js"
 
 const DEFAULT_SOCKET_PATH = resolveBridgeSocketPath()
-const PROTOCOL_VERSION = 1
 const RESPONSE_TIMEOUT_MS = 10_000
 const STATE_TIMEOUT_MS = 5_000
 const HANDSHAKE_TIMEOUT_MS = 10_000
@@ -24,19 +23,10 @@ interface PendingRequest {
 }
 
 export interface StateEnvelope {
-  protocol_version: number
   seq: number
   wrote_at: string
   payload: unknown
   state_hash: string
-}
-
-export interface CommandEnvelope {
-  protocol_version: number
-  seq: number
-  wrote_at: number
-  kind: string
-  args: Record<string, unknown>
 }
 
 export interface ResponseEnvelope {
@@ -49,7 +39,6 @@ export interface ResponseEnvelope {
 }
 
 export interface ConnectInfo {
-  protocol_version: number
   phase?: string
 }
 
@@ -162,12 +151,6 @@ export class BridgeClient {
     const timeoutMs = typeof timeoutOrOptions === "number" ? timeoutOrOptions : STATE_TIMEOUT_MS
     const result = asRecord(await this.request("get_state", undefined, timeoutMs))
     if (!result) throw new BridgeError("STATE_NOT_FOUND", "State response is not an object")
-    if (result.protocol_version !== PROTOCOL_VERSION) {
-      throw new BridgeError(
-        "PROTOCOL_MISMATCH",
-        `Expected bridge protocol ${PROTOCOL_VERSION}, got ${String(result.protocol_version)}`,
-      )
-    }
 
     if (typeof timeoutOrOptions === "object") {
       if (!asRecord(result.payload)) {
@@ -269,9 +252,7 @@ export class BridgeClient {
     await this.dial()
     let data: Record<string, unknown> | undefined
     try {
-      data = asRecord(
-        await this.command("connect", { protocol_version: PROTOCOL_VERSION }, HANDSHAKE_TIMEOUT_MS),
-      )
+      data = asRecord(await this.command("connect", undefined, HANDSHAKE_TIMEOUT_MS))
     } catch (cause) {
       if (cause instanceof BridgeError) {
         if (cause.code === "UNKNOWN_METHOD") {
@@ -289,16 +270,8 @@ export class BridgeClient {
       }
       throw cause
     }
-    const version = data?.protocol_version
-    if (typeof version !== "number" || version !== PROTOCOL_VERSION) {
-      throw new BridgeError(
-        "PROTOCOL_MISMATCH",
-        `Expected bridge protocol ${PROTOCOL_VERSION}, got ${String(version)}`,
-      )
-    }
     this.handshaked = true
     this.connectInfo = {
-      protocol_version: version,
       ...(typeof data?.phase === "string" ? { phase: data.phase } : {}),
     }
     return this.connectInfo

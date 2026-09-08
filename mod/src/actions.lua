@@ -360,18 +360,9 @@ local function anim_settle(data, timeout_seconds)
 end
 
 -- Protocol handshake behind the MCP `connect` tool. Not a game action: it
--- reports the bridge protocol and current phase so the client can validate
--- its own version before arming live tools.
-handlers.connect = function(args)
-  local info = connect_info()
-  if args.protocol_version ~= info.protocol_version then
-    return err(
-      'PROTOCOL_MISMATCH',
-      'Unsupported bridge protocol ' .. tostring(args.protocol_version)
-        .. '; mod speaks protocol ' .. tostring(info.protocol_version)
-    )
-  end
-  return ok(info)
+-- reports the current phase so the client can arm live tools.
+handlers.connect = function()
+  return ok(connect_info())
 end
 
 handlers.select_blind = function(args)

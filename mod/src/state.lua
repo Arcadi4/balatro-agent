@@ -2,7 +2,6 @@ local State = {}
 local card_ids
 
 
-local PROTOCOL_VERSION = 1
 local seq = 0
 local PHASE_NAMES = {
   'SELECTING_HAND',
@@ -1073,16 +1072,14 @@ end
 function State.get_state_envelope()
   seq = seq + 1
   return {
-    protocol_version = PROTOCOL_VERSION,
     seq = seq,
     payload = snapshot(),
   }
 end
 
--- Data for the `connect` handshake: protocol agreement plus where the game
--- currently sits, so the client can route the user's next action.
+-- Data for the `connect` handshake: current phase where the game sits.
 function State.connect_info()
-  return { protocol_version = PROTOCOL_VERSION, phase = get_phase_name() }
+  return { phase = get_phase_name() }
 end
 function State.configure(ids)
   card_ids = ids

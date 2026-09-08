@@ -12,7 +12,6 @@ const connectInputSchema = z.object({}).strict()
 const connectOutputSchema = z
   .object({
     ok: z.literal(true),
-    protocol_version: z.number().int(),
     phase: z.string(),
   })
   .strict()
@@ -41,16 +40,14 @@ export function registerConnectTool(server: McpServer, bridge: BridgeClient, gat
     () =>
       withBridgeErrors(
         async () => {
-          const info = await bridge.connect()
+          await bridge.connect()
           gate.enable()
           const payload = await bridge.getState(STATE_TIMEOUT_MS)
           return {
-            protocol_version: info.protocol_version,
             phase: typeof payload.phase === "string" ? payload.phase : "UNKNOWN",
           }
         },
-        ({ protocol_version, phase }) =>
-          toolResult({ ok: true, protocol_version, phase }, connectToMarkdown),
+        ({ phase }) => toolResult({ ok: true, phase }, connectToMarkdown),
       ),
   )
 }
