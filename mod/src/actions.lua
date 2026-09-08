@@ -154,25 +154,41 @@ local function replace_requested_highlights(cards, requested)
   return selected_ids, previous
 end
 
+-- Vanilla consumables that target hand cards but declare no max_highlighted in
+-- ability.consumeable; the game gates them via bespoke can_use_consumeable logic.
+local HAND_TARGETING_OVERRIDES = {
+  ['Aura'] = { min_highlighted = 1, max_highlighted = 1 },
+}
+
+local function consumable_target_limits(card)
+  local cons = card.ability and card.ability.consumeable
+  local name = card.ability and card.ability.name
+  local override = name and HAND_TARGETING_OVERRIDES[name]
+  local max_h = (cons and cons.max_highlighted) or (override and override.max_highlighted)
+  local min_h = (cons and cons.min_highlighted) or (override and override.min_highlighted)
+  return min_h, max_h
+end
+
 local function prepare_consumable_targets(card, args, shop_context)
   local target_card_ids = args.targets or {}
-  local cons = card.ability and card.ability.consumeable
-  if not (cons and cons.max_highlighted) then
-    -- Vanilla only reads the hand selection for consumables with a
-    -- max_highlighted config; untargeted ones must leave it untouched.
+  local min_highlighted, max_highlighted = consumable_target_limits(card)
+
+  if not max_highlighted then
+    -- Untargeted: vanilla only reads hand selection for cards with max_highlighted;
+    -- supplying targets for an untargeted card is always an error.
     if #target_card_ids > 0 then
       local name = card.ability and card.ability.name or 'This consumable'
-      return err("INVALID_TARGET", "'" .. name .. "' does not target hand cards")
+      return err('INVALID_TARGET', "'" .. name .. "' does not target hand cards")
     end
     if card.can_use_consumeable and not card:can_use_consumeable() then
       local name = card.ability and card.ability.name or 'this consumable'
       if shop_context then
         return err(
-          "CANNOT_USE_NOW",
+          'CANNOT_USE_NOW',
           "'" .. name .. "' cannot be applied immediately from the shop: its use conditions are not met (e.g. no free slot for the cards it creates). No money was charged. Buy it with use=false to store it in a consumable slot (if one is free), then apply it with balatro_use_consumable when it becomes usable."
         )
       end
-      return err("CANNOT_USE_NOW", "'" .. name .. "' cannot be used right now")
+      return err('CANNOT_USE_NOW', "'" .. name .. "' cannot be used right now")
     end
     return nil
   end
@@ -189,17 +205,17 @@ local function prepare_consumable_targets(card, args, shop_context)
     if shop_context then
       -- A satisfied target range means the shop phase, not the targets, blocked use.
       local count = G.hand and #G.hand.highlighted or 0
-      local in_range = count >= (cons.min_highlighted or 1) and count <= cons.max_highlighted
+      local in_range = count >= (min_highlighted or 1) and count <= max_highlighted
       if in_range then
         use_err = err(
-          "CANNOT_USE_NOW",
-          "'" .. name .. "' cannot be applied immediately from the shop: hand-targeting and special-case consumables are only usable during hand selection (SELECTING_HAND) or while a booster pack is open, and its use conditions are not met in the shop. No money was charged. Buy it with use=false to store it in a consumable slot (if one is free), then apply it with balatro_use_consumable when it becomes usable."
+          'CANNOT_USE_NOW',
+          "'" .. name .. "' cannot be applied immediately from the shop: hand-targeting consumables are only usable during hand selection (SELECTING_HAND) or while a booster pack is open. No money was charged. Buy it with use=false to store it in a consumable slot (if one is free), then apply it with balatro_use_consumable when it becomes usable."
         )
       end
     end
     if not use_err then
-      local hint = #target_card_ids == 0 and "; provide targets for targeted consumables" or ""
-      use_err = err("INVALID_TARGET", "Consumable cannot be used with the supplied targets" .. hint)
+      local hint = #target_card_ids == 0 and '; provide targets for targeted consumables' or ''
+      use_err = err('INVALID_TARGET', 'Consumable cannot be used with the supplied targets' .. hint)
     end
     replace_highlights(previous)
     return use_err
@@ -817,7 +833,8 @@ handlers.select_booster_card = function(args)
   end
 
   local set = card.config and card.config.center and card.config.center.set
-  if set == "Tarot" or set == "Planet" or set == "Spectral" then
+  if set == 'Tarot' or set == 'Planet' or set == 'Spectral'
+      or (card.ability and card.ability.consumeable) then
     local target_err = prepare_consumable_targets(card, args)
     if target_err then return target_err end
   end

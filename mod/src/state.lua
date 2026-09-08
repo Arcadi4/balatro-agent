@@ -323,15 +323,35 @@ local function serialize_joker(card, faced_down)
   end
   return obj
 end
+-- Vanilla consumables that target hand cards but declare no max_highlighted in
+-- ability.consumeable; see matching table in actions.lua.
+local HAND_TARGETING_OVERRIDES = {
+  ['Aura'] = { min_highlighted = 1, max_highlighted = 1 },
+}
+
 local function consumable_usable(card)
   -- can_use_consumeable reads UI-refresh state (e.g. Wheel of Fortune's
   -- eligible_strength_jokers) that is only populated during Card:update.
   if type(card) ~= 'table' or type(card.can_use_consumeable) ~= 'function' then
     return nil
   end
-  local ok, usable = pcall(card.can_use_consumeable, card)
+  -- skip_check bypasses transient controller animation locks.
+  local ok, usable = pcall(card.can_use_consumeable, card, nil, true)
   if not ok then return nil end
-  return usable
+  if usable then return true end
+
+  -- can_use_consumeable returns false for targeted consumables when no hand
+  -- cards are highlighted. Check hand card availability without mutating state.
+  local name = card.ability and card.ability.name
+  local cons = card.ability and card.ability.consumeable
+  local override = name and HAND_TARGETING_OVERRIDES[name]
+  local max_h = (cons and cons.max_highlighted) or (override and override.max_highlighted)
+  local min_h = (cons and cons.min_highlighted) or (override and override.min_highlighted)
+  if max_h and G.hand and G.hand.cards then
+    return #G.hand.cards >= (min_h or 1)
+  end
+
+  return false
 end
 
 local function serialize_consumable(card)
