@@ -284,6 +284,82 @@ local PACK_PHASES = {
   "SMODS_BOOSTER_OPENED",
 }
 
+-- A restored save can resume in any resting run phase.
+local RUN_PHASES = {
+  "BLIND_SELECT", "SELECTING_HAND", "HAND_PLAYED", "DRAW_TO_HAND",
+  "SHOP", "ROUND_EVAL", "GAME_OVER",
+  "TAROT_PACK", "PLANET_PACK", "SPECTRAL_PACK", "STANDARD_PACK",
+  "BUFFOON_PACK", "SMODS_BOOSTER_OPENED",
+}
+
+-- Settle builders: async actions return these so the dispatcher holds the
+-- response until the game can act on the result.
+local function settle_result(data, timed_out)
+  data.timed_out = timed_out or nil
+  return { ok = true, data = data }
+end
+
+-- Resolves once the event manager drains the animation the action queued.
+-- no_delete events are skipped: they outlive their action by design (input
+-- locks, run starts) and would hold every wait open.
+local function events_drained()
+  local manager = G and G.E_MANAGER
+  if not manager or not manager.queues then return false end
+  for _, queue in pairs(manager.queues) do
+    for i = 1, #queue do
+      if not queue[i].no_delete then return false end
+    end
+  end
+  return true
+end
+
+-- Resolves once the game rests in a target phase: every transition pairs
+-- G.STATE with G.STATE_COMPLETE=false until the new phase's init has run,
+-- and the wait never settles under a screen wipe -- the wipe hides the run
+-- transition (restart/new_game/continue start here), and the controller is
+-- input-locked while one is up.
+local function phase_settle(target_phases, data, timeout_seconds)
+  local targets = {}
+  for _, name in ipairs(target_phases) do targets[G.STATES[name]] = true end
+  local armed = false
+  return {
+    ok = true,
+    settle = {
+      timeout_seconds = timeout_seconds,
+      poll = function()
+        if not G then return nil end
+        if not armed then
+          -- The action's own queued work must drain before the target phase
+          -- counts; resting in a target phase before the chain runs is the
+          -- pre-action state (skip_booster, restart from BLIND_SELECT).
+          if events_drained() then armed = true end
+          return nil
+        end
+        if not G.screenwipe and targets[G.STATE] and G.STATE_COMPLETE then
+          return settle_result(data, false)
+        end
+        return nil
+      end,
+      on_timeout = function() return settle_result(data, true) end,
+    },
+  }
+end
+
+local function anim_settle(data, timeout_seconds)
+  return {
+    ok = true,
+    settle = {
+      timeout_seconds = timeout_seconds,
+      poll = function()
+        if events_drained() then return settle_result(data, false) end
+        return nil
+      end,
+      on_timeout = function() return settle_result(data, true) end,
+    },
+  }
+end
+
+
 handlers.select_blind = function(args)
   local phase_err = check_phase({ "BLIND_SELECT" })
   if phase_err then return phase_err end
@@ -306,10 +382,14 @@ handlers.select_blind = function(args)
 
   G.FUNCS.select_blind(select_button)
 
-  return ok({
-    blind_selected = string.lower(blind_key),
-    blind_id = G.GAME.round_resets.blind_choices[blind_key],
-  })
+  return phase_settle(
+    { "SELECTING_HAND" },
+    {
+      blind_selected = string.lower(blind_key),
+      blind_id = G.GAME.round_resets.blind_choices[blind_key],
+    },
+    8
+  )
 end
 
 handlers.skip_blind = function(args)
@@ -338,11 +418,11 @@ handlers.skip_blind = function(args)
   -- The base-game callback reads e.UIBox to resolve the tag reward.
   G.FUNCS.skip_blind(select_button)
 
-  return ok({
+  return anim_settle({
     skipped = true,
     blind = string.lower(blind_key),
     tag = tag_key,
-  })
+  }, 8)
 end
 
 handlers.reroll_boss = function(args)
@@ -372,7 +452,7 @@ handlers.reroll_boss = function(args)
 
   local previous_boss = resets.blind_choices.Boss
   G.FUNCS.reroll_boss()
-  return ok({ rerolled = true, previous_boss = previous_boss, cost = 10 })
+  return anim_settle({ rerolled = true, previous_boss = previous_boss, cost = 10 }, 8)
 end
 
 handlers.select_hand_cards = function(args)
@@ -404,6 +484,58 @@ handlers.sort_hand = function(args)
   return ok({ sorted_by = args.order })
 end
 
+local function current_score()
+  return G and G.GAME and G.GAME.chips or 0
+end
+
+local function current_hands_played()
+  return G and G.GAME and G.GAME.current_round and G.GAME.current_round.hands_played or 0
+end
+
+local function current_blind_chips()
+  return G and G.GAME and G.GAME.blind and G.GAME.blind.chips or nil
+end
+
+-- Scoring plays out across many frames of HAND_PLAYED; the delta is only
+-- meaningful once the state leaves it.
+local function play_hand_settle(seed)
+  local saw_hand_played = false
+
+  local function scoring_result(timed_out)
+    local score_after = current_score()
+    local blind_chips = current_blind_chips() or seed.blind_chips
+    return settle_result({
+      cards_played = seed.cards_played,
+      played_cards = seed.played_cards,
+      points_gained = score_after - seed.score_before,
+      score_before = seed.score_before,
+      score_after = score_after,
+      blind_chips = blind_chips,
+      blind_defeated = blind_chips ~= nil and score_after >= blind_chips or nil,
+      hands_played_before = seed.hands_played_before,
+      hands_played_after = current_hands_played(),
+      final_phase = G and G.STATE or nil,
+    }, timed_out)
+  end
+
+  return { ok = true, settle = {
+    timeout_seconds = 12,
+    poll = function()
+      if G and G.STATES then
+        if G.STATE == G.STATES.HAND_PLAYED then
+          saw_hand_played = true
+        elseif saw_hand_played then
+          return scoring_result(false)
+        end
+      end
+      return nil
+    end,
+    on_timeout = function()
+      return scoring_result(true)
+    end,
+  } }
+end
+
 handlers.play_hand = function(args)
   local phase_err = check_phase({ "SELECTING_HAND" })
   if phase_err then return phase_err end
@@ -431,18 +563,13 @@ handlers.play_hand = function(args)
 
   G.FUNCS.play_cards_from_highlighted()
 
-  return {
-    ok = true,
-    deferred = "play_hand_score",
-    timeout_seconds = 12,
-    data = {
-      cards_played = cards_played,
-      played_cards = played_cards,
-      score_before = score_before,
-      hands_played_before = hands_played_before,
-      blind_chips = blind_chips,
-    }
-  }
+  return play_hand_settle({
+    cards_played = cards_played,
+    played_cards = played_cards,
+    score_before = score_before,
+    hands_played_before = hands_played_before,
+    blind_chips = blind_chips,
+  })
 end
 
 handlers.discard_hand = function(args)
@@ -460,7 +587,7 @@ handlers.discard_hand = function(args)
   local cards_discarded = #G.hand.highlighted
   G.FUNCS.discard_cards_from_highlighted()
 
-  return ok({ cards_discarded = cards_discarded })
+  return anim_settle({ cards_discarded = cards_discarded }, 8)
 end
 
 handlers.use_consumable = function(args)
@@ -479,7 +606,7 @@ handlers.use_consumable = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return ok({ used = card_id })
+  return anim_settle({ used = card_id }, 8)
 end
 
 handlers.sell_card = function(args)
@@ -505,7 +632,7 @@ handlers.sell_card = function(args)
 
   G.FUNCS.sell_card({ config = { ref_table = card } })
 
-  return ok({ sold = card_id, sell_value = card.sell_cost })
+  return anim_settle({ sold = card_id, sell_value = card.sell_cost }, 8)
 end
 
 handlers.buy_card = function(args)
@@ -537,7 +664,7 @@ handlers.buy_card = function(args)
   local buy_err = purchase_from_shop(card, false)
   if buy_err then return buy_err end
 
-  return ok({ bought = card_id, cost = cost, kind = is_joker and "joker" or "playing_card" })
+  return anim_settle({ bought = card_id, cost = cost, kind = is_joker and "joker" or "playing_card" }, 8)
 end
 
 handlers.buy_consumable = function(args)
@@ -582,7 +709,7 @@ handlers.buy_consumable = function(args)
     return buy_err
   end
 
-  return ok({ bought = card_id, cost = cost, used = args.use })
+  return anim_settle({ bought = card_id, cost = cost, used = args.use }, 8)
 end
 
 handlers.buy_voucher = function(args)
@@ -620,7 +747,7 @@ handlers.buy_voucher = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return ok({ redeemed = card_id, cost = cost, voucher_key = voucher_key })
+  return anim_settle({ redeemed = card_id, cost = cost, voucher_key = voucher_key }, 8)
 end
 
 handlers.reroll_shop = function(args)
@@ -637,7 +764,7 @@ handlers.reroll_shop = function(args)
 
   G.FUNCS.reroll_shop()
 
-  return ok({ rerolled = true })
+  return anim_settle({ rerolled = true }, 8)
 end
 
 handlers.leave_shop = function(args)
@@ -646,29 +773,55 @@ handlers.leave_shop = function(args)
 
   G.FUNCS.toggle_shop()
 
-  return ok({ left_shop = true })
+  return phase_settle({ "BLIND_SELECT" }, { left_shop = true }, 8)
+end
+
+-- Waits for the cash-out button to render (the round-eval UI builds across
+-- frames), presses it once, then holds until the shop settles.
+local function cash_out_settle(pressed)
+  return {
+    ok = true,
+    settle = {
+      timeout_seconds = 15,
+      poll = function()
+        if not G or not G.STATES then
+          return err("WRONG_PHASE", "Game state is not available")
+        end
+        if G.STATE == G.STATES.SHOP and G.STATE_COMPLETE then
+          return settle_result({ cashed_out = true }, false)
+        end
+        if not pressed and G.STATE == G.STATES.ROUND_EVAL then
+          local button = round_eval and round_eval.cash_out_button()
+          if button then
+            G.FUNCS.cash_out(button)
+            pressed = true
+          end
+          return nil
+        end
+        if pressed then return nil end
+        return err("WRONG_PHASE", "Round evaluation ended before cash-out")
+      end,
+      on_timeout = function()
+        if pressed then
+          return err("CANNOT_USE_NOW", "Cash-out did not reach the shop")
+        end
+        return err("CANNOT_USE_NOW", "Cash-out button did not become ready")
+      end,
+    },
+  }
 end
 
 handlers.cash_out = function(args)
   local phase_err = check_phase({ "ROUND_EVAL" })
   if phase_err then return phase_err end
 
-  if not G.FUNCS or type(G.FUNCS.cash_out) ~= "function" then
-    return err("CANNOT_USE_NOW", "Cash-out action is not ready")
-  end
   local button = round_eval and round_eval.cash_out_button()
-  if not button then
-    return {
-      ok = true,
-      deferred = "cash_out_ready",
-      timeout_seconds = 8,
-      data = {},
-    }
+  if button then
+    G.FUNCS.cash_out(button)
+    return cash_out_settle(true)
   end
 
-  G.FUNCS.cash_out(button)
-
-  return ok({ cashed_out = true })
+  return cash_out_settle(false)
 end
 
 handlers.restart = function(args)
@@ -697,7 +850,7 @@ handlers.restart = function(args)
   G.challenge_tab = nil
   G.forced_seed = nil
 
-  return ok({ restarted = true })
+  return phase_settle({ "BLIND_SELECT" }, { restarted = true }, 15)
 end
 
 handlers.continue_game = function(args)
@@ -721,7 +874,7 @@ handlers.continue_game = function(args)
   end
 
   G.FUNCS.start_run(nil, { savetext = G.SAVED_GAME })
-  return ok({ continued = true })
+  return phase_settle(RUN_PHASES, { continued = true }, 15)
 end
  
 handlers.new_game = function(args)
@@ -789,7 +942,7 @@ handlers.new_game = function(args)
   G.challenge_tab = nil
   G.forced_seed = nil
 
-  return ok({ started = true })
+  return phase_settle({ "BLIND_SELECT" }, { started = true }, 15)
 end
 
 handlers.buy_booster = function(args)
@@ -809,11 +962,11 @@ handlers.buy_booster = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return ok({
-    opened = card_id,
-    cost = cost,
-    pack = card.ability and card.ability.name,
-  })
+  return phase_settle(
+    PACK_PHASES,
+    { opened = card_id, cost = cost, pack = card.ability and card.ability.name },
+    8
+  )
 end
 
 handlers.select_booster_card = function(args)
@@ -846,7 +999,7 @@ handlers.select_booster_card = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return ok({ selected = card_id })
+  return anim_settle({ selected = card_id }, 8)
 end
 
 handlers.skip_booster = function(args)
@@ -855,7 +1008,7 @@ handlers.skip_booster = function(args)
 
   G.FUNCS.skip_booster()
 
-  return ok({ skipped_booster = true })
+  return phase_settle({ "SHOP", unpack(PACK_PHASES) }, { skipped_booster = true }, 8)
 end
 
 handlers.reorder_jokers = function(args)

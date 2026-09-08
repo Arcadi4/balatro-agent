@@ -202,6 +202,7 @@ const NO_ARG_TOOLS: ActionTool[] = [
     description: CASH_OUT_DESCRIPTION,
     command: "cash_out",
     annotations: annotations(true, false),
+    options: { timeoutMs: 18_000 },
   },
   {
     name: "balatro_skip_booster",
@@ -216,6 +217,7 @@ const NO_ARG_TOOLS: ActionTool[] = [
     description: RESTART_DESCRIPTION,
     command: "restart",
     annotations: annotations(true, false),
+    options: { timeoutMs: 18_000 },
   },
   {
     name: "balatro_continue_game",
@@ -223,6 +225,7 @@ const NO_ARG_TOOLS: ActionTool[] = [
     description: CONTINUE_GAME_DESCRIPTION,
     command: "continue_game",
     annotations: annotations(true, false),
+    options: { timeoutMs: 18_000 },
   },
 ]
 
@@ -382,6 +385,6 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       annotations: annotations(true, false),
     },
     ({ deck, stake, seed, challenge }) =>
-      commandWithSuccessor(bridge, "new_game", { deck, stake, seed, challenge }),
+      commandWithSuccessor(bridge, "new_game", { deck, stake, seed, challenge }, { timeoutMs: 18_000 }),
   )
 }
