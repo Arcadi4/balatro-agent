@@ -53,8 +53,40 @@ jobs:
           name: mcp-release
           path: mcp/dist/
 
-  release:
+  verify:
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: darwin-arm64
+          - runner: macos-15-intel
+            platform: darwin-x64
+          - runner: ubuntu-24.04-arm
+            platform: linux-arm64
+          - runner: ubuntu-latest
+            platform: linux-x64
+          - runner: windows-latest
+            platform: win32-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcp-release
+          path: dist
+      - name: Run native executable without Bun
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          binary="dist/npm/${PLATFORM}/bin/balatro-mcp"
+          if [ "$PLATFORM" = win32-x64 ]; then binary="${binary}.exe"; fi
+          chmod +x "$binary"
+          test "$("$binary" --version)" = "balatro-mcp ${GITHUB_REF_NAME#v}"
+
+  release:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write
