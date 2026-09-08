@@ -2,133 +2,85 @@
 
 ## Project
 
-Balatro Agent has two runtime components:
+Two runtime components:
 
-- `mcp/`: a Bun TypeScript stdio server using the MCP 2026-07-28 SDK
-- `mod/`: a Lua Steamodded mod running inside Balatro
+- `mcp/`: Bun TypeScript stdio server (MCP 2026-07-28 SDK)
+- `mod/`: Lua Steamodded mod running inside Balatro
 
-They exchange newline-delimited JSON-RPC 2.0 over a local byte stream:
-
-- macOS/Linux: `/tmp/balatro-mcp.sock`
-- Windows: `\\.\pipe\balatro-mcp`
-
-`BALATRO_BRIDGE_SOCKET` overrides either endpoint and must match in both processes.
+IPC: newline-delimited JSON-RPC 2.0 over `/tmp/balatro-mcp.sock` (macOS/Linux) or `\\.\pipe\balatro-mcp` (Windows). `BALATRO_BRIDGE_SOCKET` overrides either; must match both processes.
 
 ## Setup and validation
 
 ```sh
-cd mcp
-bun install
-bun run typecheck
-bun run build
+(cd mcp && bun install && bun run typecheck && bun run build)
+find mod -name '*.lua' -print0 | xargs -0 -n1 luac -p
 ```
 
-Validate every Lua file with `luac -p`. On macOS/Linux:
+Typecheck and Lua validation are mandatory before completion. Gameplay changes require manual testing with Balatro + Lovely + SMODS; restart Balatro after reinstalling the mod.
 
-```sh
-find ../mod -name '*.lua' -print0 | xargs -0 -n1 luac -p
-```
-
-Type checking is mandatory before completion. Build validation is mandatory when MCP source or dependencies change. Gameplay changes also require manual testing with Balatro, Lovely, and SMODS running; restart Balatro after reinstalling the mod.
-
-The root `Makefile` is a macOS convenience workflow:
-
-```sh
-make doctor
-make install-mods
-make run
-```
-
-Windows users install the mod under `%AppData%\Balatro\Mods\balatro-agent` and start Balatro through Steam after Lovely/SMODS are installed.
+macOS: `make doctor && make install-mods && make run`. Windows: install mod under `%AppData%\Balatro\Mods\balatro-agent`, launch via Steam.
 
 ## MCP server layout
 
 ```text
 mcp/src/
-├── index.ts                 server composition and stdio lifecycle
-├── response.ts              MCP result rendering and bridge error mapping
-├── wiki.ts                  Wiki HTML→Markdown conversion and MediaWiki API
-├── postgame.ts              post-game analysis storage (data dir, index, frontmatter)
-├── text-imports.d.ts        ambient types for .txt/.md text imports
-├── bridge/
-│   ├── protocol.ts          internal JSON-RPC framing
-│   └── socket-client.ts     cross-platform IPC client
-├── tools/
-│   ├── actions.ts           mutating game tools
-│   ├── entities.ts          wiki search tool
-│   ├── postgame.ts          post-game analysis tool
-│   └── descriptions/        .txt tool description files (text-imported)
-├── prompts/
-│   ├── handbook.ts          handbook prompt registration
-│   └── handbook.md          play handbook prose
-└── resources/
-    ├── postgame.ts          stored post-game analysis list and document resources
-    ├── wiki.ts              static wiki index and live wiki article resources
-    ├── cardModifiers.ts     card modifier reference (enhancements, seals, editions, stickers)
-    ├── decks.ts             deck reference resource
-    ├── stakes.ts            stake reference resource
-    ├── challenges.ts        challenge reference resource
-    └── live.ts              live game-state resources (balatro://turn, hand, jokers, …)
+├── index.ts          server + stdio lifecycle
+├── response.ts       MCP result rendering, bridge error mapping
+├── wiki.ts           Wiki HTML→Markdown, MediaWiki API
+├── postgame.ts       post-game analysis storage
+├── text-imports.d.ts ambient types for .txt/.md imports
+├── bridge/           JSON-RPC framing + cross-platform IPC client
+├── tools/            actions.ts, entities.ts, postgame.ts, descriptions/
+├── prompts/          handbook.ts + handbook.md
+└── resources/        live.ts, wiki.ts, postgame.ts, cardModifiers.ts, decks.ts, stakes.ts, challenges.ts
 ```
 
-Static reference data lives in `mcp/data/` (wiki index, card modifiers, decks, stakes, challenges).
-
-Run directly from TypeScript with `bun run start`; bundling is optional and embeds text imports such as the handbook prompt.
+Static reference data: `mcp/data/`. Run with `bun run start`; bundling embeds text imports.
 
 ### TypeScript conventions
 
 - Strict TypeScript; no suppressions or `any`.
-- Local imports include `.js` extensions.
-- Use `import type` for type-only imports.
-- Import subdirectory APIs through their `index.ts` when a barrel exists.
-- Prose content (`.md`, `.txt`) uses `with { type: "text" }`; do not inline long prompt or description content.
+- Local imports use `.js` extensions; `import type` for type-only imports.
+- Barrel imports via `index.ts`; prose (`.md`, `.txt`) via `with { type: "text" }`.
 - Exported functions use declarations; callbacks use arrows.
-- Use `!== undefined` when absence differs from a falsy value.
-- Format with the repository's `oxfmt` dependency.
+- Use `!== undefined` when absence differs from falsy. Format with `oxfmt`.
 
 ### MCP 2026-07-28 conventions
 
-- Import server APIs from `@modelcontextprotocol/server` and stdio from `@modelcontextprotocol/server/stdio`.
-- Use `serveStdio`; do not recreate the removed initialize/session flow.
-- Register a title, strict Zod input schema, output schema where applicable, and accurate annotations for every tool.
-- Read-only tools use `readOnlyHint: true`; state-changing game actions use `destructiveHint: true`; only repeat-safe operations use `idempotentHint: true`.
-- External wiki access uses `openWorldHint: true`; local game operations use `false`.
-- Keep machine-readable data in `structuredContent` and useful Markdown in text content.
-- Live-play guidance lives in the `balatro_play_handbook` prompt. Use `balatro_wiki_search` and `balatro://wiki/<Title>` to verify rules; do not duplicate a static rules resource.
-- Cache discovery/list responses and immutable resources with cache hints.
+- Import from `@modelcontextprotocol/server`; stdio from `.../stdio`. Use `serveStdio`.
+- Every tool: title, strict Zod input schema, output schema where applicable, accurate annotations.
+- Hints: `readOnlyHint` for reads; `destructiveHint` for state-changing actions; `idempotentHint` only when repeat-safe; `openWorldHint: true` for wiki, `false` for local game ops.
+- Machine-readable data in `structuredContent`; useful Markdown in text content.
+- Live-play guidance in `balatro_play_handbook`. Verify rules via wiki; do not duplicate static rule resources. Cache discovery/list and immutable resources.
 
-Reference: [MCP 2026-07-28 documentation](https://modelcontextprotocol.io/docs/2026-07-28) and [TypeScript SDK v2](https://ts.sdk.modelcontextprotocol.io/v2/).
+[MCP 2026-07-28 docs](https://modelcontextprotocol.io/docs/2026-07-28) · [TS SDK v2](https://ts.sdk.modelcontextprotocol.io/v2/)
 
 ## Lua mod layout
 
 ```text
-mod/
-├── main.lua
-└── src/
-    ├── actions.lua                authoritative phase/target checks and game mutations
-    ├── commands.lua               command dispatch and deferred scoring responses
-    ├── jsonrpc.lua                JSON-RPC validation and error mapping
-    ├── socket_codec.lua           shared NDJSON codec
-    ├── socket_server.lua          macOS/Linux AF_UNIX server
-    ├── socket_server_windows.lua  Windows named-pipe server
-    └── state.lua                  state snapshots
+mod/src/
+├── actions.lua                phase/target checks and game mutations
+├── commands.lua               command dispatch and deferred scoring
+├── jsonrpc.lua                JSON-RPC validation and error mapping
+├── socket_codec.lua           shared NDJSON codec
+├── socket_server.lua          macOS/Linux AF_UNIX server
+├── socket_server_windows.lua  Windows named-pipe server
+└── state.lua                  state snapshots
 ```
 
-The platform transport is selected before its FFI declarations load. Keep protocol behavior identical across the POSIX and Windows transports.
+Platform transport is selected before FFI declarations load; keep protocol behavior identical across POSIX and Windows.
 
-Validate input shape once in the MCP Zod schema. Lua should validate facts only the game can authoritatively know: current phase, live card identity, funds, slots, stickers, and callback readiness. `commands.lua` owns the single action `pcall`; do not add nested catch-and-rethrow layers.
-
-Comments should explain only non-obvious runtime constraints. Delete banners, narration, migration history, and comments that merely restate the next line.
+Validate input shape once in the MCP Zod schema. Lua validates only game-authoritative facts: current phase, live card identity, funds, slots, stickers, callback readiness. `commands.lua` owns the single action `pcall`; no nested catch-and-rethrow. Comments explain non-obvious runtime constraints only; delete banners, narration, and restatements.
 
 ## Behavioral contracts
 
-- Inspect state before actions; Lua remains authoritative if state changes between calls.
-- `card_id` identifies a live card. `entity_id` identifies a prototype.
-- Tool errors use stable codes such as `GAME_NOT_RUNNING`, `INSTANCE_BUSY`, `WRONG_PHASE`, `INVALID_TARGET`, and `INSUFFICIENT_FUNDS`.
-- The bridge accepts one client. Extra clients receive or infer `INSTANCE_BUSY` and retry at a slower interval.
-- Writes must be byte-correct and serialized; NDJSON frames end with `\n`.
-- `play_hand` responds after scoring settles, or with `timed_out: true` and the latest observed score.
+- Inspect state before acting; Lua is authoritative if state changes between calls.
+- `card_id` = live card; `entity_id` = prototype.
+- Stable error codes: `GAME_NOT_RUNNING`, `INSTANCE_BUSY`, `WRONG_PHASE`, `INVALID_TARGET`, `INSUFFICIENT_FUNDS`.
+- Bridge accepts one client; extras receive `INSTANCE_BUSY` and retry at a slower interval.
+- Writes byte-correct and serialized; NDJSON frames end with `\n`.
+- `play_hand` responds after scoring settles, or with `timed_out: true` and latest observed score.
 
 ## Windows compatibility
 
-Do not introduce POSIX-only endpoints, paths, shell assumptions, or FFI into shared runtime code. Changes to framing, reconnect behavior, environment overrides, or module loading must be checked against both transport implementations. Windows runtime support may be documented as implemented but not locally verified unless it was actually exercised on Windows.
+No POSIX-only endpoints, paths, shell assumptions, or FFI in shared runtime code. Framing, reconnect, env overrides, and module loading changes must be validated against both transports.
