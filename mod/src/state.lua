@@ -428,13 +428,8 @@ local function compute_legal_actions()
         actions[#actions + 1] = 'discard_hand'
       end
     end
-    if G.consumeables and G.consumeables.cards then
-      for _, card in ipairs(G.consumeables.cards) do
-        if card and card.ability and card.highlighted then
-          actions[#actions + 1] = 'use_consumable'
-          break
-        end
-      end
+    if G.consumeables and G.consumeables.cards and #G.consumeables.cards > 0 then
+      actions[#actions + 1] = 'use_consumable'
     end
     if G.jokers and G.jokers.cards and #G.jokers.cards > 1 then
       actions[#actions + 1] = 'reorder_jokers'
