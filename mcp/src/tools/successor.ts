@@ -160,7 +160,6 @@ export async function commandWithSuccessor(
         uri: rendered.uri,
         phase: phaseOf(outcome.payload),
         settled: outcome.settled,
-        state: outcome.payload,
       }
       const successor: SuccessorSection = {
         uri: rendered.uri,

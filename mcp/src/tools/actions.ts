@@ -89,7 +89,6 @@ const successorSchema = z
     uri: z.string(),
     phase: z.string(),
     settled: z.boolean(),
-    state: z.unknown(),
   })
   .strict()
 const commandOutputSchema = z
