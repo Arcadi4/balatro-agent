@@ -1,6 +1,8 @@
 local handlers = {}
 local card_ids
 
+local round_eval
+
 
 local function err(error_code, message)
   return { ok = false, error_code = error_code, error_message = message }
@@ -638,13 +640,17 @@ handlers.cash_out = function(args)
   if not G.FUNCS or type(G.FUNCS.cash_out) ~= "function" then
     return err("CANNOT_USE_NOW", "Cash-out action is not ready")
   end
-  if not G.round_eval then
-    return err("CANNOT_USE_NOW", "Cash-out screen is not ready")
+  local button = round_eval and round_eval.cash_out_button()
+  if not button then
+    return {
+      ok = true,
+      deferred = "cash_out_ready",
+      timeout_seconds = 8,
+      data = {},
+    }
   end
-  -- The cash_out_button is rendered in a separate UIBox (major = G.round_eval),
-  -- not as a child of G.round_eval, so get_UIE_by_ID never finds it.
-  -- G.FUNCS.cash_out only writes e.config.button, so a synthetic table suffices.
-  G.FUNCS.cash_out({ config = {} })
+
+  G.FUNCS.cash_out(button)
 
   return ok({ cashed_out = true })
 end
@@ -877,8 +883,9 @@ handlers.reorder_jokers = function(args)
   return ok({ reordered = true, count = current_count })
 end
 
-function handlers.configure(ids)
+function handlers.configure(ids, eval)
   card_ids = ids
+  round_eval = eval
 end
 
 return handlers

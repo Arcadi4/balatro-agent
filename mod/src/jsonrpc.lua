@@ -67,13 +67,17 @@ function JsonRpc.dispatch(request)
 
   local result = action_handler(request.method, request.params or {}, request.id)
   if result == nil then return end
+  JsonRpc.send_action_result(request.id, result)
+end
+
+function JsonRpc.send_action_result(id, result)
   if result.ok then
-    JsonRpc.send_result(request.id, { ok = true, data = result.data or {} })
+    JsonRpc.send_result(id, { ok = true, data = result.data or {} })
     return
   end
 
   JsonRpc.send_error(
-    request.id,
+    id,
     ERROR_CODES[result.error_code] or ERROR_CODES.INTERNAL_ERROR,
     result.error_message or 'Action failed',
     { error_code = result.error_code or 'INTERNAL_ERROR' }

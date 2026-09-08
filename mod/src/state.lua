@@ -1,6 +1,7 @@
 local State = {}
 local card_ids
 
+
 local PROTOCOL_VERSION = 1
 local seq = 0
 local PHASE_NAMES = {

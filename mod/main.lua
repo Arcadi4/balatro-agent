@@ -18,9 +18,10 @@ end
 local bridge_commands = load_module('commands')
 local socket_module = jit.os == 'Windows' and 'socket_server_windows' or 'socket_server'
 local card_ids = load_module('card_ids')
+local round_eval = load_module('round_eval')
 local actions = load_module('actions')
 local state = load_module('state')
-actions.configure(card_ids)
+actions.configure(card_ids, round_eval)
 state.configure(card_ids)
 bridge_commands.init({
   actions = actions,
