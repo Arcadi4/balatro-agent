@@ -10,7 +10,7 @@ export interface CommandResultOptions {
 }
 
 export function defaultMarkdown(data: Record<string, unknown>): string {
-  return "```json\n" + JSON.stringify(data, null, 2) + "\n```"
+  return JSON.stringify(data)
 }
 
 export function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -36,7 +36,7 @@ export function toolError(
 ): CallToolResult {
   const structuredContent = { error_code: errorCode, message, ...details }
   return {
-    content: [{ type: "text", text: JSON.stringify(structuredContent, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify(structuredContent) }],
     structuredContent,
     isError: true,
   }
