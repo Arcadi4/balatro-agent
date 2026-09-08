@@ -13,6 +13,7 @@ import DISCARD_HAND_DESCRIPTION from "./descriptions/discard-hand.txt" with { ty
 import LEAVE_SHOP_DESCRIPTION from "./descriptions/leave-shop.txt" with { type: "text" }
 import NEW_GAME_DESCRIPTION from "./descriptions/new-game.txt" with { type: "text" }
 import PLAY_HAND_DESCRIPTION from "./descriptions/play-hand.txt" with { type: "text" }
+import REORDER_HAND_DESCRIPTION from "./descriptions/reorder-hand.txt" with { type: "text" }
 import REORDER_JOKERS_DESCRIPTION from "./descriptions/reorder-jokers.txt" with { type: "text" }
 import REROLL_BOSS_DESCRIPTION from "./descriptions/reroll-boss.txt" with { type: "text" }
 import REROLL_SHOP_DESCRIPTION from "./descriptions/reroll-shop.txt" with { type: "text" }
@@ -55,6 +56,11 @@ const selectHandSchema = z
 const sortHandSchema = z
   .object({
     order: z.enum(["rank", "suit"]).describe("Sort by rank or suit."),
+  })
+  .strict()
+const reorderHandSchema = z
+  .object({
+    order: z.array(cardIdSchema).max(50).describe("Hand card IDs in desired left-to-right order."),
   })
   .strict()
 const reorderJokersSchema = z
@@ -312,6 +318,18 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       annotations: annotations(false, true),
     },
     ({ order }) => commandWithSuccessor(bridge, "sort_hand", { order }),
+  )
+
+  server.registerTool(
+    "balatro_reorder_hand",
+    {
+      title: "Reorder Hand",
+      description: REORDER_HAND_DESCRIPTION,
+      inputSchema: reorderHandSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(false, true),
+    },
+    ({ order }) => commandWithSuccessor(bridge, "reorder_hand", { card_ids: order.map(String) }),
   )
 
   server.registerTool(

@@ -468,6 +468,9 @@ local function compute_legal_actions()
   if gs == states.SELECTING_HAND then
     actions[#actions + 1] = 'select_hand_cards'
     actions[#actions + 1] = 'sort_hand'
+    if G.hand and #G.hand.cards > 1 then
+      actions[#actions + 1] = 'reorder_hand'
+    end
     if G.hand and #G.hand.highlighted > 0 then
       local hands_left = G.GAME and G.GAME.current_round and G.GAME.current_round.hands_left or 0
       if hands_left > 0 then

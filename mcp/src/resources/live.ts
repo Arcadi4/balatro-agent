@@ -457,7 +457,7 @@ function turnToMarkdown(payload: Record<string, unknown>): string {
     lines.push("")
   }
 
-  lines.push("## Hand\n")
+  lines.push("## Hand (left to right)\n")
   appendHandEntries(lines, payload)
 
   lines.push(`## Jokers${slotLabel(payload.jokers, payload.joker_slots)}\n`)
@@ -479,7 +479,7 @@ function handToMarkdown(payload: Record<string, unknown>): string {
   }
   lines.push("")
 
-  lines.push("## Cards\n")
+  lines.push("## Cards (left to right)\n")
   appendHandEntries(lines, payload)
 
   return lines.join("\n")
@@ -751,7 +751,7 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
     uri: "balatro://hand",
     title: "Hand",
     description:
-      "Current hand cards with card IDs, modifiers, and selection state; face-down cards are hidden.",
+      "Current hand cards with card IDs, modifiers, and selection state, listed left to right in play/scoring order; face-down cards are hidden.",
     render: handToMarkdown,
   },
   {

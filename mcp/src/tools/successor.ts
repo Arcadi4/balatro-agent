@@ -74,6 +74,7 @@ const AWAIT_PHASES: Record<string, Record<string, true>> = {
   skip_booster: { SHOP: true },
   select_hand_cards: { SELECTING_HAND: true },
   sort_hand: { SELECTING_HAND: true },
+  reorder_hand: { SELECTING_HAND: true },
   reorder_jokers: { SELECTING_HAND: true, SHOP: true },
 }
 

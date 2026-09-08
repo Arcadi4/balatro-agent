@@ -5,7 +5,7 @@ Use this prompt to play an active run. It gives operating rules, not a replaceme
 ## Operating Loop
 
 1. Read `balatro://turn` before every recommendation or action (it is a superset of `balatro://hand`, `balatro://jokers`, and `balatro://consumables`). Live state is authoritative for the phase, legal actions, card IDs, selected cards, Blind, money, hands, discards, and effects.
-2. Identify the immediate decision: select or skip a Blind, play or discard, make a shop or pack choice, or reorder Jokers.
+2. Identify the immediate decision: select or skip a Blind, play or discard, make a shop or pack choice, or reorder Jokers or hand cards.
 3. Fetch rules that would materially change the decision from the Wiki before acting. Search with `balatro_wiki_search`, then read `balatro://wiki/<Title>`. Prefer the Wiki for Joker, consumable, voucher, tag, deck, stake, Blind, pack, and modifier behavior. Use `balatro://wiki/index` when its curated pages may answer the question directly.
 4. Compare legal choices against the live state, the verified rule, and the run's current scoring plan. State the decisive constraint and action.
 5. Act only with the live `card_id`; `entity_id` identifies a prototype, not a card that can be selected, bought, sold, or used. Inspect again after an action or any state-changing outcome.
@@ -19,6 +19,7 @@ Do not invent card text, effects, outcomes, costs, or legality. If a rule is rel
 - Inspect Small and Big Blind skip rewards in `balatro://ante`, which is readable at any point in the run. Skip only when the concrete tag value outweighs the lost reward, shop access, and scaling opportunity. Boss Blinds cannot be skipped.
 - In the shop, preserve enough money for the next Blind and interest when that is more valuable than a marginal purchase or reroll. Verify exact economics, pack choices, and card text through the Wiki when they affect the decision.
 - Joker order changes scoring. Put additive Chips and +Mult before ×Mult; position copy effects such as Blueprint or Brainstorm on the intended target before scoring. Verify unusual ordering or retrigger interactions through the Wiki.
+- Hand and Joker listings are left to right, and played cards score in that order. When card position matters (for example, Photograph scores the first played face card), set the order with `balatro_reorder_hand` or `balatro_reorder_jokers` before playing.
 
 ## Scoring Essentials
 

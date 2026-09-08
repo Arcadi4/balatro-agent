@@ -1,0 +1,1 @@
+Reorder hand cards to the specified left-to-right scoring order.

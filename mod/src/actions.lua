@@ -484,6 +484,48 @@ handlers.sort_hand = function(args)
   return ok({ sorted_by = args.order })
 end
 
+handlers.reorder_hand = function(args)
+  local phase_err = check_phase({ "SELECTING_HAND" })
+  if phase_err then return phase_err end
+
+  local requested_ids = args.card_ids
+  card_ids.sync(G.hand)
+
+  local current_count = #G.hand.cards
+  if #requested_ids ~= current_count then
+    return err("INVALID_TARGET", "card_ids count (" .. #requested_ids .. ") does not match hand card count (" .. current_count .. ")")
+  end
+
+  local id_to_card = {}
+  for _, card in ipairs(G.hand.cards) do
+    local key = tostring(card_ids.public(G.hand, card))
+    id_to_card[key] = card
+  end
+
+  local seen = {}
+  for _, cid in ipairs(requested_ids) do
+    local key = tostring(cid)
+    if not id_to_card[key] then
+      return err("INVALID_TARGET", "Hand card ID not found: " .. tostring(cid))
+    end
+    if seen[key] then
+      return err("INVALID_TARGET", "Duplicate hand card ID in reorder: " .. tostring(cid))
+    end
+    seen[key] = true
+  end
+
+  local new_order = {}
+  for _, cid in ipairs(requested_ids) do
+    new_order[#new_order + 1] = id_to_card[tostring(cid)]
+  end
+  G.hand.cards = new_order
+  card_ids.sync(G.hand)
+
+  G.hand:set_ranks()
+
+  return ok({ reordered = true, count = current_count })
+end
+
 local function current_score()
   return G and G.GAME and G.GAME.chips or 0
 end
