@@ -5,6 +5,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio"
 
 import packageJson from "../package.json"
 import { BridgeClient } from "./bridge/socket-client.js"
+import { GameGate } from "./gate.js"
 import { registerHandbookPrompt } from "./prompts/handbook.js"
 import { registerCardModifiersResource } from "./resources/cardModifiers.js"
 import { registerChallengesResource } from "./resources/challenges.js"
@@ -17,7 +18,7 @@ import { registerAllTools } from "./tools/index.js"
 
 const LIST_CACHE_HINT = { ttlMs: 60_000, cacheScope: "public" } as const
 
-function createServer(bridge: BridgeClient): McpServer {
+function createServer(bridge: BridgeClient, gate: GameGate): McpServer {
   const server = new McpServer(
     {
       name: packageJson.name,
@@ -26,7 +27,7 @@ function createServer(bridge: BridgeClient): McpServer {
     },
     {
       instructions:
-        "Read balatro:// resources (turn, hand, jokers, consumables, deck, shop, booster, run, ante) before acting; balatro://turn is a superset of the per-section reads. Use the balatro_play_handbook prompt for live-play guidance and the Balatro Wiki to verify relevant rules. When a run ends, ask the user whether to record a post-game analysis with new_postgame; stored analyses are listed at postgame://.",
+        "Call connect first: live-play tools and balatro:// resources stay hidden until the game bridge is attached, and a busy game rejects the connection (INSTANCE_BUSY). Read balatro://turn before acting; it is a superset of the per-section reads. Use the balatro_play_handbook prompt for live-play guidance and the Balatro Wiki to verify relevant rules. When a run ends, ask the user whether to record a post-game analysis with new_postgame; stored analyses are listed at postgame://.",
       cacheHints: {
         "server/discover": LIST_CACHE_HINT,
         "tools/list": LIST_CACHE_HINT,
@@ -36,26 +37,27 @@ function createServer(bridge: BridgeClient): McpServer {
     },
   )
 
-  registerAllTools(server, bridge)
+  registerAllTools(server, bridge, gate)
   registerCardModifiersResource(server)
   registerChallengesResource(server)
   registerDecksResource(server)
   registerStakesResource(server)
-  registerLiveResources(server, bridge)
+  registerLiveResources(server, bridge, gate)
   registerWikiResource(server)
   registerPostgameResource(server)
   registerHandbookPrompt(server)
+  // A new MCP session over a bridge that is already attached starts with
+  // the live surface enabled; otherwise everything game-bound stays hidden.
+  gate.sync(bridge.isConnected())
   return server
 }
 
 async function main(): Promise<void> {
   const bridge = new BridgeClient()
-  bridge.connect().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error)
-    process.stderr.write(`[balatro-mcp] bridge not connected yet: ${message}\n`)
-  })
+  const gate = new GameGate()
+  bridge.onDisconnect = () => gate.disable()
 
-  const handle = serveStdio(() => createServer(bridge), {
+  const handle = serveStdio(() => createServer(bridge, gate), {
     onerror: (error) => process.stderr.write(`[balatro-mcp] ${error.message}\n`),
   })
 

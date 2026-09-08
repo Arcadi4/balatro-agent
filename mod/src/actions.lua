@@ -1,8 +1,8 @@
 local handlers = {}
 local card_ids
+local connect_info
 
 local round_eval
-
 
 local function err(error_code, message)
   return { ok = false, error_code = error_code, error_message = message }
@@ -359,6 +359,20 @@ local function anim_settle(data, timeout_seconds)
   }
 end
 
+-- Protocol handshake behind the MCP `connect` tool. Not a game action: it
+-- reports the bridge protocol and current phase so the client can validate
+-- its own version before arming live tools.
+handlers.connect = function(args)
+  local info = connect_info()
+  if args.protocol_version ~= info.protocol_version then
+    return err(
+      'PROTOCOL_MISMATCH',
+      'Unsupported bridge protocol ' .. tostring(args.protocol_version)
+        .. '; mod speaks protocol ' .. tostring(info.protocol_version)
+    )
+  end
+  return ok(info)
+end
 
 handlers.select_blind = function(args)
   local phase_err = check_phase({ "BLIND_SELECT" })
@@ -1095,9 +1109,10 @@ handlers.reorder_jokers = function(args)
   return ok({ reordered = true, count = current_count })
 end
 
-function handlers.configure(ids, eval)
+function handlers.configure(ids, eval, get_connect_info)
   card_ids = ids
   round_eval = eval
+  connect_info = get_connect_info
 end
 
 return handlers

@@ -14,8 +14,7 @@ const DEFAULT_SOCKET_PATH = resolveBridgeSocketPath()
 const PROTOCOL_VERSION = 1
 const RESPONSE_TIMEOUT_MS = 10_000
 const STATE_TIMEOUT_MS = 5_000
-const RECONNECT_DELAY_MS = 500
-const BUSY_RECONNECT_DELAY_MS = 2_000
+const HANDSHAKE_TIMEOUT_MS = 10_000
 
 interface PendingRequest {
   promise: Promise<JsonRpcResponse>
@@ -49,6 +48,11 @@ export interface ResponseEnvelope {
   applied_state_seq?: number
 }
 
+export interface ConnectInfo {
+  protocol_version: number
+  phase?: string
+}
+
 export class BridgeError extends Error {
   constructor(
     public code: string,
@@ -59,19 +63,19 @@ export class BridgeError extends Error {
   }
 }
 
-function errnoCode(error: Error): string | undefined {
-  return (error as ErrnoException).code
+function errnoCode(error: Error | undefined): string | undefined {
+  return error === undefined ? undefined : (error as ErrnoException).code
 }
 
-function isConnectionUnavailable(error: Error): boolean {
+function isConnectionUnavailable(error: Error | undefined): boolean {
   return errnoCode(error) === "ECONNREFUSED" || errnoCode(error) === "ENOENT"
 }
 
-function isInstanceBusyError(error: Error): boolean {
+function isInstanceBusyError(error: Error | undefined): boolean {
   return errnoCode(error) === "EBUSY"
 }
 
-function isConnectionSevered(error: Error): boolean {
+function isConnectionSevered(error: Error | undefined): boolean {
   const code = errnoCode(error)
   return code === "EPIPE" || code === "ECONNRESET" || code === "ECONNABORTED"
 }
@@ -81,7 +85,7 @@ function gameNotRunning(message = "Balatro is not running"): BridgeError {
 }
 
 function instanceBusy(): BridgeError {
-  return new BridgeError("INSTANCE_BUSY", "Balatro bridge is connected to another client")
+  return new BridgeError("INSTANCE_BUSY", "Balatro bridge is busy or held by another client")
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -107,33 +111,45 @@ export class BridgeClient {
   private commandSeq = 0
   private connectionGeneration = 0
   private connected = false
+  private handshaked = false
   private disposed = false
   private buffer = ""
-  private connectPromise?: Promise<void>
-  private connectResolve?: () => void
-  private connectReject?: (error: Error) => void
-  private reconnectTimer?: Timer
-  private connectedAtMs?: number
+  private connectPromise?: Promise<ConnectInfo>
+  private connectInfo?: ConnectInfo
   private lastDisconnectError?: BridgeError
   private socketError?: Error
   private readonly pendingRequests = new Map<number, PendingRequest>()
   private writeQueue: Promise<void> = Promise.resolve()
 
+  /** Invoked when an established game session drops; never for failed dials. */
+  onDisconnect?: () => void
+
   constructor(socketPath = DEFAULT_SOCKET_PATH) {
     this.socketPath = socketPath
   }
 
-  connect(): Promise<void> {
-    if (this.connected) return Promise.resolve()
+  /** The game session is established and requests may flow. */
+  isConnected(): boolean {
+    return this.handshaked
+  }
+
+  // Idempotent: returns the handshake info of a live session, dedupes
+  // concurrent attempts, and never reconnects in the background. After a
+  // drop, game tools fail with GAME_NOT_RUNNING until `connect` runs again.
+  connect(): Promise<ConnectInfo> {
+    if (this.handshaked && this.connectInfo) return Promise.resolve(this.connectInfo)
     if (this.disposed) return Promise.reject(gameNotRunning("BridgeClient has been disposed"))
     if (this.connectPromise) return this.connectPromise
 
-    const { promise, resolve, reject } = Promise.withResolvers<void>()
+    const { promise, resolve, reject } = Promise.withResolvers<ConnectInfo>()
     this.connectPromise = promise
-    this.connectResolve = resolve
-    this.connectReject = reject
-    this.openSocket()
-
+    void this.establish().then(resolve, (error: Error) => {
+      if (this.connectPromise === promise) this.connectPromise = undefined
+      // A handshake timeout leaves the socket open; tear it down so the
+      // next attempt starts clean. Failed dials already closed the socket.
+      if (this.socket !== undefined && this.connected) this.socket.destroy()
+      reject(error)
+    })
     return promise
   }
 
@@ -177,10 +193,7 @@ export class BridgeClient {
     return result.data
   }
 
-  async sendCommand(options: {
-    kind: string
-    args?: Record<string, unknown>
-  }): Promise<number> {
+  async sendCommand(options: { kind: string; args?: Record<string, unknown> }): Promise<number> {
     this.assertConnected()
     const id = ++this.commandSeq
     const pending = this.createPendingRequest(id)
@@ -237,24 +250,145 @@ export class BridgeClient {
 
   async dispose(): Promise<void> {
     this.disposed = true
-    this.clearReconnectTimer()
-    const closed = gameNotRunning()
-    this.rejectAllPending(closed)
-
-    if (this.connectReject) {
-      this.connectReject(closed)
-      this.clearConnectPromise()
-    }
-
+    this.rejectAllPending(gameNotRunning())
     this.connected = false
-    this.connectedAtMs = undefined
-    this.lastDisconnectError = undefined
-    this.socketError = undefined
+    this.handshaked = false
+    this.connectInfo = undefined
     this.buffer = ""
     this.bytesRead = 0
     this.connectionGeneration += 1
     this.socket?.destroy()
     this.socket = undefined
+  }
+
+  // Handshake with the game once the transport connects. A close before the
+  // handshake answers is deterministic busy-rejection: on both transports the
+  // only way the bridge drops a freshly accepted client is another client
+  // already holding the single slot.
+  private async establish(): Promise<ConnectInfo> {
+    await this.dial()
+    let data: Record<string, unknown> | undefined
+    try {
+      data = asRecord(
+        await this.command("connect", { protocol_version: PROTOCOL_VERSION }, HANDSHAKE_TIMEOUT_MS),
+      )
+    } catch (cause) {
+      if (cause instanceof BridgeError) {
+        if (cause.code === "UNKNOWN_METHOD") {
+          throw new BridgeError(
+            "PROTOCOL_MISMATCH",
+            "Bridge mod does not support the connect handshake; update the Balatro mod",
+          )
+        }
+        if (cause.code === "STATE_STALE") {
+          throw new BridgeError(
+            "INSTANCE_BUSY",
+            "Balatro accepted the connection but did not answer the connect handshake",
+          )
+        }
+      }
+      throw cause
+    }
+    const version = data?.protocol_version
+    if (typeof version !== "number" || version !== PROTOCOL_VERSION) {
+      throw new BridgeError(
+        "PROTOCOL_MISMATCH",
+        `Expected bridge protocol ${PROTOCOL_VERSION}, got ${String(version)}`,
+      )
+    }
+    this.handshaked = true
+    this.connectInfo = {
+      protocol_version: version,
+      ...(typeof data?.phase === "string" ? { phase: data.phase } : {}),
+    }
+    return this.connectInfo
+  }
+
+  private dial(): Promise<void> {
+    const { promise, resolve, reject } = Promise.withResolvers<void>()
+    const socket = createConnection(this.socketPath)
+    this.socket = socket
+    this.attachSocketHandlers(socket)
+    const onConnect = (): void => {
+      socket.off("close", onClose)
+      resolve()
+    }
+    const onClose = (): void => {
+      socket.off("connect", onConnect)
+      // handleSocketClose ran first and classified the failure; fall back
+      // only if no close event was classified yet.
+      reject(
+        this.disposed ? gameNotRunning() : (this.lastDisconnectError ?? this.connectionError()),
+      )
+    }
+    socket.once("connect", onConnect)
+    socket.once("close", onClose)
+    return promise
+  }
+
+  private attachSocketHandlers(socket: Socket): void {
+    socket.once("connect", () => {
+      if (this.disposed || this.socket !== socket) {
+        socket.destroy()
+        return
+      }
+      this.connectionGeneration += 1
+      this.connected = true
+      this.lastDisconnectError = undefined
+    })
+    socket.on("data", (data) => {
+      if (this.socket !== socket) return
+      if (typeof data === "string") {
+        this.bytesRead += data.length
+        this.handleData(data)
+        return
+      }
+      this.bytesRead += data.byteLength
+      this.handleData(this.decoder.decode(data, { stream: true }))
+    })
+    socket.on("error", (error) => {
+      if (this.socket === socket) this.socketError = error
+    })
+    // A peer that closes right after accept (the bridge rejects extra
+    // clients this way) half-closes the connection: 'end' arrives but the
+    // pending write callback and 'close' may never fire on their own.
+    // Force the close so pending requests are rejected instead of hanging.
+    socket.on("end", () => {
+      if (this.socket === socket) socket.destroy()
+    })
+    socket.once("close", () => {
+      if (this.socket === socket) this.handleSocketClose(this.socketError)
+    })
+  }
+
+  // Classifies a failed or dropped connection. Before the handshake answers,
+  // a refusal is deterministic busy-rejection; afterwards a close means the
+  // game (or its mod) went away.
+  private connectionError(cause?: Error): BridgeError {
+    if (cause instanceof BridgeError) return cause
+    if (isInstanceBusyError(cause)) return instanceBusy()
+    if (isConnectionUnavailable(cause)) return gameNotRunning()
+    if (!this.handshaked) return instanceBusy()
+    return gameNotRunning()
+  }
+
+  private handleSocketClose(closeCause?: Error): void {
+    const established = this.handshaked
+    const error = this.connectionError(closeCause)
+    this.connectionGeneration += 1
+    this.socket = undefined
+    this.connected = false
+    this.handshaked = false
+    this.connectInfo = undefined
+    this.buffer = ""
+    this.bytesRead = 0
+    this.socketError = undefined
+    this.lastDisconnectError = error
+    this.rejectAllPending(error)
+    if (established) {
+      process.stderr.write(`[balatro-mcp] bridge disconnected: ${error.message}\n`)
+      this.onDisconnect?.()
+    }
   }
 
   private async request(
@@ -291,138 +425,8 @@ export class BridgeClient {
     const error = toError(cause)
     if (error instanceof BridgeError) return error
     if (isConnectionUnavailable(error)) return gameNotRunning()
-    if (isConnectionSevered(error)) return this.interruptionError()
+    if (isConnectionSevered(error)) return this.connectionError()
     return error
-  }
-
-  private openSocket(): void {
-    this.clearReconnectTimer()
-    this.buffer = ""
-    this.decoder = new TextDecoder()
-    this.bytesRead = 0
-    this.socketError = undefined
-
-    const socket = createConnection(this.socketPath)
-    this.socket = socket
-    socket.once("connect", () => {
-      if (this.disposed || this.socket !== socket) {
-        socket.destroy()
-        return
-      }
-      this.connectionGeneration += 1
-      this.connected = true
-      this.connectedAtMs = Date.now()
-      this.lastDisconnectError = undefined
-      this.connectResolve?.()
-      this.clearConnectPromise()
-    })
-    socket.on("data", (data) => {
-      if (this.socket !== socket) return
-      if (typeof data === "string") {
-        this.bytesRead += data.length
-        this.handleData(data)
-        return
-      }
-      this.bytesRead += data.byteLength
-      this.handleData(this.decoder.decode(data, { stream: true }))
-    })
-    socket.on("error", (error) => {
-      if (this.socket === socket) this.handleSocketError(error)
-    })
-    // A peer that closes right after accept (the bridge rejects extra
-    // clients this way) half-closes the connection: 'end' arrives but the
-    // pending write callback and 'close' may never fire on their own.
-    // Force the close so pending requests are rejected and reconnection
-    // runs instead of hanging forever.
-    socket.on("end", () => {
-      if (this.socket === socket) socket.destroy()
-    })
-    socket.once("close", () => {
-      if (this.socket === socket) this.handleSocketClose(this.socketError)
-    })
-  }
-
-  private normalizeConnectError(error: Error): BridgeError {
-    if (error instanceof BridgeError) return error
-    if (isInstanceBusyError(error)) return instanceBusy()
-    return isConnectionUnavailable(error)
-      ? gameNotRunning()
-      : gameNotRunning(`Connection failed: ${error.message}`)
-  }
-
-  private handleSocketError(error: Error): void {
-    this.socketError = error
-    if (this.connectReject) {
-      this.connectReject(this.normalizeConnectError(error))
-      this.clearConnectPromise()
-    } else {
-      process.stderr.write(`[balatro-mcp] bridge socket: ${error.message}\n`)
-    }
-  }
-
-  private handleSocketClose(closeError?: Error): void {
-    const socket = this.socket
-    const bytesRead = this.bytesRead
-    this.connectionGeneration += 1
-    this.socket = undefined
-    this.connected = false
-    this.buffer = ""
-    this.bytesRead = 0
-    this.socketError = undefined
-
-    const error = closeError
-      ? this.closeError(closeError)
-      : this.socketCloseError(socket, bytesRead)
-    this.lastDisconnectError = error
-    this.rejectAllPending(error)
-
-    if (this.connectReject) {
-      this.connectReject(error)
-      this.clearConnectPromise()
-    }
-    if (!this.disposed) this.scheduleReconnect()
-  }
-
-  private closeError(error: Error): BridgeError {
-    if (error instanceof BridgeError) return error
-    if (isInstanceBusyError(error)) return instanceBusy()
-    if (isConnectionUnavailable(error) || isConnectionSevered(error)) return gameNotRunning()
-    return gameNotRunning(`Connection closed: ${error.message}`)
-  }
-
-  private socketCloseError(socket: Socket | undefined, bytesRead: number): BridgeError {
-    const connectedForMs = this.connectionAge()
-    return socket &&
-      bytesRead === 0 &&
-      connectedForMs !== undefined &&
-      connectedForMs < RECONNECT_DELAY_MS
-      ? instanceBusy()
-      : gameNotRunning()
-  }
-
-  private interruptionError(): BridgeError {
-    const connectedForMs = this.connectionAge(false)
-    return connectedForMs !== undefined && connectedForMs < RECONNECT_DELAY_MS
-      ? instanceBusy()
-      : gameNotRunning()
-  }
-
-  private connectionAge(clear = true): number | undefined {
-    const age = this.connectedAtMs === undefined ? undefined : Date.now() - this.connectedAtMs
-    if (clear) this.connectedAtMs = undefined
-    return age
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) return
-    const delay =
-      this.lastDisconnectError?.code === "INSTANCE_BUSY"
-        ? BUSY_RECONNECT_DELAY_MS
-        : RECONNECT_DELAY_MS
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = undefined
-      if (!this.disposed && !this.connected) this.openSocket()
-    }, delay)
   }
 
   private handleData(chunk: string): void {
@@ -459,24 +463,27 @@ export class BridgeClient {
     }
 
     // The write callback can be abandoned when the peer half-closes right
-    // after accept (see openSocket's 'end' handler). Reject on 'close' too
-    // so a queued write never hangs its caller.
-    await new Promise<void>((resolve, reject) => {
-      const onClose = () => {
-        reject(this.lastDisconnectError ?? gameNotRunning("Bridge connection closed before the command was written"))
+    // after accept (see attachSocketHandlers's 'end' handler). Reject on
+    // 'close' too so a queued write never hangs its caller.
+    const { promise, resolve, reject } = Promise.withResolvers<void>()
+    const onClose = () => {
+      reject(
+        this.lastDisconnectError ??
+          gameNotRunning("Bridge connection closed before the command was written"),
+      )
+    }
+    socket.once("close", onClose)
+    socket.write(serializeFrame(request), (error) => {
+      socket.removeListener("close", onClose)
+      if (error) {
+        reject(error)
+      } else if (this.socket !== socket || this.connectionGeneration !== generation) {
+        reject(gameNotRunning("Bridge connection changed before the command was written"))
+      } else {
+        resolve()
       }
-      socket.once("close", onClose)
-      socket.write(serializeFrame(request), (error) => {
-        socket.removeListener("close", onClose)
-        if (error) {
-          reject(error)
-        } else if (this.socket !== socket || this.connectionGeneration !== generation) {
-          reject(gameNotRunning("Bridge connection changed before the command was written"))
-        } else {
-          resolve()
-        }
-      })
     })
+    await promise
   }
 
   private createPendingRequest(id: number, timeoutMs?: number): PendingRequest {
@@ -530,17 +537,6 @@ export class BridgeClient {
       pending.reject(error)
     }
     this.pendingRequests.clear()
-  }
-
-  private clearReconnectTimer(): void {
-    clearTimeout(this.reconnectTimer)
-    this.reconnectTimer = undefined
-  }
-
-  private clearConnectPromise(): void {
-    this.connectPromise = undefined
-    this.connectResolve = undefined
-    this.connectReject = undefined
   }
 
   private assertConnected(): void {

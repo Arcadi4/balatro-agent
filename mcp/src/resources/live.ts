@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server"
 import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server"
 
 import { BridgeError, type BridgeClient } from "../bridge/socket-client.js"
+import type { GameGate } from "../gate.js"
 import { asRecord } from "../response.js"
 
 const STATE_TIMEOUT_MS = 1_500
@@ -833,17 +834,23 @@ export function renderSuccessor(
   return { uri: "balatro://turn", markdown: turnToMarkdown(payload) }
 }
 
-export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
+export function registerLiveResources(
+  server: McpServer,
+  bridge: BridgeClient,
+  gate: GameGate,
+): void {
   for (const definition of LIVE_RESOURCES) {
-    server.registerResource(
-      definition.name,
-      definition.uri,
-      {
-        title: definition.title,
-        description: definition.description,
-        mimeType: "text/markdown",
-      },
-      (uri) => readLiveResource(bridge, uri, definition.render),
+    gate.track(
+      server.registerResource(
+        definition.name,
+        definition.uri,
+        {
+          title: definition.title,
+          description: definition.description,
+          mimeType: "text/markdown",
+        },
+        (uri) => readLiveResource(bridge, uri, definition.render),
+      ),
     )
   }
 }

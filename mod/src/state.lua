@@ -1078,6 +1078,12 @@ function State.get_state_envelope()
     payload = snapshot(),
   }
 end
+
+-- Data for the `connect` handshake: protocol agreement plus where the game
+-- currently sits, so the client can route the user's next action.
+function State.connect_info()
+  return { protocol_version = PROTOCOL_VERSION, phase = get_phase_name() }
+end
 function State.configure(ids)
   card_ids = ids
 end
