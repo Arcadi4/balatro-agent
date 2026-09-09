@@ -9,17 +9,45 @@ Two runtime components:
 
 IPC: newline-delimited JSON-RPC 2.0 over `/tmp/balatro-mcp.sock` (macOS/Linux) or `\\.\pipe\balatro-mcp` (Windows). `BALATRO_BRIDGE_SOCKET` overrides either; must match both processes.
 
-## Setup and validation
+## Toolchain
+
+### Bun
+
+The MCP package is Bun-first. Use Bun 1.4.2 or later from `mcp/` for dependency
+installation, development, formatting, typechecking, tests, and builds:
 
 ```sh
-(cd mcp && bun install && bun run typecheck && bun run build)
-find mod -name '*.lua' -print0 | xargs -0 -n1 luac -p
+cd mcp
+bun install --frozen-lockfile
+bun run dev             # watch mode
+bun run typecheck
+bun run format
+bun test
+bun run build
 ```
 
-Typecheck and Lua validation are mandatory before completion. Gameplay changes require manual testing with Balatro + Lovely + SMODS; restart Balatro after reinstalling the mod.
+Do not introduce a Node-based development command or require Node in the MCP build
+job. `bunfig.toml` selects Bun for package executables, and Bun's built-in Node
+compatibility APIs cover the remaining `node:` imports. Use Bun APIs when a suitable
+native API exists.
 
-- macOS: `make doctor && make install-mods && make run`.
-- Windows: install mod under `%AppData%\Balatro\Mods\balatro-agent`, launch via Steam.
+Release builds use Bun:
+
+```sh
+bun run build:release   # build native binaries and npm packages
+```
+
+Run `bun run release:setup` once to configure npm packages. It may use native npm for
+the interactive trust flow. The GitHub Actions build job uses only Bun; Node/npm are
+used only by the publishing job. End users running `npx` receive a native binary.
+
+### Make
+
+```sh
+make doctor        # check local Balatro, Lovely, and SMODS paths
+make install-mods  # sync mod into the Balatro Mods directory
+make run           # sync mod, then launch Balatro with Lovely (pass ARGS="...")
+```
 
 ## MCP server layout
 
@@ -27,7 +55,6 @@ Typecheck and Lua validation are mandatory before completion. Gameplay changes r
 mcp/src/
 ├── index.ts          server + stdio lifecycle
 ├── response.ts       MCP result rendering, bridge error mapping
-├── gate.ts           availability switch for the live-game tool/resource surface
 ├── wiki.ts           Wiki HTML→Markdown, MediaWiki API
 ├── postgame.ts       post-game analysis storage
 ├── text-imports.d.ts ambient types for .txt/.md imports
