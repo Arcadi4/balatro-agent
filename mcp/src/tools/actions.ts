@@ -403,12 +403,23 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
     },
     async ({ deck, stake, seed, challenge }) => {
       if (challenge === undefined && (deck === undefined || stake === undefined)) {
-        return toolError("INVALID_TARGET", "deck and stake are required when challenge is not specified")
+        return toolError(
+          "INVALID_TARGET",
+          "deck and stake are required when challenge is not specified",
+        )
       }
-      if (challenge !== undefined && (deck !== undefined || stake !== undefined || seed !== undefined)) {
+      if (
+        challenge !== undefined &&
+        (deck !== undefined || stake !== undefined || seed !== undefined)
+      ) {
         return toolError("INVALID_TARGET", "challenge cannot be combined with deck, stake, or seed")
       }
-      return commandWithSuccessor(bridge, "new_game", { deck, stake, seed, challenge }, { timeoutMs: 18_000 })
+      return commandWithSuccessor(
+        bridge,
+        "new_game",
+        { deck, stake, seed, challenge },
+        { timeoutMs: 18_000 },
+      )
     },
   )
 }
