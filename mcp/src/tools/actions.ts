@@ -2,7 +2,7 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import { asRecord, type CommandResultOptions } from "../response.js"
+import { asRecord, toolError, type CommandResultOptions } from "../response.js"
 import BUY_BOOSTER_DESCRIPTION from "./descriptions/buy-booster.txt" with { type: "text" }
 import BUY_CARD_DESCRIPTION from "./descriptions/buy-card.txt" with { type: "text" }
 import BUY_CONSUMABLE_DESCRIPTION from "./descriptions/buy-consumable.txt" with { type: "text" }
@@ -401,7 +401,14 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(true, false),
     },
-    ({ deck, stake, seed, challenge }) =>
-      commandWithSuccessor(bridge, "new_game", { deck, stake, seed, challenge }, { timeoutMs: 18_000 }),
+    async ({ deck, stake, seed, challenge }) => {
+      if (challenge === undefined && (deck === undefined || stake === undefined)) {
+        return toolError("INVALID_TARGET", "deck and stake are required when challenge is not specified")
+      }
+      if (challenge !== undefined && (deck !== undefined || stake !== undefined || seed !== undefined)) {
+        return toolError("INVALID_TARGET", "challenge cannot be combined with deck, stake, or seed")
+      }
+      return commandWithSuccessor(bridge, "new_game", { deck, stake, seed, challenge }, { timeoutMs: 18_000 })
+    },
   )
 }

@@ -939,9 +939,6 @@ handlers.new_game = function(args)
   local seed = args.seed
 
   if challenge then
-    if deck or stake or seed then
-      return err("INVALID_TARGET", "challenge cannot be combined with deck, stake, or seed")
-    end
     local challenge_obj = SMODS.Challenges[challenge]
     if not challenge_obj then
       return err("INVALID_TARGET", "Unknown challenge: " .. tostring(challenge))
@@ -950,18 +947,12 @@ handlers.new_game = function(args)
       return err("LOCKED", "Challenge not unlocked: " .. tostring(challenge))
     end
   else
-    if not deck or stake == nil then
-      return err("INVALID_TARGET", "deck and stake are required when challenge is not specified")
-    end
     local deck_center = G.P_CENTERS[deck]
     if not deck_center or deck_center.set ~= 'Back' or deck_center.omit then
       return err("INVALID_TARGET", "Unknown deck: " .. tostring(deck))
     end
     if not deck_center.unlocked and not G.PROFILES[G.SETTINGS.profile].all_unlocked then
       return err("LOCKED", "Deck not unlocked: " .. tostring(deck))
-    end
-    if type(stake) ~= 'number' or stake < 1 or stake > 8 or stake % 1 ~= 0 then
-      return err("INVALID_TARGET", "stake must be an integer between 1 and 8")
     end
     if not SMODS.stake_is_unlocked(SMODS.stake_from_index(stake), deck) then
       return err("LOCKED", "Stake not unlocked for this deck: " .. tostring(stake))
