@@ -2,7 +2,6 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import type { GameGate } from "../gate.js"
 import { toolResult, withBridgeErrors } from "../response.js"
 import CONNECT_DESCRIPTION from "./descriptions/connect.txt" with { type: "text" }
 
@@ -27,7 +26,7 @@ function connectToMarkdown(data: Record<string, unknown>): string {
   return `Connected to the Balatro bridge; game phase: ${String(data.phase)}. Read balatro://turn for the live snapshot.`
 }
 
-export function registerConnectTool(server: McpServer, bridge: BridgeClient, gate: GameGate): void {
+export function registerConnectTool(server: McpServer, bridge: BridgeClient): void {
   server.registerTool(
     "connect",
     {
@@ -41,7 +40,6 @@ export function registerConnectTool(server: McpServer, bridge: BridgeClient, gat
       withBridgeErrors(
         async () => {
           await bridge.connect()
-          gate.enable()
           const payload = await bridge.getState(STATE_TIMEOUT_MS)
           return {
             phase: typeof payload.phase === "string" ? payload.phase : "UNKNOWN",

@@ -2,7 +2,6 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import type { GameGate } from "../gate.js"
 import { asRecord, type CommandResultOptions } from "../response.js"
 import BUY_BOOSTER_DESCRIPTION from "./descriptions/buy-booster.txt" with { type: "text" }
 import BUY_CARD_DESCRIPTION from "./descriptions/buy-card.txt" with { type: "text" }
@@ -266,169 +265,143 @@ const CARD_ID_TOOLS: ActionTool[] = [
   },
 ]
 
-export function registerActionTools(server: McpServer, bridge: BridgeClient, gate: GameGate): void {
+export function registerActionTools(server: McpServer, bridge: BridgeClient): void {
   for (const tool of NO_ARG_TOOLS) {
-    gate.track(
-      server.registerTool(
-        tool.name,
-        {
-          title: tool.title,
-          description: tool.description,
-          inputSchema: emptySchema,
-          outputSchema: commandOutputSchema,
-          annotations: tool.annotations,
-        },
-        () => commandWithSuccessor(bridge, tool.command, undefined, tool.options),
-      ),
+    server.registerTool(
+      tool.name,
+      {
+        title: tool.title,
+        description: tool.description,
+        inputSchema: emptySchema,
+        outputSchema: commandOutputSchema,
+        annotations: tool.annotations,
+      },
+      () => commandWithSuccessor(bridge, tool.command, undefined, tool.options),
     )
   }
 
   for (const tool of CARD_ID_TOOLS) {
-    gate.track(
-      server.registerTool(
-        tool.name,
-        {
-          title: tool.title,
-          description: tool.description,
-          inputSchema: cardIdInputSchema,
-          outputSchema: commandOutputSchema,
-          annotations: tool.annotations,
-        },
-        ({ card_id }) => commandWithSuccessor(bridge, tool.command, { card_id: String(card_id) }),
-      ),
+    server.registerTool(
+      tool.name,
+      {
+        title: tool.title,
+        description: tool.description,
+        inputSchema: cardIdInputSchema,
+        outputSchema: commandOutputSchema,
+        annotations: tool.annotations,
+      },
+      ({ card_id }) => commandWithSuccessor(bridge, tool.command, { card_id: String(card_id) }),
     )
   }
 
-  gate.track(
-    server.registerTool(
-      "balatro_select_hand_cards",
-      {
-        title: "Select Hand Cards",
-        description: SELECT_HAND_CARDS_DESCRIPTION,
-        inputSchema: selectHandSchema,
-        outputSchema: commandOutputSchema,
-        annotations: annotations(false, true),
-      },
-      ({ card_ids }) =>
-        commandWithSuccessor(bridge, "select_hand_cards", { card_ids: card_ids.map(String) }),
-    ),
+  server.registerTool(
+    "balatro_select_hand_cards",
+    {
+      title: "Select Hand Cards",
+      description: SELECT_HAND_CARDS_DESCRIPTION,
+      inputSchema: selectHandSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(false, true),
+    },
+    ({ card_ids }) =>
+      commandWithSuccessor(bridge, "select_hand_cards", { card_ids: card_ids.map(String) }),
   )
 
-  gate.track(
-    server.registerTool(
-      "balatro_sort_hand",
-      {
-        title: "Sort Hand",
-        description: SORT_HAND_DESCRIPTION,
-        inputSchema: sortHandSchema,
-        outputSchema: commandOutputSchema,
-        annotations: annotations(false, true),
-      },
-      ({ order }) => commandWithSuccessor(bridge, "sort_hand", { order }),
-    ),
+  server.registerTool(
+    "balatro_sort_hand",
+    {
+      title: "Sort Hand",
+      description: SORT_HAND_DESCRIPTION,
+      inputSchema: sortHandSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(false, true),
+    },
+    ({ order }) => commandWithSuccessor(bridge, "sort_hand", { order }),
   )
 
-  gate.track(
-    server.registerTool(
-      "balatro_reorder_hand",
-      {
-        title: "Reorder Hand",
-        description: REORDER_HAND_DESCRIPTION,
-        inputSchema: reorderHandSchema,
-        outputSchema: commandOutputSchema,
-        annotations: annotations(false, true),
-      },
-      ({ order }) => commandWithSuccessor(bridge, "reorder_hand", { card_ids: order.map(String) }),
-    ),
+  server.registerTool(
+    "balatro_reorder_hand",
+    {
+      title: "Reorder Hand",
+      description: REORDER_HAND_DESCRIPTION,
+      inputSchema: reorderHandSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(false, true),
+    },
+    ({ order }) => commandWithSuccessor(bridge, "reorder_hand", { card_ids: order.map(String) }),
   )
 
-  gate.track(
-    server.registerTool(
-      "balatro_use_consumable",
-      {
-        title: "Use Consumable",
-        description: USE_CONSUMABLE_DESCRIPTION,
-        inputSchema: targetedCardSchema,
-        outputSchema: commandOutputSchema,
-        annotations: annotations(true, false),
-      },
-      ({ card_id, targets }) =>
-        commandWithSuccessor(bridge, "use_consumable", {
-          card_id: String(card_id),
-          targets: targets?.map(String),
-        }),
-    ),
+  server.registerTool(
+    "balatro_use_consumable",
+    {
+      title: "Use Consumable",
+      description: USE_CONSUMABLE_DESCRIPTION,
+      inputSchema: targetedCardSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(true, false),
+    },
+    ({ card_id, targets }) =>
+      commandWithSuccessor(bridge, "use_consumable", {
+        card_id: String(card_id),
+        targets: targets?.map(String),
+      }),
   )
 
-  gate.track(
-    server.registerTool(
-      "balatro_buy_consumable",
-      {
-        title: "Buy Consumable",
-        description: BUY_CONSUMABLE_DESCRIPTION,
-        inputSchema: buyConsumableSchema,
-        outputSchema: commandOutputSchema,
-        annotations: annotations(true, false),
-      },
-      ({ card_id, use, targets }) =>
-        commandWithSuccessor(bridge, "buy_consumable", {
-          card_id: String(card_id),
-          use,
-          targets: targets?.map(String),
-        }),
-    ),
+  server.registerTool(
+    "balatro_buy_consumable",
+    {
+      title: "Buy Consumable",
+      description: BUY_CONSUMABLE_DESCRIPTION,
+      inputSchema: buyConsumableSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(true, false),
+    },
+    ({ card_id, use, targets }) =>
+      commandWithSuccessor(bridge, "buy_consumable", {
+        card_id: String(card_id),
+        use,
+        targets: targets?.map(String),
+      }),
   )
 
-  gate.track(
-    server.registerTool(
-      "balatro_select_booster_card",
-      {
-        title: "Select Booster Card",
-        description: SELECT_BOOSTER_CARD_DESCRIPTION,
-        inputSchema: targetedCardSchema,
-        outputSchema: commandOutputSchema,
-        annotations: annotations(true, false),
-      },
-      ({ card_id, targets }) =>
-        commandWithSuccessor(bridge, "select_booster_card", {
-          card_id: String(card_id),
-          targets: targets?.map(String),
-        }),
-    ),
+  server.registerTool(
+    "balatro_select_booster_card",
+    {
+      title: "Select Booster Card",
+      description: SELECT_BOOSTER_CARD_DESCRIPTION,
+      inputSchema: targetedCardSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(true, false),
+    },
+    ({ card_id, targets }) =>
+      commandWithSuccessor(bridge, "select_booster_card", {
+        card_id: String(card_id),
+        targets: targets?.map(String),
+      }),
   )
 
-  gate.track(
-    server.registerTool(
-      "balatro_reorder_jokers",
-      {
-        title: "Reorder Jokers",
-        description: REORDER_JOKERS_DESCRIPTION,
-        inputSchema: reorderJokersSchema,
-        outputSchema: commandOutputSchema,
-        annotations: annotations(false, true),
-      },
-      ({ order }) =>
-        commandWithSuccessor(bridge, "reorder_jokers", { card_ids: order.map(String) }),
-    ),
+  server.registerTool(
+    "balatro_reorder_jokers",
+    {
+      title: "Reorder Jokers",
+      description: REORDER_JOKERS_DESCRIPTION,
+      inputSchema: reorderJokersSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(false, true),
+    },
+    ({ order }) => commandWithSuccessor(bridge, "reorder_jokers", { card_ids: order.map(String) }),
   )
 
-  gate.track(
-    server.registerTool(
-      "balatro_new_game",
-      {
-        title: "New Game",
-        description: NEW_GAME_DESCRIPTION,
-        inputSchema: newGameSchema,
-        outputSchema: commandOutputSchema,
-        annotations: annotations(true, false),
-      },
-      ({ deck, stake, seed, challenge }) =>
-        commandWithSuccessor(
-          bridge,
-          "new_game",
-          { deck, stake, seed, challenge },
-          { timeoutMs: 18_000 },
-        ),
-    ),
+  server.registerTool(
+    "balatro_new_game",
+    {
+      title: "New Game",
+      description: NEW_GAME_DESCRIPTION,
+      inputSchema: newGameSchema,
+      outputSchema: commandOutputSchema,
+      annotations: annotations(true, false),
+    },
+    ({ deck, stake, seed, challenge }) =>
+      commandWithSuccessor(bridge, "new_game", { deck, stake, seed, challenge }, { timeoutMs: 18_000 }),
   )
 }
