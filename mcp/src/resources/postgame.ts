@@ -37,6 +37,42 @@ function renderList(
   ].join("\n")
 }
 
+async function readPostgameTool(index: number) {
+  const text = await readPostgame(index)
+  const uri = `${POSTGAME_URI_SCHEME}${index}`
+  if (text === null)
+    throw new ProtocolError(
+      ProtocolErrorCode.InvalidParams,
+      `No post-game analysis exists at ${uri}; browse stored analyses at ${POSTGAME_URI_SCHEME}`,
+    )
+  return { uri, text }
+}
+
+export async function readPostgameResource(
+  uri: string,
+): Promise<{ uri: string; markdown: string }> {
+  if (uri === POSTGAME_URI_SCHEME || uri === `${POSTGAME_URI_SCHEME}/`) {
+    const { dir, entries } = await listPostgames()
+    return { uri: POSTGAME_URI_SCHEME, markdown: renderList(dir, entries) }
+  }
+  if (uri.startsWith(POSTGAME_URI_SCHEME)) {
+    const raw = uri.slice(POSTGAME_URI_SCHEME.length).replace(/^\/+|\/+$/g, "")
+    const index = Number.parseInt(raw, 10)
+    if (!Number.isInteger(index) || index < 1 || String(index) !== raw) {
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidParams,
+        `Resource URI ${uri} is invalid: expected ${POSTGAME_URI_SCHEME}<index> with a positive integer index`,
+      )
+    }
+    const result = await readPostgameTool(index)
+    return { uri: result.uri, markdown: result.text }
+  }
+  throw new ProtocolError(
+    ProtocolErrorCode.InvalidParams,
+    `Resource URI ${uri} is invalid: expected ${POSTGAME_URI_SCHEME} or ${POSTGAME_URI_SCHEME}<index>`,
+  )
+}
+
 export function registerPostgameResource(server: McpServer): void {
   server.registerResource(
     "postgame_index",
@@ -64,26 +100,9 @@ export function registerPostgameResource(server: McpServer): void {
         "A stored post-game analysis document. Browse indices at postgame://; create new analyses with the new_postgame tool after a run ends.",
       mimeType: "text/markdown",
     },
-    async (uri: URL, variables: Record<string, string | string[]>) => {
-      const indexValue = variables.index
-      const raw = typeof indexValue === "string" ? indexValue : (indexValue?.[0] ?? "")
-      const index = Number.parseInt(raw, 10)
-      if (!Number.isInteger(index) || index < 1 || String(index) !== raw) {
-        throw new ProtocolError(
-          ProtocolErrorCode.InvalidParams,
-          `Resource URI ${uri.toString()} is invalid: expected ${POSTGAME_URI_SCHEME}<index> with a positive integer index`,
-        )
-      }
-      const text = await readPostgame(index)
-      if (text === null) {
-        throw new ProtocolError(
-          ProtocolErrorCode.InvalidParams,
-          `No post-game analysis exists at ${uri.toString()}; browse stored analyses at ${POSTGAME_URI_SCHEME}`,
-        )
-      }
-      return {
-        contents: [{ uri: uri.toString(), mimeType: "text/markdown", text }],
-      }
+    async (_uri: URL) => {
+      const result = await readPostgameResource(_uri.toString())
+      return { contents: [{ uri: result.uri, mimeType: "text/markdown", text: result.markdown }] }
     },
   )
 }

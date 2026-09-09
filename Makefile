@@ -2,6 +2,8 @@
 
 ROOT_DIR := $(CURDIR)
 MOD_SRC := $(ROOT_DIR)/mod
+MCP_DIR := $(ROOT_DIR)/mcp
+MCP_ENTRY := $(MCP_DIR)/dist/index.js
 
 BALATRO_SAVE ?= $(HOME)/Library/Application Support/Balatro
 BALATRO_DIR ?= $(HOME)/Library/Application Support/Steam/steamapps/common/Balatro
@@ -14,19 +16,19 @@ LOVE_BIN := $(BALATRO_APP)/Contents/MacOS/love
 LOVELY_DYLIB := $(BALATRO_DIR)/liblovely.dylib
 LOVELY_RUN := $(BALATRO_DIR)/run_lovely_macos.sh
 
-.PHONY: help doctor install-mods run
+.PHONY: help doctor install-mods build-mcp run
 
 help:
 	@printf 'Balatro MCP development workflow\n\n'
 	@printf 'Targets:\n'
 	@printf '  make doctor        Check local Balatro/Lovely/SMODS paths\n'
 	@printf '  make install-mods  Sync the repo mod into the Balatro Mods directory\n'
-	@printf '  make run           Sync the mod, then launch Balatro with Lovely\n'
+	@printf '  make build-mcp     Install MCP dependencies and build the local server\n'
+	@printf '  make run           Build the MCP server, sync the mod and launch Balatro\n'
 	@printf '\nConfiguration:\n'
 	@printf '  BALATRO_DIR=%s\n' '$(BALATRO_DIR)'
 	@printf '  BALATRO_SAVE=%s\n' '$(BALATRO_SAVE)'
 	@printf '  ARGS="..." passes arguments to make run\n'
-
 install-mods:
 	@bash -eu -o pipefail -c ' \
 		if [[ ! -d "$(MOD_SRC)" ]]; then \
@@ -76,7 +78,14 @@ doctor:
 		fi \
 	'
 
-run: install-mods
+build-mcp:
+	@bash -eu -o pipefail -c ' \
+		cd "$(MCP_DIR)"; \
+		bun install; \
+		bun run build; \
+	'
+
+run: build-mcp install-mods
 	@bash -eu -o pipefail -c ' \
 		if [[ ! -x "$(LOVE_BIN)" ]]; then \
 			printf "Balatro love executable is missing or not executable: %s\n" "$(LOVE_BIN)" >&2; \
@@ -87,6 +96,5 @@ run: install-mods
 			exit 1; \
 		fi; \
 		cd "$(BALATRO_DIR)"; \
-		export DYLD_INSERT_LIBRARIES="$(LOVELY_DYLIB)"; \
-		exec "$(LOVE_BIN)" $(ARGS) \
+		BALATRO_MCP_ENTRY="$(MCP_ENTRY)" DYLD_INSERT_LIBRARIES="$(LOVELY_DYLIB)" "$(LOVE_BIN)" $(ARGS) \
 	'

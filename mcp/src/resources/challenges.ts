@@ -2,9 +2,13 @@ import type { McpServer } from "@modelcontextprotocol/server"
 
 import challengesMarkdown from "../../data/reference/challenges.md" with { type: "text" }
 
-const CHALLENGES_URI = "balatro://challenges"
+export const CHALLENGES_URI = "balatro://challenges"
 
 const CHALLENGES_VERSION = Bun.CryptoHasher.hash("sha256", challengesMarkdown, "hex").slice(0, 8)
+
+export function readChallengesResource(): { uri: string; markdown: string } {
+  return { uri: CHALLENGES_URI, markdown: challengesMarkdown }
+}
 
 export function registerChallengesResource(server: McpServer): void {
   server.registerResource(
@@ -16,18 +20,10 @@ export function registerChallengesResource(server: McpServer): void {
         "Balatro challenge reference: every challenge id, rule summary, and wiki link for balatro_new_game.",
       mimeType: "text/markdown",
       cacheHint: { ttlMs: 86_400_000, cacheScope: "public" },
-      _meta: {
-        version: CHALLENGES_VERSION,
-      },
+      _meta: { version: CHALLENGES_VERSION },
     },
     () => ({
-      contents: [
-        {
-          uri: CHALLENGES_URI,
-          mimeType: "text/markdown",
-          text: challengesMarkdown,
-        },
-      ],
+      contents: [{ uri: CHALLENGES_URI, mimeType: "text/markdown", text: challengesMarkdown }],
     }),
   )
 }
