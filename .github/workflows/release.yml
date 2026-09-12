@@ -48,7 +48,7 @@ jobs:
             tar -czf "../archives/balatro-mcp-${package}-${GITHUB_REF_NAME}.tar.gz" -C "$package/bin" .
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mcp-release
           path: mcp/dist/
@@ -63,12 +63,12 @@ jobs:
       NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: mcp-release
           path: mcp/dist
       # Node/npm are used only for registry OIDC staging, never for development or builds.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
