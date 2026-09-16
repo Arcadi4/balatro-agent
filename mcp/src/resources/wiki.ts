@@ -1,11 +1,33 @@
 import type { McpServer } from "@modelcontextprotocol/server"
-import { ResourceTemplate } from "@modelcontextprotocol/server"
+import { ProtocolError, ProtocolErrorCode, ResourceTemplate } from "@modelcontextprotocol/server"
 
 import wikiIndexMarkdown from "../../data/wiki/index.md" with { type: "text" }
 import { fetchWikiPage } from "../wiki.js"
 
-const WIKI_URI = "balatro://wiki"
-const WIKI_INDEX_URI = `${WIKI_URI}/index`
+export const WIKI_URI = "balatro://wiki"
+export const WIKI_INDEX_URI = `${WIKI_URI}/index`
+export { wikiIndexMarkdown }
+
+async function readWiki(title: string): Promise<{ uri: string; markdown: string }> {
+  const normalized = title.trim()
+  if (normalized === "") throw new Error("WIKI_MISSING_TITLE")
+  const page = await fetchWikiPage(normalized)
+  const uri = `${WIKI_URI}/${encodeURIComponent(normalized).replaceAll("%20", "_")}`
+  return { uri, markdown: `# ${page.title}\n\n> Source: ${page.url}\n\n${page.markdown}` }
+}
+
+export async function readWikiResource(uri: string): Promise<{ uri: string; markdown: string }> {
+  const prefix = `${WIKI_URI}/`
+  if (!uri.startsWith(prefix)) throw new Error(`WIKI_UNKNOWN_URI: ${uri}`)
+  const title = safeDecode(uri.slice(prefix.length)).replace(/_/g, " ").trim()
+  if (title === "") {
+    throw new ProtocolError(
+      ProtocolErrorCode.InvalidParams,
+      `Wiki article title cannot be empty in "${uri}": use balatro://wiki/<Title>`,
+    )
+  }
+  return readWiki(title)
+}
 
 export function registerWikiResource(server: McpServer): void {
   server.registerResource(
@@ -33,22 +55,9 @@ export function registerWikiResource(server: McpServer): void {
       mimeType: "text/markdown",
       cacheHint: { ttlMs: 86_400_000, cacheScope: "public" },
     },
-    async (uri: URL, variables: Record<string, string | string[]>) => {
-      const uriString = uri.toString()
-      const titleValue = variables.title
-      const rawTitle = typeof titleValue === "string" ? titleValue : (titleValue?.[0] ?? "")
-      const title = safeDecode(rawTitle).replace(/_/g, " ")
-      if (title === "") throw new Error("WIKI_MISSING_TITLE")
-      const page = await fetchWikiPage(title)
-      return {
-        contents: [
-          {
-            uri: uriString,
-            mimeType: "text/markdown",
-            text: `# ${page.title}\n\n> Source: ${page.url}\n\n${page.markdown}`,
-          },
-        ],
-      }
+    async (_uri: URL) => {
+      const result = await readWikiResource(_uri.toString())
+      return { contents: [{ uri: result.uri, mimeType: "text/markdown", text: result.markdown }] }
     },
   )
 }

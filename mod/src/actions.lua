@@ -824,6 +824,15 @@ handlers.leave_shop = function(args)
   return phase_settle({ "BLIND_SELECT" }, { left_shop = true }, 8)
 end
 
+-- G.FUNCS.cash_out leaves the pressed button's UIBox attached; drop it so
+-- the shop does not retain round-eval moveables.
+local function release_cash_out_ui(button)
+  local button_ui = button.UIBox
+  if button_ui and button_ui ~= G.round_eval and type(button_ui.remove) == "function" then
+    button_ui:remove()
+  end
+end
+
 -- Waits for the cash-out button to render (the round-eval UI builds across
 -- frames), presses it once, then holds until the shop settles.
 local function cash_out_settle(pressed)
@@ -842,6 +851,7 @@ local function cash_out_settle(pressed)
           local button = round_eval and round_eval.cash_out_button()
           if button then
             G.FUNCS.cash_out(button)
+            release_cash_out_ui(button)
             pressed = true
           end
           return nil
@@ -866,6 +876,7 @@ handlers.cash_out = function(args)
   local button = round_eval and round_eval.cash_out_button()
   if button then
     G.FUNCS.cash_out(button)
+    release_cash_out_ui(button)
     return cash_out_settle(true)
   end
 
