@@ -16,6 +16,9 @@
 
 <https://github.com/user-attachments/assets/bcb40bd1-a9f8-491c-9a98-6f1a11c90fab>
 
+> [!IMPORTANT]
+> Balatro v1.1 即将发布，我会争取尽快提供支持。之后的版本将不再保证兼容 v1.0 版游戏。
+
 ## 准备工作
 
 - Steam 版 [Balatro](https://store.steampowered.com/app/2379780/Balatro/)

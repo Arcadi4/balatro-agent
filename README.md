@@ -16,6 +16,9 @@ Let an AI agent play Balatro. Balatro Agent connects any MCP-compatible AI clien
 
 <https://github.com/user-attachments/assets/bcb40bd1-a9f8-491c-9a98-6f1a11c90fab>
 
+> [!IMPORTANT]
+> Balatro v1.1 is coming. I will try to provide support asap when its released. Any release after that will not guarantee compatibility with the v1.0 game.
+
 ## Requirements
 
 - [Balatro](https://store.steampowered.com/app/2379780/Balatro/) on Steam
