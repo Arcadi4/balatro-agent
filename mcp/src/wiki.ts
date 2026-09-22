@@ -26,7 +26,6 @@ export type WikiPage = {
 
 export type WikiSearchHit = {
   title: string
-  wordcount: number
   snippet: string
   url: string
 }
@@ -419,13 +418,12 @@ export async function searchWiki(query: string, limit = 10): Promise<WikiSearchH
   })
   return readSearchResults(body).map((hit) => ({
     title: hit.title ?? "",
-    wordcount: hit.wordcount ?? 0,
     snippet: cleanSnippet(hit.snippet ?? ""),
     url: wikiUrl(hit.title ?? ""),
   }))
 }
 
-type SearchHit = { title?: string; wordcount?: number; snippet?: string }
+type SearchHit = { title?: string; snippet?: string }
 
 function readSearchResults(body: unknown): SearchHit[] {
   if (body === null || typeof body !== "object" || !("query" in body)) return []
