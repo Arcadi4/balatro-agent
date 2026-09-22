@@ -16,7 +16,7 @@
 
 ## Scoring Target
 
-Read `blind.score_required` from live state. Never estimate from memory.
+Read `round.blind.chips` and `round.chips_scored` from live state. Never estimate from memory.
 
 ## Before Acting
 
