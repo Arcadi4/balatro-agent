@@ -132,12 +132,21 @@ export class BridgeClient {
 
     const { promise, resolve, reject } = Promise.withResolvers<ConnectInfo>()
     this.connectPromise = promise
-    void this.establish().then(resolve, (error: Error) => {
-      if (this.connectPromise === promise) this.connectPromise = undefined
-      // A handshake timeout leaves the socket open; destroy it before the next attempt.
-      if (this.socket !== undefined && this.connected) this.socket.destroy()
-      reject(error)
-    })
+    void this.establish().then(
+      (info) => {
+        // A fulfilled promise here would satisfy the next connect() after a
+        // drop without dialing.
+        if (this.connectPromise === promise) this.connectPromise = undefined
+        resolve(info)
+      },
+      (error: Error) => {
+        if (this.connectPromise === promise) this.connectPromise = undefined
+        // A handshake timeout leaves the socket open; tear it down so the
+        // next attempt starts clean. Failed dials already closed the socket.
+        if (this.socket !== undefined && this.connected) this.socket.destroy()
+        reject(error)
+      },
+    )
     return promise
   }
 
