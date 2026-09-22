@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server"
-import { ResourceTemplate } from "@modelcontextprotocol/server"
+import { ProtocolError, ProtocolErrorCode, ResourceTemplate } from "@modelcontextprotocol/server"
 
 import wikiIndexMarkdown from "../../data/wiki/index.md" with { type: "text" }
 import { fetchWikiPage } from "../wiki.js"
@@ -37,8 +37,13 @@ export function registerWikiResource(server: McpServer): void {
       const uriString = uri.toString()
       const titleValue = variables.title
       const rawTitle = typeof titleValue === "string" ? titleValue : (titleValue?.[0] ?? "")
-      const title = safeDecode(rawTitle).replace(/_/g, " ")
-      if (title === "") throw new Error("WIKI_MISSING_TITLE")
+      const title = safeDecode(rawTitle).replace(/_/g, " ").trim()
+      if (title === "") {
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidParams,
+          `Wiki article title cannot be empty in "${uriString}": use balatro://wiki/<Title>`,
+        )
+      }
       const page = await fetchWikiPage(title)
       return {
         contents: [
