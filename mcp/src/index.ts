@@ -28,7 +28,7 @@ function createServer(bridge: BridgeClient): McpServer {
     },
     {
       instructions:
-        "Call connect before live-play tools or balatro:// resources: until the game bridge is attached they fail with GAME_NOT_RUNNING, and a busy game rejects the connection (INSTANCE_BUSY). Read balatro://turn before acting; it is a superset of the per-section reads. Use the balatro_play_handbook prompt for live-play guidance and the Balatro Wiki to verify relevant rules. When a run ends, ask the user whether to record a post-game analysis with new_postgame; stored analyses are listed at postgame://.",
+        "Call connect before live-play tools or balatro:// resources: until the game bridge is attached they fail with GAME_NOT_RUNNING, and a busy game rejects the connection (INSTANCE_BUSY). Read balatro://turn before acting; it covers the current phase, round, legal actions, hand, jokers, and consumables. Use the balatro_play_handbook prompt for live-play guidance and the Balatro Wiki to verify relevant rules. When a run ends, ask the user whether to record a post-game analysis with new_postgame; stored analyses are listed at postgame://.",
       cacheHints: {
         "server/discover": LIST_CACHE_HINT,
         "tools/list": LIST_CACHE_HINT,
