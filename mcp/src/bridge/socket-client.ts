@@ -284,6 +284,9 @@ export class BridgeClient {
 
   private dial(): Promise<void> {
     const { promise, resolve, reject } = Promise.withResolvers<void>()
+    // The streaming decoder keeps a partial code point between reads, so each
+    // connection needs a fresh one.
+    this.decoder = new TextDecoder()
     const socket = createConnection(this.socketPath)
     this.socket = socket
     this.attachSocketHandlers(socket)
