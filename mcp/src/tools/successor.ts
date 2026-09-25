@@ -12,6 +12,7 @@ import {
 
 export interface SuccessorOptions extends CommandResultOptions {
   settleTimeoutMs?: number
+  instanceId?: string
   pollMs?: number
 }
 
@@ -35,6 +36,7 @@ const RUN_PHASES: Record<string, true> = {
   ...BOOSTER_PHASES,
 }
 
+const STATE_TIMEOUT_MS = 1_500
 const SETTLE_TIMEOUT_MS = 10_000
 const SETTLE_POLL_MS = 250
 
@@ -215,12 +217,13 @@ async function settleState(
   rule: SuccessorRule,
   timeoutMs: number,
   pollMs: number,
+  instanceId?: string,
 ): Promise<SettledState> {
   const deadline = Date.now() + timeoutMs
   let payload: Record<string, unknown>
   let phase: string
   try {
-    payload = await bridge.getState()
+    payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
     phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
   } catch {
     return { settled: false }
@@ -231,7 +234,7 @@ async function settleState(
   ) {
     await Bun.sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())))
     try {
-      payload = await bridge.getState()
+      payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
       phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
     } catch {
       return { payload, settled: false }
@@ -263,15 +266,16 @@ export async function commandWithSuccessor(
   return withBridgeErrors(
     async () => {
       const rule = SUCCESSOR_RULES[kind]
+      const instanceId = options.instanceId ?? bridge.getSelectedInstanceId()
       let before: Record<string, unknown> | undefined
       if (rule?.changedField !== undefined) {
         try {
-          before = await bridge.getState()
+          before = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
         } catch {
           before = undefined
         }
       }
-      const data = await bridge.command(kind, args, options.timeoutMs)
+      const data = await bridge.command(kind, args, options.timeoutMs, instanceId)
       const envelope: Record<string, unknown> = { ok: true }
       const record = asRecord(data)
       if (record && Object.keys(record).length > 0) {
@@ -283,11 +287,16 @@ export async function commandWithSuccessor(
         rule,
         options.settleTimeoutMs ?? SETTLE_TIMEOUT_MS,
         options.pollMs ?? SETTLE_POLL_MS,
+        instanceId,
       )
       if (outcome.payload === undefined) return { envelope, successor: undefined }
       const uri = successorUri(rule, outcome.payload, before)
       if (uri === undefined) return { envelope, successor: undefined }
-      const rendered = renderSuccessor(uri, outcome.payload)
+      const scopedUri =
+        instanceId === undefined
+          ? uri
+          : uri.replace("balatro://", `balatro://instances/${encodeURIComponent(instanceId)}/`)
+      const rendered = renderSuccessor(scopedUri, outcome.payload)
       const phase = typeof outcome.payload.phase === "string" ? outcome.payload.phase : "UNKNOWN"
       envelope.next = { uri: rendered.uri, phase, settled: outcome.settled }
       const successor: SuccessorSection = {

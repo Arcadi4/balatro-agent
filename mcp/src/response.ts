@@ -6,6 +6,7 @@ export type MarkdownFormatter = (data: Record<string, unknown>) => string
 
 export interface CommandResultOptions {
   timeoutMs?: number
+  instanceId?: string
   toMarkdown?: MarkdownFormatter
 }
 
@@ -49,7 +50,7 @@ export async function withBridgeErrors<T>(
   try {
     return render(await operation())
   } catch (error) {
-    if (error instanceof BridgeError) return toolError(error.code, error.message)
+    if (error instanceof BridgeError) return toolError(error.code, error.message, error.details)
     throw error
   }
 }
@@ -61,7 +62,7 @@ export async function commandResult(
   options: CommandResultOptions = {},
 ): Promise<CallToolResult> {
   return withBridgeErrors(
-    () => bridge.command(kind, args, options.timeoutMs),
+    () => bridge.command(kind, args, options.timeoutMs, options.instanceId),
     (data) => {
       const envelope: Record<string, unknown> = { ok: true }
       const record = asRecord(data)

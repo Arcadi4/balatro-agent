@@ -1,3 +1,4 @@
+import { ResourceTemplate } from "@modelcontextprotocol/server"
 import type { McpServer } from "@modelcontextprotocol/server"
 import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server"
 
@@ -30,17 +31,19 @@ function markdownContents(
 async function readLiveResource(
   bridge: BridgeClient,
   uri: URL,
+  instanceId: string,
   render: (payload: Record<string, unknown>) => string,
 ): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
   const uriString = uri.toString()
   let payload: Record<string, unknown>
   try {
-    payload = await bridge.getState(STATE_TIMEOUT_MS)
+    payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
   } catch (error) {
     if (error instanceof BridgeError) {
       throw new ProtocolError(ProtocolErrorCode.InternalError, error.message, {
         error_code: error.code,
         uri: uriString,
+        instance_id: instanceId,
       })
     }
     throw error
@@ -731,7 +734,6 @@ type LiveRenderer = (payload: Record<string, unknown>) => string
 
 interface LiveResourceDefinition {
   name: string
-  uri: string
   title: string
   description: string
   render: LiveRenderer
@@ -740,7 +742,6 @@ interface LiveResourceDefinition {
 const LIVE_RESOURCES: LiveResourceDefinition[] = [
   {
     name: "turn",
-    uri: "balatro://turn",
     title: "Turn",
     description:
       "Live turn snapshot: phase, ante, money, round progress, legal actions, hand with selected cards, jokers, and consumables.",
@@ -748,7 +749,6 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
   },
   {
     name: "hand",
-    uri: "balatro://hand",
     title: "Hand",
     description:
       "Current hand cards with card IDs, modifiers, and selection state, listed left to right in play/scoring order; face-down cards are hidden.",
@@ -756,7 +756,6 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
   },
   {
     name: "jokers",
-    uri: "balatro://jokers",
     title: "Jokers",
     description:
       "Owned jokers with editions, costs, and live effect descriptions; face-down jokers are hidden.",
@@ -764,14 +763,12 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
   },
   {
     name: "consumables",
-    uri: "balatro://consumables",
     title: "Consumables",
     description: "Held Tarot, Planet, and Spectral cards with usability status.",
     render: consumablesToMarkdown,
   },
   {
     name: "deck",
-    uri: "balatro://deck",
     title: "Deck",
     description:
       "Balatro-style Remaining and Full Deck views with base/effective rank, suit, and card-type tallies; face-down remaining cards count as unknown.",
@@ -779,7 +776,6 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
   },
   {
     name: "shop",
-    uri: "balatro://shop",
     title: "Shop",
     description:
       "Shop contents while the shop is open: cards, vouchers, boosters, and reroll cost. Errors UNAVAILABLE outside the SHOP phase.",
@@ -787,7 +783,6 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
   },
   {
     name: "booster",
-    uri: "balatro://booster",
     title: "Booster Pack",
     description:
       "Currently open booster pack: kind, picks remaining, and options. Errors UNAVAILABLE when no pack is open.",
@@ -795,7 +790,6 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
   },
   {
     name: "run",
-    uri: "balatro://run",
     title: "Run",
     description:
       "Run-level facts: ante, money, poker-hand levels with play counts, vouchers, queued tags, discard pile, challenge, disabled entities, and endless mode.",
@@ -803,7 +797,6 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
   },
   {
     name: "ante",
-    uri: "balatro://ante",
     title: "Ante",
     description:
       "Ante overview readable throughout a run: the Small, Big, and Boss blinds with chip targets, skip rewards, on-deck blind, boss reroll cost, and queued tags.",
@@ -812,39 +805,94 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
 ]
 
 const LIVE_RENDERERS: Record<string, LiveRenderer> = {}
-for (const definition of LIVE_RESOURCES) LIVE_RENDERERS[definition.uri] = definition.render
+for (const definition of LIVE_RESOURCES) LIVE_RENDERERS[definition.name] = definition.render
 
-/**
- * Render the requested live section when its snapshot is ready. Fall back to
- * the always-available turn snapshot and return the URI that was rendered.
- */
+function instanceResourceUri(instanceId: string, section: string): string {
+  return `balatro://instances/${encodeURIComponent(instanceId)}/${section}`
+}
+
+function instancesToMarkdown(instances: Array<{ instance_id: string }>): string {
+  if (instances.length === 0)
+    return "# Balatro Instances\n\nNo running Balatro instances were found."
+  return [
+    "# Balatro Instances",
+    "",
+    "Select an instance before reading or changing its live state.",
+    "",
+    ...instances.map((instance) => `- **${instance.instance_id}**`),
+  ].join("\n")
+}
+
 export function renderSuccessor(
   uri: string,
   payload: Record<string, unknown>,
 ): { uri: string; markdown: string } {
-  let rendered: { uri: string; markdown: string } | undefined
-  const render = LIVE_RENDERERS[uri]
+  const match = /^balatro:\/\/instances\/([^/]+)\/([^/]+)$/.exec(uri)
+  const section = match?.[2]
+  const render = section === undefined ? undefined : LIVE_RENDERERS[section]
   if (render !== undefined) {
     try {
-      rendered = { uri, markdown: render(payload) }
+      return { uri, markdown: render(payload) }
     } catch {
-      rendered = undefined
+      // Fall through to the always-available turn snapshot.
     }
   }
-  return rendered ?? { uri: "balatro://turn", markdown: turnToMarkdown(payload) }
+  const instanceId = match?.[1]
+  return {
+    uri: instanceId === undefined ? "balatro://instances" : instanceResourceUri(instanceId, "turn"),
+    markdown: turnToMarkdown(payload),
+  }
 }
 
 export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
-  for (const definition of LIVE_RESOURCES) {
-    server.registerResource(
-      definition.name,
-      definition.uri,
-      {
-        title: definition.title,
-        description: definition.description,
-        mimeType: "text/markdown",
-      },
-      (uri) => readLiveResource(bridge, uri, definition.render),
-    )
-  }
+  server.registerResource(
+    "instances",
+    "balatro://instances",
+    {
+      title: "Balatro Instances",
+      description:
+        "Live Balatro processes available for explicit connection and instance-scoped resources.",
+      mimeType: "text/markdown",
+    },
+    async (uri) => markdownContents(uri, instancesToMarkdown(await bridge.listInstances())),
+  )
+
+  const template = new ResourceTemplate("balatro://instances/{instance_id}/{section}", {
+    list: async () => ({
+      resources: (await bridge.listInstances()).flatMap((instance) =>
+        LIVE_RESOURCES.map((definition) => ({
+          uri: instanceResourceUri(instance.instance_id, definition.name),
+          name: `${definition.name}-${instance.instance_id}`,
+          title: `${definition.title} — ${instance.instance_id}`,
+          description: definition.description,
+          mimeType: "text/markdown",
+        })),
+      ),
+    }),
+  })
+
+  server.registerResource(
+    "live",
+    template,
+    {
+      title: "Live Balatro State",
+      description: "Instance-scoped live state for a selected Balatro process.",
+      mimeType: "text/markdown",
+    },
+    (uri, variables) => {
+      const instanceId = variables.instance_id
+      const section = variables.section
+      if (typeof instanceId !== "string" || typeof section !== "string") {
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidParams,
+          "Instance and section are required",
+        )
+      }
+      const definition = LIVE_RESOURCES.find((candidate) => candidate.name === section)
+      if (definition === undefined) {
+        throw new ProtocolError(ProtocolErrorCode.InvalidParams, "Unknown live resource section")
+      }
+      return readLiveResource(bridge, uri, instanceId, definition.render)
+    },
+  )
 }

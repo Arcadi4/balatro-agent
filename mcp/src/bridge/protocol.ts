@@ -5,17 +5,43 @@ export interface JsonRpcRequest {
   params?: Record<string, unknown>
 }
 
-export const DEFAULT_BRIDGE_SOCKET_POSIX = "/tmp/balatro-mcp.sock"
+export const DEFAULT_BRIDGE_SOCKET_POSIX = "/tmp/balatro-mcp"
 export const DEFAULT_BRIDGE_SOCKET_WIN32 = "\\\\.\\pipe\\balatro-mcp"
 export const BRIDGE_SOCKET_ENV_VAR = "BALATRO_BRIDGE_SOCKET"
+export const BRIDGE_REGISTRY_ENV_VAR = "BALATRO_BRIDGE_REGISTRY"
 
-export function resolveBridgeSocketPath(
+export function resolveBridgeSocketPrefix(
   platform: string = process.platform,
   env: Record<string, string | undefined> = process.env,
 ): string {
   const override = env[BRIDGE_SOCKET_ENV_VAR]
   if (override !== undefined && override.length > 0) return override
   return platform === "win32" ? DEFAULT_BRIDGE_SOCKET_WIN32 : DEFAULT_BRIDGE_SOCKET_POSIX
+}
+
+export function resolveBridgeSocketPath(
+  instanceId: string,
+  platform: string = process.platform,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const prefix = resolveBridgeSocketPrefix(platform, env)
+  if (platform !== "win32" && prefix.endsWith(".sock")) {
+    return `${prefix.slice(0, -5)}-${instanceId}.sock`
+  }
+  return `${prefix}-${instanceId}`
+}
+
+export function resolveBridgeRegistryPrefix(
+  platform: string = process.platform,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const override = env[BRIDGE_REGISTRY_ENV_VAR]
+  if (override !== undefined && override.length > 0) return override
+  if (platform === "win32") {
+    const temp = env.TEMP ?? env.TMP ?? "C:\\Temp"
+    return `${temp}\\balatro-mcp`
+  }
+  return "/tmp/balatro-mcp"
 }
 
 interface JsonRpcError {
@@ -37,6 +63,9 @@ const ERROR_CODES: Record<number, string> = {
   [-32003]: "PROTOCOL_MISMATCH",
   [-32004]: "STATE_STALE",
   [-32005]: "STATE_NOT_FOUND",
+  [-32006]: "INSTANCE_NOT_CONNECTED",
+  [-32007]: "INSTANCE_SELECTION_REQUIRED",
+  [-32008]: "GAME_NOT_FOUND",
   [-32010]: "WRONG_PHASE",
   [-32011]: "INVALID_TARGET",
   [-32012]: "INSUFFICIENT_FUNDS",

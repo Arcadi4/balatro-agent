@@ -7,7 +7,7 @@ Two runtime components:
 - `mcp/`: Bun TypeScript stdio MCP server
 - `mod/`: Lua Steamodded mod running inside Balatro
 
-IPC: newline-delimited JSON-RPC 2.0 over `/tmp/balatro-mcp.sock` (macOS/Linux) or `\\.\pipe\balatro-mcp` (Windows). `BALATRO_BRIDGE_SOCKET` overrides either; must match both processes.
+IPC: newline-delimited JSON-RPC 2.0 over per-instance `/tmp/balatro-mcp-<instance>.sock` (macOS/Linux) or `\\.\pipe\balatro-mcp-<instance>` (Windows). `BALATRO_BRIDGE_SOCKET` overrides the endpoint prefix; `BALATRO_BRIDGE_REGISTRY` overrides the discovery-record prefix. Both processes must use the same overrides.
 
 ## Toolchain
 

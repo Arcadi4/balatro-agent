@@ -232,7 +232,7 @@ local function require_shop_phase(action_name)
   if phase_err then
     return err(
       'WRONG_PHASE',
-      action_name .. ' can only be used during the SHOP phase. Read balatro://turn to check the current phase before buying.'
+      action_name .. ' can only be used during the SHOP phase. Read the selected instance turn resource before buying.'
     )
   end
   return nil

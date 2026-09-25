@@ -21,14 +21,16 @@ local card_ids = load_module('card_ids')
 local round_eval = load_module('round_eval')
 local actions = load_module('actions')
 local state = load_module('state')
+local instance = load_module('instance')
 actions.configure(card_ids, round_eval, state.connect_info)
 state.configure(card_ids)
-bridge_commands.init({
+local bridge_active = bridge_commands.init({
   actions = actions,
   state = state,
   jsonrpc = load_module('jsonrpc'),
   socket = load_module(socket_module),
   socket_codec = load_module('socket_codec'),
+  instance = instance,
 })
 
 local _original_love_update = love.update
@@ -54,4 +56,7 @@ function love.quit()
   end
 end
 
-sendDebugMessage('Loaded Balatro MCP Dev Mod (bridge active)', mod.id)
+sendDebugMessage(
+  'Loaded Balatro MCP Dev Mod (bridge ' .. (bridge_active and 'active' or 'unavailable') .. ')',
+  mod.id
+)
