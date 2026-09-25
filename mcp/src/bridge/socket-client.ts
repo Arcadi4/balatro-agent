@@ -282,7 +282,12 @@ export class BridgeClient {
     const pending = session.pendingRequests.get(seq)
     if (!pending) throw new BridgeError("STATE_NOT_FOUND", `No pending bridge request ${seq}`)
     try {
-      const response = await this.awaitJsonRpcResponse(session, seq, pending, options.timeoutMs)
+      const response = await this.awaitJsonRpcResponse(
+        session,
+        seq,
+        pending,
+        options.timeoutMs ?? RESPONSE_TIMEOUT_MS,
+      )
       if (response.error)
         throw new BridgeError(bridgeErrorCode(response.error), response.error.message)
       const result = asRecord(response.result)
