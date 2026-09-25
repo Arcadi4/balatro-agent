@@ -141,7 +141,8 @@ local function accept_client()
     return
   end
 
-  local client = {
+  local client
+  client = {
     fd = accepted_fd,
     buffer = ffi.new('char[?]', READ_BUFFER_SIZE),
     codec = socket_codec_factory.new(function(request)
