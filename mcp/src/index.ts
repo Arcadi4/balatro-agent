@@ -28,7 +28,7 @@ function createServer(bridge: BridgeClient): McpServer {
     },
     {
       instructions:
-        "Read balatro://instances first, then call connect with the selected instance_id before live-play tools or instance resources. Live resources are balatro://instances/{instance_id}/{turn,hand,jokers,consumables,deck,shop,booster,run,ante}; pass instance_id on action tools when not using the selected connection. Read the selected instance's turn resource before acting; it covers the current phase, round, legal actions, hand, jokers, and consumables. Use the balatro_play_handbook prompt for live-play guidance and the Balatro Wiki to verify relevant rules. When a run ends, ask the user whether to record a post-game analysis with new_postgame; stored analyses are listed at postgame://.",
+        "Read balatro://instances first, then call connect with the selected instance_id before live-play tools or instance resources. Live resources are balatro://instances/{instance_id}/{turn,hand,jokers,consumables,deck,shop,booster,run,ante}; pass instance_id on action tools when not using the selected connection. Read the selected instance's turn resource before acting; it covers the current phase, round, legal actions, hand, jokers, and consumables. Call disconnect with the instance_id when finished with a connection. Use the balatro_play_handbook prompt for live-play guidance and the Balatro Wiki to verify relevant rules. When a run ends, ask the user whether to record a post-game analysis with new_postgame; stored analyses are listed at postgame://.",
       cacheHints: {
         "server/discover": LIST_CACHE_HINT,
         "tools/list": LIST_CACHE_HINT,
