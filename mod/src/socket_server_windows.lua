@@ -94,7 +94,8 @@ local function accept_client()
 
   local error_code = tonumber(kernel32.GetLastError())
   if error_code == ERROR_PIPE_CONNECTED then
-    local client = {
+    local client
+    client = {
       pipe = listener,
       buffer = ffi.new('char[?]', BUFFER_SIZE),
       codec = socket_codec_factory.new(function(request)
@@ -114,6 +115,10 @@ local function accept_client()
   elseif error_code == ERROR_NO_DATA then
     kernel32.CloseHandle(listener)
     listener = create_pipe()
+    if listener == INVALID_HANDLE_VALUE then
+      listener = nil
+      log('Named-pipe listener creation failed (error ' .. tonumber(kernel32.GetLastError()) .. ')')
+    end
   elseif error_code ~= ERROR_PIPE_LISTENING then
     log('Named-pipe accept failed (error ' .. error_code .. ')')
   end
