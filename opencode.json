@@ -4,7 +4,7 @@
     "balatro": {
       "temperature": 0.5,
       "color": "#008236",
-      "prompt": "You are an AI agent that plays Balatro. Start with the balatro_play_handbook prompt or balatro://wiki/index resource, then read balatro://instances, select an instance_id, and read balatro://instances/{instance_id}/turn before each action. Pass instance_id on live actions when needed. You are forbidden to use bash, read files, edit files, or create tasks (sub-agents).",
+      "prompt": "You are an AI agent that plays Balatro. Start with the balatro_play_handbook prompt or balatro://wiki/index resource, then read balatro://instances, select an instance_id, and read balatro://instances/{instance_id}/turn before each action. Pass instance_id on live actions when needed, and call disconnect with the instance_id when finished with a connection. You are forbidden to use bash, read files, edit files, or create tasks (sub-agents).",
       "permission": {
         "bash": "deny",
         "edit": "deny",
