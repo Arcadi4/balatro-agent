@@ -34,10 +34,21 @@ local record_path = registry_base() .. '-' .. instance_id
 local last_published = 0
 
 local function write_record()
-  local file = io.open(record_path, 'w')
+  local temporary_path = record_path .. '.tmp'
+  local file = io.open(temporary_path, 'w')
   if not file then return false end
   file:write(instance_id, '\t', endpoint(), '\t', tostring(os.time() * 1000), '\n')
   file:close()
+
+  local renamed = os.rename(temporary_path, record_path)
+  if not renamed and jit.os == 'Windows' then
+    os.remove(record_path)
+    renamed = os.rename(temporary_path, record_path)
+  end
+  if not renamed then
+    os.remove(temporary_path)
+    return false
+  end
   last_published = os.time()
   return true
 end
@@ -60,6 +71,7 @@ end
 
 function Instance.remove()
   os.remove(record_path)
+  os.remove(record_path .. '.tmp')
 end
 
 return Instance
