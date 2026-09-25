@@ -41,6 +41,9 @@ export async function discoverBridgeInstances(
       const contents = await readFile(join(directory, entry), "utf8")
       const instance = parseInstanceRecord(contents)
       if (instance === undefined) continue
+      if (entry !== `${prefix}-${instance.instance_id}`) continue
+      if (instance.endpoint !== resolveBridgeSocketPath(instance.instance_id, platform, env))
+        continue
       if (now - instance.updated_at > INSTANCE_TTL_MS) continue
       instances.push(instance)
     } catch {
