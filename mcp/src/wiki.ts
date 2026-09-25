@@ -31,7 +31,6 @@ export type WikiSearchHit = {
   url: string
 }
 
-// Static tag lookup per repo convention (Record over Set for string keys).
 const DROP_TAGS: Record<string, true> = {
   style: true,
   script: true,
@@ -41,10 +40,8 @@ const DROP_TAGS: Record<string, true> = {
   sup: true,
 }
 
-// Whole subtrees under these class prefixes are noise for a text consumer:
-// chrome (edit links, TOC, navboxes, print footer, categories), invisible
-// metadata (DPL query dumps), or image-only galleries. Matched by exact
-// name or `prefix-`/`prefix_` (covers `consumables__container`).
+// Drop interface chrome, invisible metadata, and image-only galleries. Match
+// exact class names and the `prefix-`/`prefix_` forms used by the wiki.
 const DROP_CLASS_PREFIXES: string[] = [
   "mw-editsection",
   "mw-references-wrap",
@@ -94,11 +91,6 @@ function textOf(node: Element): string {
   return out.replace(/\u00a0/g, " ").trim()
 }
 
-// --- hast cleanup ------------------------------------------------------------
-//
-// One manual top-down walk. Rewriting `children` in place while recursing is
-// easier to reason about than visitor index juggling for this rule set.
-
 function isDroppedElement(node: Element): boolean {
   if (DROP_TAGS[node.tagName] === true) return true
   if (isHidden(node)) return true
@@ -119,8 +111,7 @@ function cleanChildren(node: Element | HastRoot): void {
       continue
     }
     cleanElement(child)
-    // Anchors that only wrapped a now-dropped icon would render as empty
-    // links; drop them.
+    // Anchors left without text after icon removal would produce empty links.
     if (child.tagName === "a" && textOf(child) === "") continue
     survivors.push(child)
   }
@@ -129,12 +120,10 @@ function cleanChildren(node: Element | HastRoot): void {
 
 function fixLink(node: Element): void {
   if (node.tagName !== "a") return
-  // Link titles duplicate the anchor text on this wiki; drop for lean output.
   delete node.properties?.title
   const href = node.properties?.href
   const isSelfLink = hasClass(node, "mw-selflink")
   if (isSelfLink || typeof href !== "string" || href.startsWith("#")) {
-    // Self links and same-page fragments render as plain text.
     node.tagName = "span"
     node.properties = {}
   } else if (href.startsWith("/w/")) {
@@ -157,8 +146,6 @@ function trimLeadingSpace(node: Element): void {
     }
   }
 }
-
-// --- infobox -----------------------------------------------------------------
 
 function paragraph(children: ElementContent[]): Element {
   return { type: "element", tagName: "p", properties: {}, children }
@@ -226,9 +213,6 @@ function containsNode(haystack: Element, needle: Element): boolean {
   }
   return false
 }
-// Infoboxes are structured DOM: a title, image-only tabs (dropped), and
-// labeled field groups. Each group is either a simple field
-// (`Effect: ...`) or a titled set of labeled rows (Stats: Buy/Sell/Type).
 function rowLine(label: string, value: string): Element {
   return {
     type: "element",
@@ -277,15 +261,10 @@ function convertInfobox(root: Element): void {
   root.children = content
 }
 
-// --- mdast post-processing ---------------------------------------------------
-
-// GFM table cells are a single inline line; block children (paragraphs, line
-// breaks) serialize flattened into a space. Re-join them with literal <br>
-// nodes, which remark-stringify keeps inside cells.
+// rehype-remark emits block children inside GFM table cells even though mdast
+// types allow only phrasing. Flatten them and preserve breaks as <br> nodes.
 const cellBreaks: Plugin<[], MdastRoot, MdastRoot> = () => (tree) => {
   visit(tree, "tableCell", (cell: MdastTableCell) => {
-    // GFM cells hold block content at runtime (rehype-remark emits paragraphs),
-    // but mdast's TableCell types only phrasing; widen once, deliberately.
     const children = cell.children as MdastContent[]
     const flat: MdastContent[] = []
     for (const child of children) {
@@ -360,8 +339,6 @@ export async function htmlToMarkdown(html: string): Promise<string> {
   const mdast = await processor.run(tree)
   return processor.stringify(mdast)
 }
-
-// --- MediaWiki API -----------------------------------------------------------
 
 async function callApi(params: Record<string, string>): Promise<unknown> {
   const query = new URLSearchParams(params)

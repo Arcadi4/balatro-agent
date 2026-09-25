@@ -173,12 +173,9 @@ local function rendered_rows_to_description(rows)
   return table.concat(lines, ' ')
 end
 
--- generate_UIBox_ability_table builds real DynaText/Moveable objects; every
--- Moveable self-registers into G.MOVEABLES, G.I.MOVEABLE and
--- G.STAGE_OBJECTS[G.STAGE] on creation, and Game:update iterates
--- G.MOVEABLES every frame. The returned tree is never parented into a
--- managed UIBox, so nothing would ever remove those nodes. Registrations
--- are synchronous appends, so truncating the tails reverts the registries.
+-- generate_UIBox_ability_table creates unparented Moveables that self-register
+-- in G.MOVEABLES, G.I.MOVEABLE, and G.STAGE_OBJECTS. Truncate those registries
+-- after the synchronous call because no managed UIBox will remove the nodes.
 local function generate_ability_table_untracked(card)
   local tracked = {
     { G.MOVEABLES, #G.MOVEABLES },
@@ -294,7 +291,7 @@ local function serialize_playing_card(card, faced_down)
   }
 end
 
--- Matches the game predicates that drive recurring Joker readiness jiggles.
+-- Keep these predicates aligned with the vanilla readiness jiggles.
 local function is_active_joker(card)
   if not card or not card.ability or not G or not G.GAME or not G.STATE or not G.STATES then return false end
   local ability = card.ability
@@ -354,25 +351,20 @@ local function serialize_joker(card, faced_down)
   end
   return obj
 end
--- Vanilla consumables that target hand cards but declare no max_highlighted in
--- ability.consumeable; see matching table in actions.lua.
+-- Mirrors HAND_TARGETING_OVERRIDES in actions.lua; keep both definitions in sync.
 local HAND_TARGETING_OVERRIDES = {
   ['Aura'] = { min_highlighted = 1, max_highlighted = 1 },
 }
 
 local function consumable_usable(card)
-  -- can_use_consumeable reads UI-refresh state (e.g. Wheel of Fortune's
-  -- eligible_strength_jokers) that is only populated during Card:update.
   if type(card) ~= 'table' or type(card.can_use_consumeable) ~= 'function' then
     return nil
   end
-  -- skip_check bypasses transient controller animation locks.
   local ok, usable = pcall(card.can_use_consumeable, card, nil, true)
   if not ok then return nil end
   if usable then return true end
 
-  -- can_use_consumeable returns false for targeted consumables when no hand
-  -- cards are highlighted. Check hand card availability without mutating state.
+  -- Targeted consumables need enough hand cards, but no highlight is required here.
   local name = card.ability and card.ability.name
   local cons = card.ability and card.ability.consumeable
   local override = name and HAND_TARGETING_OVERRIDES[name]
@@ -896,7 +888,7 @@ local function snapshot_blind_select()
         description = blind_description(blind),
       }
 
-      -- Chip target preview, same formula as the blind select panel.
+      -- Match the chip target formula used by the blind-select panel.
       local blind_ante = round_resets.blind_ante or round_resets.ante
       local scaling = G.GAME.starting_params and G.GAME.starting_params.ante_scaling or 1
       if blind_ante and blind and blind.mult and get_blind_amount then
@@ -1077,7 +1069,6 @@ function State.get_state_envelope()
   }
 end
 
--- Data for the `connect` handshake: current phase where the game sits.
 function State.connect_info()
   return { phase = get_phase_name() }
 end

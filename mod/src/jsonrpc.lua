@@ -49,9 +49,7 @@ function JsonRpc.dispatch(request)
   end
 
   if request.method == 'get_state' then
-    -- get_state is the only request path without a pcall elsewhere; an
-    -- unexpected shape in modded card data must return an error instead
-    -- of aborting this frame's socket processing.
+    -- Malformed modded card data must not abort this frame's socket dispatch.
     local state_ok, state = pcall(state_handler)
     if state_ok and state then
       JsonRpc.send_result(request.id, state)

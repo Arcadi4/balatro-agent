@@ -15,8 +15,8 @@ import { registerStakesResource } from "./resources/stakes.js"
 import { registerWikiResource } from "./resources/wiki.js"
 import { registerAllTools } from "./tools/index.js"
 
-// Listings are static: registration never changes, and per-connection
-// visibility changes are forbidden by the MCP 2026-07-28 revision.
+// MCP 2026-07-28 requires public cache scope because registered listings do not
+// vary by connection.
 const LIST_CACHE_HINT = { ttlMs: 60_000, cacheScope: "public" } as const
 
 function createServer(bridge: BridgeClient): McpServer {

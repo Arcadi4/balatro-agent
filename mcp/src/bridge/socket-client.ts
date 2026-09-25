@@ -117,14 +117,14 @@ export class BridgeClient {
     this.socketPath = socketPath
   }
 
-  /** The game session is established and requests may flow. */
   isConnected(): boolean {
     return this.handshaked
   }
 
-  // Idempotent: returns the handshake info of a live session, dedupes
-  // concurrent attempts, and never reconnects in the background. After a
-  // drop, game tools fail with GAME_NOT_RUNNING until `connect` runs again.
+  /**
+   * Returns the live handshake, shares concurrent attempts, and never reconnects
+   * in the background. A dropped session requires another explicit `connect`.
+   */
   connect(): Promise<ConnectInfo> {
     if (this.handshaked && this.connectInfo) return Promise.resolve(this.connectInfo)
     if (this.disposed) return Promise.reject(gameNotRunning("BridgeClient has been disposed"))
@@ -134,8 +134,7 @@ export class BridgeClient {
     this.connectPromise = promise
     void this.establish().then(resolve, (error: Error) => {
       if (this.connectPromise === promise) this.connectPromise = undefined
-      // A handshake timeout leaves the socket open; tear it down so the
-      // next attempt starts clean. Failed dials already closed the socket.
+      // A handshake timeout leaves the socket open; destroy it before the next attempt.
       if (this.socket !== undefined && this.connected) this.socket.destroy()
       reject(error)
     })
@@ -244,10 +243,7 @@ export class BridgeClient {
     this.socket = undefined
   }
 
-  // Handshake with the game once the transport connects. A close before the
-  // handshake answers is deterministic busy-rejection: on both transports the
-  // only way the bridge drops a freshly accepted client is another client
-  // already holding the single slot.
+  // A close before the handshake completes means another client owns the bridge's single slot.
   private async establish(): Promise<ConnectInfo> {
     await this.dial()
     let data: Record<string, unknown> | undefined
@@ -288,8 +284,7 @@ export class BridgeClient {
     }
     const onClose = (): void => {
       socket.off("connect", onConnect)
-      // handleSocketClose ran first and classified the failure; fall back
-      // only if no close event was classified yet.
+      // handleSocketClose classifies first; use the generic error only as a fallback.
       reject(
         this.disposed ? gameNotRunning() : (this.lastDisconnectError ?? this.connectionError()),
       )
@@ -322,10 +317,8 @@ export class BridgeClient {
     socket.on("error", (error) => {
       if (this.socket === socket) this.socketError = error
     })
-    // A peer that closes right after accept (the bridge rejects extra
-    // clients this way) half-closes the connection: 'end' arrives but the
-    // pending write callback and 'close' may never fire on their own.
-    // Force the close so pending requests are rejected instead of hanging.
+    // Some peers half-close after rejecting a client: 'end' arrives while the
+    // pending write and 'close' can remain unresolved. Force both to settle.
     socket.on("end", () => {
       if (this.socket === socket) socket.destroy()
     })
@@ -334,9 +327,8 @@ export class BridgeClient {
     })
   }
 
-  // Classifies a failed or dropped connection. Before the handshake answers,
-  // a refusal is deterministic busy-rejection; afterwards a close means the
-  // game (or its mod) went away.
+  // Before the handshake, a refusal means the single game slot is busy; after
+  // it, a close means the game or mod is gone.
   private connectionError(cause?: Error): BridgeError {
     if (cause instanceof BridgeError) return cause
     if (isInstanceBusyError(cause)) return instanceBusy()
@@ -435,9 +427,8 @@ export class BridgeClient {
       throw this.lastDisconnectError ?? gameNotRunning()
     }
 
-    // The write callback can be abandoned when the peer half-closes right
-    // after accept (see attachSocketHandlers's 'end' handler). Reject on
-    // 'close' too so a queued write never hangs its caller.
+    // The 'end' workaround in attachSocketHandlers can close this socket before
+    // the write callback settles. Reject so queued writes do not hang.
     const { promise, resolve, reject } = Promise.withResolvers<void>()
     const onClose = () => {
       reject(
@@ -464,9 +455,8 @@ export class BridgeClient {
     void promise.catch(() => undefined)
     const pending: PendingRequest = { promise, resolve, reject }
     this.pendingRequests.set(id, pending)
-    // Arm the timeout at creation time so it covers the write phase too:
-    // a write that hangs (peer half-close before the callback fires) must
-    // still let the request settle.
+    // Start the request timeout before writing so a queued write cannot
+    // outlive its deadline.
     if (timeoutMs !== undefined) {
       pending.timeout = setTimeout(() => {
         this.pendingRequests.delete(id)

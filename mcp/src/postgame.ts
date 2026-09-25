@@ -23,10 +23,6 @@ export interface PostgameListing {
   entries: PostgameEntry[]
 }
 
-/**
- * Data home mirroring ~/.local/share semantics: $XDG_DATA_HOME on Unix,
- * %LOCALAPPDATA% on Windows.
- */
 function dataHome(): string {
   if (process.platform === "win32") {
     return process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local")
@@ -69,8 +65,7 @@ function parseFrontmatter(text: string): Partial<PostgameEntry> | undefined {
   }
 }
 
-// Tool calls on one connection can execute concurrently; serializing keeps
-// index allocation gap-free under overlapping requests.
+// Serialize index allocation so concurrent creates cannot choose the same index.
 let createQueue: Promise<unknown> = Promise.resolve()
 
 export function createPostgame(input: {
@@ -118,13 +113,12 @@ export async function listPostgames(): Promise<PostgameListing> {
         summary: fields.summary ?? "",
       })
     } catch {
-      // Skip unreadable files and malformed frontmatter.
+      // Ignore files that cannot be read.
     }
   }
   return { dir, entries }
 }
 
-/** Returns the raw document text, or null when no analysis exists at that index. */
 export async function readPostgame(index: number): Promise<string | null> {
   try {
     return await Bun.file(path.join(postgameDir(), `${index}.md`)).text()

@@ -154,8 +154,8 @@ local function replace_requested_highlights(cards, requested)
   return selected_ids, previous
 end
 
--- Vanilla consumables that target hand cards but declare no max_highlighted in
--- ability.consumeable; the game gates them via bespoke can_use_consumeable logic.
+-- Vanilla hand-targeting consumables that omit max_highlighted and enforce
+-- targeting in can_use_consumeable.
 local HAND_TARGETING_OVERRIDES = {
   ['Aura'] = { min_highlighted = 1, max_highlighted = 1 },
 }
@@ -174,8 +174,6 @@ local function prepare_consumable_targets(card, args, shop_context)
   local min_highlighted, max_highlighted = consumable_target_limits(card)
 
   if not max_highlighted then
-    -- Untargeted: vanilla only reads hand selection for cards with max_highlighted;
-    -- supplying targets for an untargeted card is always an error.
     if #target_card_ids > 0 then
       local name = card.ability and card.ability.name or 'This consumable'
       return err('INVALID_TARGET', "'" .. name .. "' does not target hand cards")
@@ -203,7 +201,7 @@ local function prepare_consumable_targets(card, args, shop_context)
     local name = card.ability and card.ability.name or 'this consumable'
     local use_err
     if shop_context then
-      -- A satisfied target range means the shop phase, not the targets, blocked use.
+      -- In-range targets rule out targeting as the shop-phase blocker.
       local count = G.hand and #G.hand.highlighted or 0
       local in_range = count >= (min_highlighted or 1) and count <= max_highlighted
       if in_range then
@@ -284,7 +282,7 @@ local PACK_PHASES = {
   "SMODS_BOOSTER_OPENED",
 }
 
--- A restored save can resume in any resting run phase.
+-- Restored saves can resume in any of these run phases.
 local RUN_PHASES = {
   "BLIND_SELECT", "SELECTING_HAND", "HAND_PLAYED", "DRAW_TO_HAND",
   "SHOP", "ROUND_EVAL", "GAME_OVER",
@@ -292,17 +290,14 @@ local RUN_PHASES = {
   "BUFFOON_PACK", "SMODS_BOOSTER_OPENED",
 }
 
--- Settle builders: async actions return these so the dispatcher holds the
--- response until the game can act on the result.
 local function settle_result(data, timed_out)
   data = data or {}
   data.timed_out = timed_out or nil
   return { ok = true, data = data }
 end
 
--- Resolves once the event manager drains the animation the action queued.
--- no_delete events are skipped: they outlive their action by design (input
--- locks, run starts) and would hold every wait open.
+-- True when every queued event is deletable; persistent events do not block
+-- action completion.
 local function events_drained()
   local manager = G and G.E_MANAGER
   if not manager or not manager.queues then return false end
@@ -314,11 +309,9 @@ local function events_drained()
   return true
 end
 
--- Resolves once the game rests in a target phase: every transition pairs
--- G.STATE with G.STATE_COMPLETE=false until the new phase's init has run,
--- and the wait never settles under a screen wipe -- the wipe hides the run
--- transition (restart/new_game/continue start here), and the controller is
--- input-locked while one is up.
+-- Complete after queued work drains and the game rests in a target phase.
+-- G.STATE_COMPLETE rejects transition frames, while screen wipes hide run
+-- transitions and keep the controller input-locked.
 local function phase_settle(target_phases, data, timeout_seconds)
   local targets = {}
   for _, name in ipairs(target_phases) do targets[G.STATES[name]] = true end
@@ -330,9 +323,7 @@ local function phase_settle(target_phases, data, timeout_seconds)
       poll = function()
         if not G then return nil end
         if not armed then
-          -- The action's own queued work must drain before the target phase
-          -- counts; resting in a target phase before the chain runs is the
-          -- pre-action state (skip_booster, restart from BLIND_SELECT).
+          -- Do not count the pre-action phase until the action's queued work drains.
           if events_drained() then armed = true end
           return nil
         end
@@ -360,8 +351,6 @@ local function anim_settle(data, timeout_seconds)
   }
 end
 
--- Protocol handshake behind the MCP `connect` tool. Not a game action: it
--- reports the current phase so the client can arm live tools.
 handlers.connect = function()
   return ok(connect_info())
 end
@@ -750,7 +739,7 @@ handlers.buy_consumable = function(args)
     if target_err then return target_err end
   end
 
-  -- Vanilla must remove the shop card before its delayed use_card call; doing it here leaves c1.area nil.
+  -- Purchase before applying; vanilla's delayed use_card path expects the shop card to be gone.
   local buy_err = purchase_from_shop(card, args.use)
   if buy_err then
     if previous_highlights then replace_highlights(previous_highlights) end

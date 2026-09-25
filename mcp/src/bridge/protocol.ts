@@ -67,7 +67,7 @@ export function parseFrames(buffer: string): { messages: unknown[]; remainder: s
     try {
       messages.push(JSON.parse(line))
     } catch {
-      // The peer owns malformed frames; the pending request will time out.
+      // Ignore malformed lines and continue parsing later frames.
     }
   }
   return { messages, remainder: buffer.slice(boundary + 1) }

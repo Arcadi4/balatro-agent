@@ -8,11 +8,9 @@ local bridge_generation = 0
 
 local DEFAULT_SETTLE_TIMEOUT = 10
 
--- An action whose effect resolves across game frames returns
--- `settle = { timeout_seconds, poll, on_timeout }`. The dispatcher holds the
--- response and calls `poll` every frame: it returns the final result table
--- once the effect is observable, or nil to keep waiting. `on_timeout` builds
--- the result sent when the deadline expires first.
+-- Deferred actions return `settle = { timeout_seconds, poll, on_timeout }`.
+-- `poll` returns nil while pending and a result once the effect is observable;
+-- `on_timeout` supplies the terminal result when the deadline expires.
 local function run_settle_step(fn)
   local success, result = pcall(fn)
   if success then return result end

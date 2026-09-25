@@ -814,23 +814,24 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
 const LIVE_RENDERERS: Record<string, LiveRenderer> = {}
 for (const definition of LIVE_RESOURCES) LIVE_RENDERERS[definition.uri] = definition.render
 
-// Renders already-fetched state for tool successor context. Section
-// renderers throw UNAVAILABLE when their snapshot is absent (e.g. SHOP
-// phase before the shop snapshot lands); turn never throws, so it is the
-// honest fallback and the returned uri names what was actually rendered.
+/**
+ * Render the requested live section when its snapshot is ready. Fall back to
+ * the always-available turn snapshot and return the URI that was rendered.
+ */
 export function renderSuccessor(
   uri: string,
   payload: Record<string, unknown>,
 ): { uri: string; markdown: string } {
+  let rendered: { uri: string; markdown: string } | undefined
   const render = LIVE_RENDERERS[uri]
   if (render !== undefined) {
     try {
-      return { uri, markdown: render(payload) }
+      rendered = { uri, markdown: render(payload) }
     } catch {
-      // Fall through to the turn snapshot below.
+      rendered = undefined
     }
   }
-  return { uri: "balatro://turn", markdown: turnToMarkdown(payload) }
+  return rendered ?? { uri: "balatro://turn", markdown: turnToMarkdown(payload) }
 }
 
 export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {

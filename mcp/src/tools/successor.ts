@@ -82,9 +82,8 @@ function packTransitionReady(payload: Record<string, unknown>): boolean {
   return BOOSTER_PHASES[phase] !== true || boosterReady(payload)
 }
 
-// Attach only the next decision surface that is both new and actionable.
-// Returning to a previously inspected parent surface, such as closing a
-// booster, deliberately has no successor context.
+// Attach only a new, actionable surface. Returning to an inspected parent,
+// such as after closing a booster, has no successor context.
 const SUCCESSOR_RULES: Record<string, SuccessorRule> = {
   select_blind: {
     uri: "balatro://hand",
@@ -209,9 +208,8 @@ interface SettledState {
   settled: boolean
 }
 
-// Polls getState until a retained successor rule's target phase is observed,
-// or the budget runs out. Never throws: a missing successor must not fail a
-// command that already succeeded.
+// Best-effort state polling: a read failure ends successor discovery without
+// failing the command that already succeeded.
 async function settleState(
   bridge: BridgeClient,
   rule: SuccessorRule,
@@ -252,8 +250,10 @@ interface SuccessorSection {
   settled: boolean
 }
 
-// Runs a mutating command, then attaches the settled next-step context to
-// the result. Command errors propagate unchanged with no successor read.
+/**
+ * Command errors propagate without a successor read; successful commands attach
+ * the next settled decision surface.
+ */
 export async function commandWithSuccessor(
   bridge: BridgeClient,
   kind: string,
