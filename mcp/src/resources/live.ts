@@ -811,7 +811,11 @@ function instanceResourceUri(instanceId: string, section: string): string {
   return `balatro://instances/${encodeURIComponent(instanceId)}/${section}`
 }
 
-function instancesToMarkdown(instances: Array<{ instance_id: string }>): string {
+function instancesToMarkdown(
+  instances: Array<{ instance_id: string }>,
+  selectedInstanceId: string | undefined,
+  connectedInstanceIds: ReadonlySet<string>,
+): string {
   if (instances.length === 0)
     return "# Balatro Instances\n\nNo running Balatro instances were found."
   return [
@@ -819,7 +823,13 @@ function instancesToMarkdown(instances: Array<{ instance_id: string }>): string 
     "",
     "Select an instance before reading or changing its live state.",
     "",
-    ...instances.map((instance) => `- **${instance.instance_id}**`),
+    ...instances.map((instance) => {
+      const markers = [
+        instance.instance_id === selectedInstanceId ? "selected" : undefined,
+        connectedInstanceIds.has(instance.instance_id) ? "connected" : undefined,
+      ].filter((marker): marker is string => marker !== undefined)
+      return `- **${instance.instance_id}**${markers.length === 0 ? "" : ` (${markers.join(", ")})`}`
+    }),
   ].join("\n")
 }
 
@@ -851,10 +861,24 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
     {
       title: "Balatro Instances",
       description:
-        "Live Balatro processes available for explicit connection and instance-scoped resources.",
+        "Live Balatro processes available for explicit connection and instance-scoped resources; selected and connected instances are marked.",
       mimeType: "text/markdown",
     },
-    async (uri) => markdownContents(uri, instancesToMarkdown(await bridge.listInstances())),
+    async (uri) => {
+      const instances = await bridge.listInstances()
+      return markdownContents(
+        uri,
+        instancesToMarkdown(
+          instances,
+          bridge.getSelectedInstanceId(),
+          new Set(
+            instances
+              .filter((instance) => bridge.isConnected(instance.instance_id))
+              .map((instance) => instance.instance_id),
+          ),
+        ),
+      )
+    },
   )
 
   const template = new ResourceTemplate("balatro://instances/{instance_id}/{section}", {
