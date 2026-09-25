@@ -1036,7 +1036,7 @@ handlers.skip_booster = function(args)
 
   G.FUNCS.skip_booster()
 
-  return phase_settle({ "SHOP", unpack(PACK_PHASES) }, { skipped_booster = true }, 8)
+  return anim_settle({ skipped_booster = true }, 8)
 end
 
 handlers.reorder_jokers = function(args)
