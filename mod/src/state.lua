@@ -951,19 +951,8 @@ local function snapshot()
 
   if G.hand and G.hand.cards then
     card_ids.sync(G.hand)
-    local cards = {}
-    local has_hidden = false
-    for _, card in ipairs(G.hand.cards) do
-      cards[#cards + 1] = card
-      if card_ids.hidden(G.hand, card) then has_hidden = true end
-    end
-    if has_hidden then
-      table.sort(cards, function(a, b)
-        return tostring(card_ids.public(G.hand, a)) < tostring(card_ids.public(G.hand, b))
-      end)
-    end
     local hand = {}
-    for _, card in ipairs(cards) do
+    for _, card in ipairs(G.hand.cards) do
       card_ids.public(G.hand, card)
       hand[#hand + 1] = serialize_playing_card(card, card_ids.hidden(G.hand, card))
     end
@@ -980,24 +969,13 @@ local function snapshot()
 
   if G.jokers and G.jokers.cards then
     card_ids.sync(G.jokers)
-    local cards = {}
-    local has_hidden = false
+    local jokers = {}
     for _, card in ipairs(G.jokers.cards) do
       local set = card and card.config and card.config.center and card.config.center.set
       if set == nil or set == 'Joker' then
-        cards[#cards + 1] = card
         card_ids.public(G.jokers, card)
-        if card_ids.hidden(G.jokers, card) then has_hidden = true end
+        jokers[#jokers + 1] = serialize_joker(card, card_ids.hidden(G.jokers, card))
       end
-    end
-    if has_hidden then
-      table.sort(cards, function(a, b)
-        return tostring(card_ids.public(G.jokers, a)) < tostring(card_ids.public(G.jokers, b))
-      end)
-    end
-    local jokers = {}
-    for _, card in ipairs(cards) do
-      jokers[#jokers + 1] = serialize_joker(card, card_ids.hidden(G.jokers, card))
     end
     if #jokers > 0 then payload.jokers = jokers end
   end
