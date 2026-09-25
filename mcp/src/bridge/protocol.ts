@@ -25,10 +25,9 @@ export function resolveBridgeSocketPath(
   env: Record<string, string | undefined> = process.env,
 ): string {
   const prefix = resolveBridgeSocketPrefix(platform, env)
-  if (platform !== "win32" && prefix.endsWith(".sock")) {
-    return `${prefix.slice(0, -5)}-${instanceId}.sock`
-  }
-  return `${prefix}-${instanceId}`
+  if (platform === "win32") return `${prefix}-${instanceId}`
+  const base = prefix.endsWith(".sock") ? prefix.slice(0, -5) : prefix
+  return `${base}-${instanceId}.sock`
 }
 
 export function resolveBridgeRegistryPrefix(
