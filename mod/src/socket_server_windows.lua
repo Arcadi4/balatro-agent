@@ -188,8 +188,14 @@ function SocketServer.init(on_request, socket_codec, disconnect_callback, bridge
 end
 
 function SocketServer.update()
-  if not listener then return end
-  accept_client()
+  if not listener then
+    listener = create_pipe()
+    if listener == INVALID_HANDLE_VALUE then
+      listener = nil
+      log('Named-pipe listener creation failed (error ' .. tonumber(kernel32.GetLastError()) .. ')')
+    end
+  end
+  if listener then accept_client() end
   for _, client in pairs(clients) do
     flush_client(client)
     read_client(client)
