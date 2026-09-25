@@ -15,10 +15,9 @@ end
 
 local function endpoint()
   local base = socket_base()
-  if jit.os ~= 'Windows' and base:sub(-5) == '.sock' then
-    return base:sub(1, -6) .. '-' .. instance_id .. '.sock'
-  end
-  return base .. '-' .. instance_id
+  if jit.os == 'Windows' then return base .. '-' .. instance_id end
+  if base:sub(-5) == '.sock' then base = base:sub(1, -6) end
+  return base .. '-' .. instance_id .. '.sock'
 end
 
 local function registry_base()
