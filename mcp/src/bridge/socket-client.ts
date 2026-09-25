@@ -48,7 +48,6 @@ interface BridgeSession {
   socket?: Socket
   decoder: TextDecoder
   bytesRead: number
-  commandSeq: number
   connectionGeneration: number
   connected: boolean
   handshaked: boolean
@@ -117,10 +116,11 @@ function toError(error: unknown): Error {
 export class BridgeClient {
   private readonly sessions = new Map<string, BridgeSession>()
   private readonly connectPromises = new Map<string, Promise<ConnectInfo>>()
+  private readonly pendingRequestSessions = new Map<number, BridgeSession>()
+  private commandSeq = 0
   private selectionPromise?: Promise<ConnectInfo>
   private defaultInstanceId?: string
   private disposed = false
-
   onDisconnect?: (instanceId: string) => void
 
   constructor(private readonly socketPath?: string) {}
@@ -131,6 +131,20 @@ export class BridgeClient {
 
   getSelectedInstanceId(): string | undefined {
     return this.defaultInstanceId
+  }
+
+  disconnect(instanceId?: string): string {
+    const resolvedId = instanceId ?? this.defaultInstanceId
+    if (resolvedId === undefined) throw instanceNotConnected(instanceId)
+    const session = this.sessions.get(resolvedId)
+    if (session === undefined || !session.connected) throw instanceNotConnected(resolvedId)
+    this.detachSession(
+      session,
+      new BridgeError("INSTANCE_NOT_CONNECTED", `Disconnected Balatro instance ${resolvedId}`, {
+        instance_id: resolvedId,
+      }),
+    )
+    return resolvedId
   }
 
   async listInstances(): Promise<BridgeInstance[]> {
@@ -178,7 +192,10 @@ export class BridgeClient {
 
   private async connectToInstance(instanceId: string): Promise<ConnectInfo> {
     const existing = this.sessions.get(instanceId)
-    if (existing?.connectInfo !== undefined) return existing.connectInfo
+    if (existing?.connectInfo !== undefined) {
+      this.defaultInstanceId = instanceId
+      return existing.connectInfo
+    }
     const pending = this.connectPromises.get(instanceId)
     if (pending !== undefined) return await pending
 
@@ -195,7 +212,6 @@ export class BridgeClient {
       socketPath: record?.endpoint ?? this.socketPath ?? instanceEndpoint(instanceId),
       decoder: new TextDecoder(),
       bytesRead: 0,
-      commandSeq: 0,
       connectionGeneration: 0,
       connected: false,
       handshaked: false,
@@ -211,7 +227,7 @@ export class BridgeClient {
       this.defaultInstanceId = instanceId
       return info
     } catch (error) {
-      if (this.sessions.get(instanceId) === session) this.sessions.delete(instanceId)
+      this.detachFailedSession(session, error)
       throw error
     } finally {
       if (this.connectPromises.get(instanceId) === promise) this.connectPromises.delete(instanceId)
@@ -256,7 +272,7 @@ export class BridgeClient {
     instanceId?: string
   }): Promise<number> {
     const session = this.requireSession(options.instanceId)
-    const id = ++session.commandSeq
+    const id = ++this.commandSeq
     const pending = this.createPendingRequest(session, id)
     const request: JsonRpcRequest = {
       jsonrpc: "2.0",
@@ -278,7 +294,13 @@ export class BridgeClient {
     seq: number,
     options: { timeoutMs?: number; instanceId?: string } = {},
   ): Promise<ResponseEnvelope> {
-    const session = this.requireSession(options.instanceId)
+    const session =
+      options.instanceId === undefined
+        ? this.pendingRequestSessions.get(seq)
+        : this.requireSession(options.instanceId)
+    if (session === undefined || this.pendingRequestSessions.get(seq) !== session) {
+      throw new BridgeError("STATE_NOT_FOUND", `No pending bridge request ${seq}`)
+    }
     const pending = session.pendingRequests.get(seq)
     if (!pending) throw new BridgeError("STATE_NOT_FOUND", `No pending bridge request ${seq}`)
     try {
@@ -322,6 +344,33 @@ export class BridgeClient {
     }
     this.sessions.clear()
     this.defaultInstanceId = undefined
+  }
+
+  private detachSession(session: BridgeSession, error: BridgeError): void {
+    const established = session.handshaked
+    const socket = session.socket
+    session.connectionGeneration += 1
+    session.socket = undefined
+    session.connected = false
+    session.handshaked = false
+    session.connectInfo = undefined
+    session.buffer = ""
+    session.bytesRead = 0
+    session.socketError = undefined
+    session.lastDisconnectError = error
+    this.rejectAllPending(session, error)
+    if (this.sessions.get(session.instanceId) === session) this.sessions.delete(session.instanceId)
+    if (this.defaultInstanceId === session.instanceId) this.defaultInstanceId = undefined
+    socket?.destroy()
+    if (established) {
+      process.stderr.write(`[balatro-mcp] bridge ${session.instanceId} disconnected: ${error.message}\n`)
+      this.onDisconnect?.(session.instanceId)
+    }
+  }
+
+  private detachFailedSession(session: BridgeSession, cause: unknown): void {
+    const error = cause instanceof BridgeError ? cause : gameNotRunning()
+    this.detachSession(session, error)
   }
 
   private async establish(session: BridgeSession): Promise<ConnectInfo> {
@@ -410,26 +459,7 @@ export class BridgeClient {
   }
 
   private handleSocketClose(session: BridgeSession, closeCause?: Error): void {
-    const established = session.handshaked
-    const error = this.connectionError(session, closeCause)
-    session.connectionGeneration += 1
-    session.socket = undefined
-    session.connected = false
-    session.handshaked = false
-    session.connectInfo = undefined
-    session.buffer = ""
-    session.bytesRead = 0
-    session.socketError = undefined
-    session.lastDisconnectError = error
-    this.rejectAllPending(session, error)
-    if (this.sessions.get(session.instanceId) === session) this.sessions.delete(session.instanceId)
-    if (this.defaultInstanceId === session.instanceId) this.defaultInstanceId = undefined
-    if (established) {
-      process.stderr.write(
-        `[balatro-mcp] bridge ${session.instanceId} disconnected: ${error.message}\n`,
-      )
-      this.onDisconnect?.(session.instanceId)
-    }
+    this.detachSession(session, this.connectionError(session, closeCause))
   }
 
   private async request(
@@ -439,7 +469,7 @@ export class BridgeClient {
     instanceId?: string,
   ): Promise<unknown> {
     const session = this.requireSession(instanceId)
-    const id = ++session.commandSeq
+    const id = ++this.commandSeq
     const pending = this.createPendingRequest(session, id, timeoutMs)
     const request: JsonRpcRequest = {
       jsonrpc: "2.0",
@@ -525,9 +555,11 @@ export class BridgeClient {
     void promise.catch(() => undefined)
     const pending: PendingRequest = { promise, resolve, reject }
     session.pendingRequests.set(id, pending)
+    this.pendingRequestSessions.set(id, session)
     if (timeoutMs !== undefined) {
       pending.timeout = setTimeout(() => {
         session.pendingRequests.delete(id)
+        this.pendingRequestSessions.delete(id)
         pending.reject(new BridgeError("STATE_STALE", "Bridge response timed out"))
       }, timeoutMs)
     }
@@ -543,6 +575,7 @@ export class BridgeClient {
     if (timeoutMs !== undefined) {
       pending.timeout = setTimeout(() => {
         session.pendingRequests.delete(id)
+        this.pendingRequestSessions.delete(id)
         pending.reject(new BridgeError("STATE_STALE", "Bridge response timed out"))
       }, timeoutMs)
     }
@@ -551,6 +584,7 @@ export class BridgeClient {
     } finally {
       clearTimeout(pending.timeout)
       session.pendingRequests.delete(id)
+      this.pendingRequestSessions.delete(id)
     }
   }
 
@@ -560,12 +594,14 @@ export class BridgeClient {
     clearTimeout(pending.timeout)
     pending.reject(error)
     session.pendingRequests.delete(id)
+    if (this.pendingRequestSessions.get(id) === session) this.pendingRequestSessions.delete(id)
   }
 
   private rejectAllPending(session: BridgeSession, error: Error): void {
-    for (const pending of session.pendingRequests.values()) {
+    for (const [id, pending] of session.pendingRequests) {
       clearTimeout(pending.timeout)
       pending.reject(error)
+      if (this.pendingRequestSessions.get(id) === session) this.pendingRequestSessions.delete(id)
     }
     session.pendingRequests.clear()
   }
