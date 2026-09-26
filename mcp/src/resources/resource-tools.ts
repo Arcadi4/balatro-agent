@@ -8,7 +8,7 @@ import READ_RESOURCE_DESCRIPTION from "../tools/descriptions/read-resource.txt" 
 import { readCardModifiersResource } from "./cardModifiers.js"
 import { readChallengesResource } from "./challenges.js"
 import { readDecksResource } from "./decks.js"
-import { readLiveResourceUri } from "./live.js"
+import { type CachedLiveState, readLiveResourceUri } from "./live.js"
 import { readPostgameResource } from "./postgame.js"
 import { readWikiResource, wikiIndexMarkdown } from "./wiki.js"
 
@@ -44,13 +44,13 @@ const readResourceOutputSchema = z
 interface ResolvedResource {
   uri: string
   markdown: string
-  state?: Record<string, unknown>
+  cachedState?: CachedLiveState
 }
 
 async function resolveResourceUri(
   bridge: BridgeClient,
   rawUri: string,
-  cachedState?: Record<string, unknown>,
+  cachedState?: CachedLiveState,
 ): Promise<ResolvedResource> {
   const uri = rawUri.trim()
 
@@ -101,7 +101,11 @@ async function resolveResourceUri(
 
     const liveResult = await readLiveResourceUri(bridge, normalized, cachedState)
     if (liveResult) {
-      return liveResult
+      return {
+        uri: liveResult.uri,
+        markdown: liveResult.markdown,
+        cachedState: { instanceId: liveResult.instanceId, payload: liveResult.state },
+      }
     }
 
     throw new ProtocolError(
@@ -120,14 +124,14 @@ export async function executeReadResource(
   bridge: BridgeClient,
   uris: string[],
 ): Promise<CallToolResult> {
-  let cachedState: Record<string, unknown> | undefined
+  let cachedState: CachedLiveState | undefined
   const results: Array<{ uri: string; markdown: string }> = []
 
   for (const uri of uris) {
     try {
       const resolved = await resolveResourceUri(bridge, uri, cachedState)
-      if (resolved.state) {
-        cachedState = resolved.state
+      if (resolved.cachedState !== undefined) {
+        cachedState = resolved.cachedState
       }
       results.push({ uri: resolved.uri, markdown: resolved.markdown })
     } catch (error) {
