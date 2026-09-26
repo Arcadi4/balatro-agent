@@ -16,13 +16,18 @@ export interface SuccessorOptions extends CommandResultOptions {
   pollMs?: number
 }
 
-const BOOSTER_PHASES: Record<string, true> = {
-  TAROT_PACK: true,
-  PLANET_PACK: true,
-  SPECTRAL_PACK: true,
-  STANDARD_PACK: true,
-  BUFFOON_PACK: true,
-  SMODS_BOOSTER_OPENED: true,
+// SMODS routes every booster through its own pseudo-state, so the vanilla pack
+// phases are never entered and cannot be used to spot an open pack. The payload
+// itself is the only reliable signal.
+const PACK_PHASE = "SMODS_BOOSTER_OPENED"
+
+// Phases the agent can actually decide in. Everything else, including
+// HAND_PLAYED, DRAW_TO_HAND, PLAY_TAROT, ROUND_EVAL, NEW_ROUND and GAME_OVER,
+// is a transition with no decision behind it.
+const ACTIONABLE_PHASES: Record<string, true> = {
+  SELECTING_HAND: true,
+  BLIND_SELECT: true,
+  SHOP: true,
 }
 
 const RUN_PHASES: Record<string, true> = {
@@ -33,7 +38,7 @@ const RUN_PHASES: Record<string, true> = {
   SHOP: true,
   ROUND_EVAL: true,
   GAME_OVER: true,
-  ...BOOSTER_PHASES,
+  [PACK_PHASE]: true,
 }
 
 const STATE_TIMEOUT_MS = 1_500
@@ -78,31 +83,55 @@ function shopReady(payload: Record<string, unknown>): boolean {
   )
 }
 
+function packOpen(payload: Record<string, unknown>): boolean {
+  return asRecord(payload.pack) !== undefined
+}
+
 function boosterReady(payload: Record<string, unknown>): boolean {
   const pack = asRecord(payload.pack)
   return pack !== undefined && Array.isArray(pack.options) && pack.options.length > 0
 }
 
 function packTransitionReady(payload: Record<string, unknown>): boolean {
-  return BOOSTER_PHASES[phaseOf(payload)] !== true || boosterReady(payload)
+  return !packOpen(payload) || boosterReady(payload)
+}
+
+// Settled means the snapshot is a decision surface, not merely a phase we were
+// waiting for: the agent must be able to act in it, and at least one legal
+// action has to be behind that phase. An open pack counts as its own surface.
+// The blind-select screen reports its phase before the panel is built, so the
+// payload can look ready while select_blind is not yet legal. Legal actions are
+// computed by the mod against the live UI, so they are the readiness signal.
+function hasLegalAction(payload: Record<string, unknown>, action?: string): boolean {
+  const actions = Array.isArray(payload.legal_actions) ? payload.legal_actions : []
+  return action === undefined
+    ? actions.length > 0
+    : actions.some((entry) => String(entry) === action)
+}
+
+function isActionablePhase(payload: Record<string, unknown>): boolean {
+  const actionable = ACTIONABLE_PHASES[phaseOf(payload)] === true || packOpen(payload)
+  return actionable && hasLegalAction(payload)
 }
 
 // Attach only a new, actionable surface. Returning to an inspected parent,
 // such as after closing a booster, has no successor context.
 const SUCCESSOR_RULES: Record<string, SuccessorRule> = {
   select_blind: {
-    uri: "balatro://hand",
+    // The turn resource is the only one carrying the chip target, hands and
+    // discards left, the blind's debuff text and the full legal-action list.
+    uri: "balatro://turn",
     awaitedPhases: { SELECTING_HAND: true },
   },
   skip_blind: {
     uri: "balatro://ante",
     awaitedPhases: { BLIND_SELECT: true },
-    ready: (payload) => asRecord(payload.blind_select) !== undefined,
+    ready: (payload) => hasLegalAction(payload, "skip_blind"),
   },
   reroll_boss: {
     uri: "balatro://ante",
     awaitedPhases: { BLIND_SELECT: true },
-    ready: (payload) => asRecord(payload.blind_select) !== undefined,
+    ready: (payload) => hasLegalAction(payload, "reroll_boss"),
   },
   play_hand: {
     awaitedPhases: { SELECTING_HAND: true, ROUND_EVAL: true, GAME_OVER: true },
@@ -135,36 +164,32 @@ const SUCCESSOR_RULES: Record<string, SuccessorRule> = {
   },
   buy_booster: {
     uri: "balatro://booster",
-    awaitedPhases: BOOSTER_PHASES,
+    awaitedPhases: { [PACK_PHASE]: true },
     ready: boosterReady,
   },
   select_booster_card: {
-    awaitedPhases: { ...BOOSTER_PHASES, SHOP: true },
-    resolveUri: (payload) => {
-      const phase = phaseOf(payload)
-      return BOOSTER_PHASES[phase] === true ? "balatro://booster" : undefined
-    },
+    awaitedPhases: { [PACK_PHASE]: true, SHOP: true },
+    resolveUri: (payload) => (packOpen(payload) ? "balatro://booster" : undefined),
     ready: packTransitionReady,
   },
   leave_shop: {
     uri: "balatro://ante",
     awaitedPhases: { BLIND_SELECT: true },
-    ready: (payload) => asRecord(payload.blind_select) !== undefined,
+    ready: (payload) => hasLegalAction(payload, "select_blind"),
   },
   new_game: {
     uri: "balatro://turn",
     awaitedPhases: { BLIND_SELECT: true },
+    ready: (payload) => hasLegalAction(payload, "select_blind"),
   },
   restart: {
     uri: "balatro://turn",
     awaitedPhases: { BLIND_SELECT: true },
+    ready: (payload) => hasLegalAction(payload, "select_blind"),
   },
   continue_game: {
     awaitedPhases: RUN_PHASES,
-    resolveUri: (payload) => {
-      const phase = phaseOf(payload)
-      return BOOSTER_PHASES[phase] === true ? "balatro://booster" : "balatro://turn"
-    },
+    resolveUri: (payload) => (packOpen(payload) ? "balatro://booster" : "balatro://turn"),
     ready: packTransitionReady,
   },
   buy_card: {
@@ -244,7 +269,9 @@ async function settleState(
   return {
     payload,
     settled:
-      rule.awaitedPhases[phase] === true && (rule.ready === undefined || rule.ready(payload)),
+      rule.awaitedPhases[phase] === true &&
+      (rule.ready === undefined || rule.ready(payload)) &&
+      isActionablePhase(payload),
   }
 }
 
