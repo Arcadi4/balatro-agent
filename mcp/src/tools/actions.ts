@@ -2,7 +2,7 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import { asRecord, toolError, type CommandResultOptions } from "../response.js"
+import { asRecord, type CommandResultOptions } from "../response.js"
 import BUY_BOOSTER_DESCRIPTION from "./descriptions/buy-booster.txt" with { type: "text" }
 import BUY_CARD_DESCRIPTION from "./descriptions/buy-card.txt" with { type: "text" }
 import BUY_CONSUMABLE_DESCRIPTION from "./descriptions/buy-consumable.txt" with { type: "text" }
@@ -28,11 +28,9 @@ import SORT_HAND_DESCRIPTION from "./descriptions/sort-hand.txt" with { type: "t
 import USE_CONSUMABLE_DESCRIPTION from "./descriptions/use-consumable.txt" with { type: "text" }
 import { commandWithSuccessor } from "./successor.js"
 
-const instanceIdSchema = z
-  .string()
-  .min(1)
-  .optional()
-  .describe("Instance ID from balatro://instances; omit only after selecting one with connect.")
+export const INSTANCE_ID_DESCRIPTION = "Target instance ID; defaults to the connected instance."
+
+const instanceIdSchema = z.string().min(1).optional().describe(INSTANCE_ID_DESCRIPTION)
 const emptySchema = z.object({ instance_id: instanceIdSchema }).strict()
 const cardIdSchema = z
   .union([z.string().min(1), z.number().int()])
@@ -71,13 +69,19 @@ const sortHandSchema = z
   .strict()
 const reorderHandSchema = z
   .object({
-    order: z.array(cardIdSchema).max(50).describe("Hand card IDs in desired left-to-right order."),
+    order: z
+      .array(cardIdSchema)
+      .max(50)
+      .describe("Every current hand card ID exactly once, in the desired left-to-right order."),
     instance_id: instanceIdSchema,
   })
   .strict()
 const reorderJokersSchema = z
   .object({
-    order: z.array(cardIdSchema).max(50).describe("Joker card IDs in desired left-to-right order."),
+    order: z
+      .array(cardIdSchema)
+      .max(50)
+      .describe("Every current joker card ID exactly once, in the desired left-to-right order."),
     instance_id: instanceIdSchema,
   })
   .strict()
@@ -85,19 +89,29 @@ const buyConsumableSchema = z
   .object({
     card_id: cardIdSchema,
     use: z.boolean().describe("Apply the consumable immediately instead of storing it."),
-    targets: targetsSchema,
+    targets: targetsSchema.describe("Target hand card IDs; only valid together with use=true."),
     instance_id: instanceIdSchema,
   })
   .strict()
-const newGameSchema = z
+const normalRunSchema = z
   .object({
-    deck: z.string().min(1).optional().describe("Deck key (e.g. b_red, b_blue)."),
-    stake: z.number().int().min(1).max(8).optional().describe("Stake difficulty, 1-8."),
+    deck: z.string().min(1).describe("Deck key (e.g. b_red, b_blue)."),
+    stake: z.number().int().min(1).max(8).describe("Stake difficulty, 1-8."),
     seed: z.string().min(1).optional().describe("Seed for a seeded run."),
-    challenge: z.string().min(1).optional().describe("Challenge id (e.g. c_omelette_1)."),
     instance_id: instanceIdSchema,
   })
   .strict()
+const challengeRunSchema = z
+  .object({
+    challenge: z.string().min(1).describe("Challenge id (e.g. c_omelette_1)."),
+    instance_id: instanceIdSchema,
+  })
+  .strict()
+// The mod rejects a normal run without deck+stake and a challenge run carrying
+// deck, stake, or seed, so encode both shapes as a closed union.
+const newGameSchema = z.union([challengeRunSchema, normalRunSchema], {
+  error: "Pass deck and stake for a normal run, or challenge alone for a challenge run.",
+})
 const successorSchema = z
   .object({
     uri: z.string(),
@@ -449,25 +463,15 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(true, false),
     },
-    async ({ deck, stake, seed, challenge, instance_id }) => {
-      if (challenge === undefined && (deck === undefined || stake === undefined)) {
-        return toolError(
-          "INVALID_TARGET",
-          "deck and stake are required when challenge is not specified",
-        )
-      }
-      if (
-        challenge !== undefined &&
-        (deck !== undefined || stake !== undefined || seed !== undefined)
-      ) {
-        return toolError("INVALID_TARGET", "challenge cannot be combined with deck, stake, or seed")
-      }
-      return commandWithSuccessor(
-        bridge,
-        "new_game",
-        { deck, stake, seed, challenge },
-        { timeoutMs: 18_000, instanceId: instance_id },
-      )
+    async (args) => {
+      const params =
+        "challenge" in args
+          ? { challenge: args.challenge }
+          : { deck: args.deck, stake: args.stake, seed: args.seed }
+      return commandWithSuccessor(bridge, "new_game", params, {
+        timeoutMs: 18_000,
+        instanceId: args.instance_id,
+      })
     },
   )
 }

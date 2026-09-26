@@ -35,9 +35,11 @@ export function toolError(
   message: string,
   details: Record<string, unknown> = {},
 ): CallToolResult {
+  // Text stays scannable for the model; the full envelope, details included,
+  // stays in structuredContent.
   const structuredContent = { error_code: errorCode, message, ...details }
   return {
-    content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+    content: [{ type: "text", text: `Error [${errorCode}]: ${message}` }],
     structuredContent,
     isError: true,
   }

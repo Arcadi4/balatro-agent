@@ -42,7 +42,6 @@ function newPostgameToMarkdown(data: Record<string, unknown>): string {
   return [
     `Created post-game analysis ${String(data.index)}.`,
     `Read it back at ${String(data.uri)}.`,
-    `Stored at ${String(data.filepath)}.`,
   ].join("\n")
 }
 

@@ -1,4 +1,4 @@
-import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
+import type { CallToolResult, McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { toolError, toolResult } from "../response.js"
@@ -51,12 +51,26 @@ function wikiSearchToMarkdown(data: object): string {
   return lines.join("\n")
 }
 
+// wiki.ts reports failures as WIKI_* codes in the message; surface the code
+// itself so callers branch on it instead of parsing prose.
+function wikiError(err: unknown): CallToolResult {
+  const detail = err instanceof Error ? err.message : String(err)
+  if (!/^WIKI_[A-Za-z0-9_]+$/.test(detail))
+    return toolError("WIKI_SEARCH_FAILED", `Balatro Wiki search failed: ${detail}`)
+  if (detail === "WIKI_PAGE_NOT_FOUND")
+    return toolError(
+      detail,
+      "No Balatro Wiki article matches that request; search for another title.",
+    )
+  return toolError(detail, "The Balatro Wiki request failed.")
+}
+
 async function searchWikiTool(args: z.infer<typeof wikiSearchInputSchema>) {
   try {
     const results = await searchWiki(args.query, args.limit)
     return toolResult({ results }, wikiSearchToMarkdown)
   } catch (err) {
-    return toolError("WIKI_SEARCH_FAILED", err instanceof Error ? err.message : String(err))
+    return wikiError(err)
   }
 }
 

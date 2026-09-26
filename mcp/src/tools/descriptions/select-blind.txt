@@ -1,1 +1,1 @@
-Select the current blind to begin the round. Transitions from blind selection to hand selection.
+Select the current blind to begin the round.

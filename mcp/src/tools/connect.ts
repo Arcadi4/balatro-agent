@@ -3,15 +3,14 @@ import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
 import { toolResult, withBridgeErrors } from "../response.js"
+import { INSTANCE_ID_DESCRIPTION } from "./actions.js"
 import CONNECT_DESCRIPTION from "./descriptions/connect.txt" with { type: "text" }
 import DISCONNECT_DESCRIPTION from "./descriptions/disconnect.txt" with { type: "text" }
 
 const STATE_TIMEOUT_MS = 1_500
 
 const connectInputSchema = z
-  .object({
-    instance_id: z.string().min(1).optional().describe("Instance ID from balatro://instances."),
-  })
+  .object({ instance_id: z.string().min(1).optional().describe(INSTANCE_ID_DESCRIPTION) })
   .strict()
 const connectOutputSchema = z
   .object({
@@ -29,9 +28,7 @@ const CONNECT_ANNOTATIONS = {
 } as const satisfies ToolAnnotations
 
 const disconnectInputSchema = z
-  .object({
-    instance_id: z.string().min(1).optional().describe("Connected instance ID to disconnect."),
-  })
+  .object({ instance_id: z.string().min(1).optional().describe(INSTANCE_ID_DESCRIPTION) })
   .strict()
 const disconnectOutputSchema = z
   .object({
@@ -51,7 +48,7 @@ function disconnectToMarkdown(data: Record<string, unknown>): string {
 }
 
 function connectToMarkdown(data: Record<string, unknown>): string {
-  return `Connected to Balatro instance ${String(data.instance_id)}; game phase: ${String(data.phase)}. Read balatro://instances/${String(data.instance_id)}/turn for the live snapshot.`
+  return `Connected to Balatro instance ${String(data.instance_id)}; game phase: ${String(data.phase)}. Read balatro://turn for the selected instance's live snapshot.`
 }
 
 export function registerConnectTool(server: McpServer, bridge: BridgeClient): void {

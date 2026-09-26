@@ -1,1 +1,1 @@
-Disconnect from a connected Balatro instance and release its bridge socket. Pass instance_id to target a specific connection; omit it to disconnect the selected instance. Fails INSTANCE_NOT_CONNECTED when no matching connection exists.
+Disconnect from a connected Balatro instance and release its bridge socket. Omit instance_id to disconnect the selected instance.

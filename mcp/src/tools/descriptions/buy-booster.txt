@@ -1,1 +1,1 @@
-Buy and open a booster pack from the shop. Buying a pack opens it immediately; pick cards with balatro_select_booster_card or close it with balatro_skip_booster.
+Buy and open a booster pack from the shop. Buying a pack opens it immediately.
