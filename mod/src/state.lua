@@ -958,14 +958,16 @@ end
 local function snapshot_hand_levels()
   if not G or not G.GAME or not G.GAME.hands then return nil end
   local levels = {}
+  -- The hand-select panel shows a level for every hand, played or not.
   for hand_name, data in pairs(G.GAME.hands) do
-    if data.visible then
+    if type(data) == 'table' then
       levels[#levels + 1] = {
         name = hand_name,
         level = data.level,
         chips = data.chips,
         mult = data.mult,
         played = data.played,
+        visible = data.visible and true or false,
       }
     end
   end

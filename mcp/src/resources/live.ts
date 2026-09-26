@@ -599,15 +599,14 @@ function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
   if (payload.endless_mode === true) lines.push("- **Endless Mode:** true")
   lines.push("")
 
-  // Unplayed level-1 hands carry no decision value.
+  // Every hand is listed: the native hand-select panel shows them all, so the agent needs them all.
   const handLevels = (Array.isArray(payload.hand_levels) ? payload.hand_levels : [])
     .map(asRecord)
     .filter((level): level is Record<string, unknown> => level !== undefined)
-    .filter((level) => Number(level.level) > 1 || Number(level.played) > 0)
   if (handLevels.length > 0) {
     lines.push("## Hand Levels\n")
     for (const level of handLevels) {
-      const played = level.played !== undefined ? ` — played ${String(level.played)}x` : ""
+      const played = Number(level.played) > 0 ? ` — played ${String(level.played)}x` : ""
       lines.push(
         `- **${String(level.name ?? "?")}**: Lv.${String(level.level ?? "?")} — ${String(level.chips ?? "?")} chips × ${String(level.mult ?? "?")} mult${played}`,
       )
