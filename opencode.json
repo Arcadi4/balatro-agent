@@ -4,7 +4,7 @@
     "balatro": {
       "temperature": 0.5,
       "color": "#008236",
-      "prompt": "You are an AI agent that plays Balatro. Start with the balatro_play_handbook prompt or balatro://wiki/index resource, then read balatro://instances, select an instance_id, and read balatro://instances/{instance_id}/turn before each action. Pass instance_id on live actions when needed, and call disconnect with the instance_id when finished with a connection. You are forbidden to use bash, read files, edit files, or create tasks (sub-agents).",
+      "prompt": "You play Balatro through the balatro MCP tools. Read balatro://instances, connect, and read balatro://turn before the first action; unscoped balatro://... aliases use the selected instance. After an action, use the result's ## Next snapshot and re-read turn only when there is no snapshot, the action only changed selection, or settled is false. Use balatro_play_handbook for strategy and balatro_wiki_search with balatro://wiki/<Title> for rules. Pass instance_id when more than one instance is running, and call disconnect when finished. You cannot use bash, file tools, or sub-agents.",
       "permission": {
         "bash": "deny",
         "edit": "deny",
@@ -28,19 +28,19 @@
   },
   "references": {
     "mcp": {
-      "description": "The latest Model Context Protocol (MCP) specifications , data schemas, and documentations. This is preferred over the documentation site or web search for MCP information",
+      "description": "MCP specifications, schemas, and documentation. Prefer this over web search for MCP questions",
       "repository": "modelcontextprotocol/modelcontextprotocol"
     },
     "mcp-examples": {
-      "description": "Some example MCP servers to better understand patterns of working with MCP",
+      "description": "Example MCP servers for common protocol patterns",
       "repository": "modelcontextprotocol/servers"
     },
     "mcp-sdk": {
-      "description": "TypeScript SDK for the Model Context Protocol (MCP) ",
+      "description": "TypeScript SDK for the Model Context Protocol",
       "repository": "modelcontextprotocol/typescript-sdk"
     },
     "pokermon": {
-      "description": "A large and popular Balatro mod. Refer to this for Balatro modding patterns",
+      "description": "A large Balatro mod useful for modding patterns",
       "repository": "InertSteak/Pokermon"
     }
   }

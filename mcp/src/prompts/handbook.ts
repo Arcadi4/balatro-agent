@@ -10,10 +10,9 @@ export function registerHandbookPrompt(server: McpServer): void {
     {
       title: "Balatro Play Handbook",
       description:
-        "Live-play operating guidance that prioritizes game-state inspection and verified Balatro Wiki rules.",
+        "How to drive a live Balatro run: read state before acting, trust each result's Next snapshot, verify rules against the Balatro Wiki, and weigh shop and blind decisions.",
     },
     () => ({
-      description: "Balatro play handbook",
       messages: [
         {
           role: "user",
