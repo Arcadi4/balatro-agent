@@ -48,6 +48,16 @@ local function serialize_played_card(card)
 end
 
 
+-- Mirrors state.lua's phase naming so errors name the phase instead of
+-- leaking the raw G.STATE integer.
+local function phase_name()
+  if not G or not G.STATE or not G.STATES then return 'UNKNOWN' end
+  for name, value in pairs(G.STATES) do
+    if value == G.STATE then return name end
+  end
+  return 'STATE_' .. tostring(G.STATE)
+end
+
 local function check_phase(allowed_phases)
   if not G or not G.STATE or not G.STATES then
     return err("WRONG_PHASE", "Game state not available")
@@ -55,7 +65,10 @@ local function check_phase(allowed_phases)
   for _, phase in ipairs(allowed_phases) do
     if G.STATE == G.STATES[phase] then return nil end
   end
-  return err("WRONG_PHASE", "Action not allowed in current phase (G.STATE=" .. tostring(G.STATE) .. ")")
+  return err(
+    "WRONG_PHASE",
+    "Action not allowed in phase " .. phase_name() .. "; allowed: " .. table.concat(allowed_phases, ", ")
+  )
 end
 
 local function find_card_in(area, target_card_id)
@@ -183,7 +196,7 @@ local function prepare_consumable_targets(card, args, shop_context)
       if shop_context then
         return err(
           'CANNOT_USE_NOW',
-          "'" .. name .. "' cannot be applied immediately from the shop: its use conditions are not met (e.g. no free slot for the cards it creates). No money was charged. Buy it with use=false to store it in a consumable slot (if one is free), then apply it with balatro_use_consumable when it becomes usable."
+          "'" .. name .. "' cannot be applied immediately from the shop: its use conditions are not met. No money was charged."
         )
       end
       return err('CANNOT_USE_NOW', "'" .. name .. "' cannot be used right now")
@@ -207,7 +220,7 @@ local function prepare_consumable_targets(card, args, shop_context)
       if in_range then
         use_err = err(
           'CANNOT_USE_NOW',
-          "'" .. name .. "' cannot be applied immediately from the shop: hand-targeting consumables are only usable during hand selection (SELECTING_HAND) or while a booster pack is open. No money was charged. Buy it with use=false to store it in a consumable slot (if one is free), then apply it with balatro_use_consumable when it becomes usable."
+          "'" .. name .. "' cannot be applied immediately from the shop: hand-targeting consumables require hand selection (SELECTING_HAND) or an open booster pack. No money was charged."
         )
       end
     end
@@ -232,22 +245,12 @@ local function require_shop_phase(action_name)
   if phase_err then
     return err(
       'WRONG_PHASE',
-      action_name .. ' can only be used during the SHOP phase. Read the selected instance turn resource before buying.'
+      action_name .. ' is only available during the SHOP phase; current phase is ' .. phase_name()
     )
   end
   return nil
 end
 
-local function purchase_tool_hint(set)
-  if set == 'Tarot' or set == 'Planet' or set == 'Spectral' then
-    return 'Use balatro_buy_consumable (set use=true to apply it immediately, or false to store it in a consumable slot).'
-  elseif set == 'Voucher' then
-    return 'Use balatro_buy_voucher to redeem it.'
-  elseif set == 'Booster' then
-    return 'Use balatro_buy_booster — booster packs are bought and opened in a single action.'
-  end
-  return ''
-end
 
 local function check_funds(cost)
   local available = available_funds()
@@ -268,7 +271,7 @@ local function purchase_from_shop(card, buy_and_use)
 
   local result = G.FUNCS.buy_from_shop(config)
   if result == false then
-    return err('SLOTS_FULL', 'The shop refused the purchase (no room for this card type). Free a slot or use the matching purchase tool.')
+    return err('SLOTS_FULL', 'The shop refused the purchase: no free slot for this card type.')
   end
   return nil
 end
@@ -360,7 +363,7 @@ handlers.select_blind = function(args)
   if phase_err then return phase_err end
 
   if not G.GAME or not G.GAME.round_resets or not G.GAME.round_resets.blind_choices then
-    return err("INVALID_TARGET", "No blind choices available; blind select UI is not ready")
+    return err("CANNOT_USE_NOW", "Blind select UI is not ready; no blind choices are available")
   end
 
   local blind_key = G.GAME.blind_on_deck
@@ -372,7 +375,7 @@ handlers.select_blind = function(args)
   local blind_ui = G.blind_select_opts and G.blind_select_opts[string.lower(blind_key)]
   local select_button = blind_ui and blind_ui.get_UIE_by_ID and blind_ui:get_UIE_by_ID("select_blind_button")
   if not select_button or not select_button.UIBox or not select_button.config or not select_button.config.ref_table then
-    return err("INVALID_TARGET", "Blind select UI is not ready for slot: " .. tostring(blind_key))
+    return err("CANNOT_USE_NOW", "Blind select UI is not ready for slot: " .. tostring(blind_key))
   end
 
   G.FUNCS.select_blind(select_button)
@@ -407,7 +410,7 @@ handlers.skip_blind = function(args)
   local tag_container = select_button and select_button.UIBox and select_button.UIBox.get_UIE_by_ID
       and select_button.UIBox:get_UIE_by_ID("tag_container")
   if not select_button or not select_button.UIBox or not tag_container then
-    return err("INVALID_TARGET", "Blind skip UI is not ready for slot: " .. tostring(blind_key))
+    return err("CANNOT_USE_NOW", "Blind skip UI is not ready for slot: " .. tostring(blind_key))
   end
 
   -- The base-game callback reads e.UIBox to resolve the tag reward.
@@ -434,10 +437,10 @@ handlers.reroll_boss = function(args)
     return err("CANNOT_USE_NOW", "A boss reroll is already in progress")
   end
   if not vouchers.v_retcon and not vouchers.v_directors_cut then
-    return err("INVALID_TARGET", "Director's Cut or Retcon is required to reroll the Boss Blind")
+    return err("LOCKED", "Director's Cut or Retcon is required to reroll the Boss Blind")
   end
   if vouchers.v_directors_cut and not vouchers.v_retcon and resets.boss_rerolled then
-    return err("INVALID_TARGET", "Director's Cut has already rerolled this Ante's Boss Blind")
+    return err("LOCKED", "Director's Cut has already rerolled this Ante's Boss Blind")
   end
   local funds_err = check_funds(10)
   if funds_err then return funds_err end
@@ -551,7 +554,7 @@ local function play_hand_settle(seed)
       blind_defeated = blind_chips ~= nil and score_after >= blind_chips or nil,
       hands_played_before = seed.hands_played_before,
       hands_played_after = current_hands_played(),
-      final_phase = G and G.STATE or nil,
+      final_phase = G and phase_name() or nil,
     }, timed_out)
   end
 
@@ -582,11 +585,11 @@ handlers.play_hand = function(args)
   end
   local hands_left = G.GAME and G.GAME.current_round and G.GAME.current_round.hands_left or 0
   if hands_left <= 0 then
-    return err("INVALID_TARGET", "No hands remaining")
+    return err("CANNOT_USE_NOW", "No hands remaining")
   end
 
   if G.GAME and G.GAME.blind and G.GAME.blind.block_play then
-    return err("INVALID_TARGET", "Boss blind is blocking play")
+    return err("CANNOT_USE_NOW", "Boss blind is blocking play")
   end
 
   local cards_played = #G.hand.highlighted
@@ -618,7 +621,7 @@ handlers.discard_hand = function(args)
   end
   local discards_left = G.GAME and G.GAME.current_round and G.GAME.current_round.discards_left or 0
   if discards_left <= 0 then
-    return err("INVALID_TARGET", "No discards remaining")
+    return err("CANNOT_USE_NOW", "No discards remaining")
   end
 
   local cards_discarded = #G.hand.highlighted
@@ -689,8 +692,7 @@ handlers.buy_card = function(args)
   if not (is_joker or is_playing_card) then
     return err(
       "INVALID_TARGET",
-      "balatro_buy_card only buys Jokers and regular playing cards (shop playing cards appear once the Magic Trick voucher is active); found a "
-        .. tostring(set) .. ". " .. purchase_tool_hint(set)
+      "balatro_buy_card only buys Jokers and regular playing cards; found a " .. tostring(set)
     )
   end
 
@@ -719,8 +721,7 @@ handlers.buy_consumable = function(args)
   if set ~= "Tarot" and set ~= "Planet" and set ~= "Spectral" then
     return err(
       "INVALID_TARGET",
-      "balatro_buy_consumable only buys Tarot, Planet, and Spectral cards; found a "
-        .. tostring(set) .. ". " .. purchase_tool_hint(set)
+      "balatro_buy_consumable only buys Tarot, Planet, and Spectral cards; found a " .. tostring(set)
     )
   end
 
@@ -764,7 +765,7 @@ handlers.buy_voucher = function(args)
   if shop_area ~= "voucher" or set ~= "Voucher" then
     return err(
       "INVALID_TARGET",
-      "balatro_buy_voucher only buys Vouchers; found a " .. tostring(set) .. ". " .. purchase_tool_hint(set)
+      "balatro_buy_voucher only buys Vouchers; found a " .. tostring(set)
     )
   end
 
