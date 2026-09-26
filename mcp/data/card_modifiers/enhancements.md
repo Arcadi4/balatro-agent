@@ -15,11 +15,9 @@
 | Gold | +$3 | if held in hand at end of round |
 | Lucky | 1/5 chance +20 Mult; 1/15 chance +$20 (rolled separately) | when scored |
 
-## Scoring-timing notes
+## Scoring timing
 
-- **Steel ×1.5** triggers in the **held-in-hand** phase, which resolves **before** independent Joker effects. It therefore multiplies only the Mult accumulated up to that point (base Mult + played-card/on-scored effects), **not** later +Mult from independent Jokers (e.g. Spare Trousers).
-- **Glass ×2** triggers when scored (played-card phase), so it also multiplies only the Mult accumulated before it is scored.
+A hand resolves in phases: each played card scores left to right (Enhancement, then Seal, then Edition), then the cards still held in hand apply their in-hand Enhancement, then Jokers activate left to right. Steel is the only Enhancement that activates in hand, so its ×1.5 Mult applies before any Joker adds Mult.
 
-Wiki source: https://balatrowiki.org/w/Card_modifiers#Enhancements
 
 <!-- oxfmt-ignore-end -->

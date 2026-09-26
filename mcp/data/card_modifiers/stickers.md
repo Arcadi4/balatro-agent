@@ -2,19 +2,19 @@
 
 # Card Stickers
 
-In-run stickers apply to Jokers and have a direct effect during the run. (Stake stickers are cosmetic and omitted.)
+3 in-run stickers apply to Jokers and change how they behave during an active run. (Stake stickers are cosmetic and omitted.)
 
-| Sticker | Effect |
-|---------|--------|
-| Eternal | cannot be sold or destroyed |
-| Perishable | debuffed after 5 rounds |
-| Rental | costs $1 to buy, charges $3 at end of round |
+| Sticker    | Effect                                                          | Unlocked by  |
+| ---------- | --------------------------------------------------------------- | ------------ |
+| Eternal    | cannot be sold or destroyed                                     | Black Stake  |
+| Perishable | debuffed after 5 rounds                                         | Orange Stake |
+| Rental     | costs $1 to buy, deducts $3 at each round end before the payout | Gold Stake   |
 
 ## Notes
 
-- A Joker can be Eternal **or** Perishable, never both.
-- Rental can stack with Eternal or Perishable.
-- Appearance rates (Orange/Gold Stakes): Eternal 30%, Perishable 30%, Rental 30% (Gold only).
+- Each unlocked tier has a 30% chance to apply its sticker to each Joker found in the Shop or a Booster Pack. White through Purple Stakes add none.
+- Eternal and Perishable never appear on the same Joker. Every Joker is compatible with Rental, so it stacks with either of them.
+- Some Jokers can never be Eternal or Perishable, such as the ones that sell or self-destruct.
 
 Wiki source: https://balatrowiki.org/w/Card_modifiers#Stickers
 
