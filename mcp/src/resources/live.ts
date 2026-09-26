@@ -5,6 +5,8 @@ import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server"
 import { BridgeError, type BridgeClient } from "../bridge/socket-client.js"
 import { asRecord } from "../response.js"
 
+type LiveRenderer = (payload: Record<string, unknown>, uri: string) => string
+
 const STATE_TIMEOUT_MS = 1_500
 
 const MENU_PHASES: ReadonlySet<string> = new Set(["MENU", "SPLASH", "TUTORIAL", "DEMO_CTA"])
@@ -14,7 +16,7 @@ function phaseOf(payload: Record<string, unknown>): string {
 }
 
 function unavailable(uri: string, phase: string, message: string): ProtocolError {
-  return new ProtocolError(ProtocolErrorCode.InvalidParams, message, {
+  return new ProtocolError(ProtocolErrorCode.InternalError, message, {
     error_code: "UNAVAILABLE",
     phase,
     uri,
@@ -32,7 +34,7 @@ async function readLiveResource(
   bridge: BridgeClient,
   uri: URL,
   instanceId: string,
-  render: (payload: Record<string, unknown>) => string,
+  render: LiveRenderer,
 ): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
   const uriString = uri.toString()
   let payload: Record<string, unknown>
@@ -57,7 +59,7 @@ async function readLiveResource(
       "Balatro is not in a run; start or continue a game to read this resource.",
     )
   }
-  return markdownContents(uri, render(payload))
+  return markdownContents(uri, render(payload, uriString))
 }
 
 const EDITION_NAMES: Record<string, string> = {
@@ -124,7 +126,8 @@ function displayHandCard(card: Record<string, unknown>): string {
   if (card.debuffed !== undefined) modifiers.push("Debuffed")
 
   const base = isStone ? "Stone Card" : `${displayCardRank(card.rank)}${displayCardSuit(card.suit)}`
-  return modifiers.length > 0 ? `${base} (${modifiers.join(", ")})` : base
+  const labelled = modifiers.length > 0 ? `${base} (${modifiers.join(", ")})` : base
+  return [labelled, ...displayStickers(card.stickers)].join(" ")
 }
 
 function displayHandCardLine(card: Record<string, unknown>): string {
@@ -135,25 +138,27 @@ function displayJokerName(card: Record<string, unknown>): string {
   return String(card.name ?? card.entity_id ?? card.card_id ?? "Unknown Joker")
 }
 
-function displayJokerRarity(value: unknown): string {
-  if (value === undefined || value === null) return ""
-  const rarity = String(value).toLowerCase()
-  const stars: Record<string, string> = {
-    "1": "*",
-    common: "*",
-    "2": "**",
-    uncommon: "**",
-    "3": "***",
-    rare: "***",
-    "4": "****",
-    legendary: "****",
-  }
-  return stars[rarity] ?? ""
+const RARITY_LABELS: Record<string, string> = {
+  "1": "[Common]",
+  common: "[Common]",
+  "2": "[Uncommon]",
+  uncommon: "[Uncommon]",
+  "3": "[Rare]",
+  rare: "[Rare]",
+  "4": "[Legendary]",
+  legendary: "[Legendary]",
 }
 
-function displayJokerPrice(card: Record<string, unknown>): string | undefined {
+function displayJokerRarity(value: unknown): string {
+  if (value === undefined || value === null) return ""
+  return RARITY_LABELS[String(value).toLowerCase()] ?? ""
+}
+
+function displayCardPrice(card: Record<string, unknown>): string | undefined {
   if (card.cost === undefined && card.sell_value === undefined) return undefined
-  return `$${String(card.cost ?? "?")}/$${String(card.sell_value ?? "?")}`
+  const buy = card.cost === undefined ? "?" : String(card.cost)
+  const sell = card.sell_value === undefined ? "?" : String(card.sell_value)
+  return `Buy $${buy} / Sell $${sell}`
 }
 
 function displayJokerLine(card: Record<string, unknown>, index: number): string {
@@ -161,20 +166,35 @@ function displayJokerLine(card: Record<string, unknown>, index: number): string 
     return `${index}. [${String(card.card_id ?? "?")}] Face-down Joker`
   }
   const rarity = displayJokerRarity(card.rarity)
-  const price = displayJokerPrice(card)
+  const price = displayCardPrice(card)
   const edition = displayCardModifier(card.edition, EDITION_NAMES)
   const status = [
     edition,
-    card.debuffed !== undefined ? "(x)" : undefined,
+    ...displayStickers(card.stickers),
+    card.debuffed !== undefined ? "(Debuffed)" : undefined,
     card.active === true ? "(active)" : undefined,
   ].filter((value): value is string => value !== undefined)
-  const parts = [
-    `${index}. [${String(card.card_id ?? "?")}]`,
-    `${displayJokerName(card)}${rarity}`,
-    price,
-    ...status,
-  ].filter((value): value is string => value !== undefined)
+  const name = [displayJokerName(card), rarity].filter((part) => part.length > 0).join(" ")
+  const parts = [`${index}. [${String(card.card_id ?? "?")}]`, name, price, ...status].filter(
+    (value): value is string => value !== undefined,
+  )
   return parts.join(" ")
+}
+
+const STICKER_LABELS: Record<string, string> = {
+  eternal: "Eternal",
+  perishable: "Perishable",
+  rental: "Rental",
+}
+
+function displayStickers(value: unknown): string[] {
+  const entries = Array.isArray(value) ? value : typeof value === "string" ? [value] : []
+  const labels: string[] = []
+  for (const entry of entries) {
+    const name = STICKER_LABELS[String(entry).toLowerCase()]
+    if (name !== undefined) labels.push(`[${name}]`)
+  }
+  return labels
 }
 
 function appendLiveDescription(lines: string[], card: Record<string, unknown>): void {
@@ -191,12 +211,12 @@ function appendLiveDescription(lines: string[], card: Record<string, unknown>): 
 
 function displayConsumableType(value: unknown): string {
   const kind = String(value ?? "").toLowerCase()
-  const prefixes: Record<string, string> = {
-    tarot: "T",
-    planet: "P",
-    spectral: "S",
+  const kinds: Record<string, string> = {
+    tarot: "Tarot",
+    planet: "Planet",
+    spectral: "Spectral",
   }
-  return prefixes[kind] ?? "?"
+  return kinds[kind] ?? "Consumable"
 }
 
 function displayConsumableLine(card: Record<string, unknown>, index: number): string {
@@ -205,8 +225,15 @@ function displayConsumableLine(card: Record<string, unknown>, index: number): st
     edition !== undefined ? `(${edition})` : undefined,
     card.usable === false ? "(unusable)" : undefined,
   ].filter((value): value is string => value !== undefined)
-  const suffix = status.length > 0 ? " " + status.join(" ") : ""
-  return `${index}. [${String(card.card_id ?? "?")}] ${displayConsumableType(card.kind)} ${String(card.name ?? card.entity_id ?? "Unknown Consumable")}${suffix}`
+  const price = displayCardPrice(card)
+  const parts = [
+    `${index}. [${String(card.card_id ?? "?")}]`,
+    `${displayConsumableType(card.kind)} ${String(card.name ?? card.entity_id ?? "Unknown Consumable")}`,
+    price,
+    ...displayStickers(card.stickers),
+    ...status,
+  ].filter((value): value is string => value !== undefined && value.length > 0)
+  return parts.join(" ")
 }
 
 function isJokerCard(card: Record<string, unknown>): boolean {
@@ -272,7 +299,7 @@ function appendShopSection(lines: string[], shop: Record<string, unknown>): void
   appendField(lines, "Dollars", shop.dollars)
   appendField(lines, "Reroll Cost", shop.reroll_cost)
   appendField(lines, "Free Rerolls", shop.free_rerolls)
-  appendField(lines, "Joker Slots", shop.slots)
+  appendField(lines, "Shop Card Slots", shop.slots)
 
   const sections = [
     ["Cards", shop.cards ?? shop.jokers],
@@ -337,8 +364,6 @@ function appendRoundSection(lines: string[], round: Record<string, unknown>): vo
   }
   appendField(lines, "Hands Left", round.hands_left)
   appendField(lines, "Discards Left", round.discards_left)
-  appendField(lines, "Hands Played", round.hands_played)
-  appendField(lines, "Discards Used", round.discards_used)
   appendField(lines, "Round Dollars", round.dollars)
   lines.push("")
 }
@@ -439,7 +464,7 @@ function appendCompactEntries(lines: string[], items: unknown): void {
   lines.push("")
 }
 
-function turnToMarkdown(payload: Record<string, unknown>): string {
+function turnToMarkdown(payload: Record<string, unknown>, _uri: string): string {
   const lines: string[] = []
 
   lines.push("# Turn\n")
@@ -472,7 +497,7 @@ function turnToMarkdown(payload: Record<string, unknown>): string {
   return lines.join("\n")
 }
 
-function handToMarkdown(payload: Record<string, unknown>): string {
+function handToMarkdown(payload: Record<string, unknown>, _uri: string): string {
   const lines: string[] = ["# Hand\n"]
 
   appendField(lines, "Hand Size", payload.hand_size)
@@ -488,13 +513,13 @@ function handToMarkdown(payload: Record<string, unknown>): string {
   return lines.join("\n")
 }
 
-function jokersToMarkdown(payload: Record<string, unknown>): string {
+function jokersToMarkdown(payload: Record<string, unknown>, _uri: string): string {
   const lines: string[] = [`# Jokers${slotLabel(payload.jokers, payload.joker_slots)}\n`]
   appendCompactEntries(lines, payload.jokers)
   return lines.join("\n")
 }
 
-function consumablesToMarkdown(payload: Record<string, unknown>): string {
+function consumablesToMarkdown(payload: Record<string, unknown>, _uri: string): string {
   const lines: string[] = [
     `# Consumables${slotLabel(payload.consumables, payload.consumable_slots)}\n`,
   ]
@@ -502,25 +527,27 @@ function consumablesToMarkdown(payload: Record<string, unknown>): string {
   return lines.join("\n")
 }
 
-function deckToMarkdown(payload: Record<string, unknown>): string {
+function deckToMarkdown(payload: Record<string, unknown>, uri: string): string {
   const deck = asRecord(payload.deck_summary)
-  if (!deck) return "No deck data available."
+  if (!deck) {
+    throw unavailable(uri, phaseOf(payload), "No deck summary is available for the current state.")
+  }
   const lines = [
     "# Deck\n",
-    "`b/e` = base/effective; `?N` = N face-down cards omitted from tallies.\n",
+    "`b/e` = base/effective; `?N` = N face-down cards omitted from tallies. Card identities are listed once, for the cards still in the deck.\n",
   ]
   appendDeckView(lines, "Remaining", deck.remaining)
   appendDeckView(lines, "Full Deck", deck.full_deck)
   return lines.join("\n")
 }
 
-function shopToMarkdown(payload: Record<string, unknown>): string {
+function shopToMarkdown(payload: Record<string, unknown>, uri: string): string {
   const shop = asRecord(payload.shop)
   if (!shop) {
     throw unavailable(
-      "balatro://shop",
+      uri,
       phaseOf(payload),
-      "The shop is not open; balatro://shop only exists during the SHOP phase.",
+      "The shop is not open; this resource only exists during the SHOP phase.",
     )
   }
   const lines: string[] = []
@@ -528,13 +555,13 @@ function shopToMarkdown(payload: Record<string, unknown>): string {
   return lines.join("\n")
 }
 
-function boosterToMarkdown(payload: Record<string, unknown>): string {
+function boosterToMarkdown(payload: Record<string, unknown>, uri: string): string {
   const pack = asRecord(payload.pack)
   if (!pack) {
     throw unavailable(
-      "balatro://booster",
+      uri,
       phaseOf(payload),
-      "No booster pack is open; balatro://booster only exists while a pack is being opened.",
+      "No booster pack is open; this resource only exists while a pack is being opened.",
     )
   }
   const lines: string[] = []
@@ -542,7 +569,7 @@ function boosterToMarkdown(payload: Record<string, unknown>): string {
   return lines.join("\n")
 }
 
-function runToMarkdown(payload: Record<string, unknown>): string {
+function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
   const lines: string[] = []
 
   lines.push("# Run\n")
@@ -559,11 +586,14 @@ function runToMarkdown(payload: Record<string, unknown>): string {
   if (payload.endless_mode === true) lines.push("- **Endless Mode:** true")
   lines.push("")
 
-  if (Array.isArray(payload.hand_levels) && payload.hand_levels.length > 0) {
+  // Unplayed level-1 hands carry no decision value.
+  const handLevels = (Array.isArray(payload.hand_levels) ? payload.hand_levels : [])
+    .map(asRecord)
+    .filter((level): level is Record<string, unknown> => level !== undefined)
+    .filter((level) => Number(level.level) > 1 || Number(level.played) > 0)
+  if (handLevels.length > 0) {
     lines.push("## Hand Levels\n")
-    for (const entry of payload.hand_levels) {
-      const level = asRecord(entry)
-      if (!level) continue
+    for (const level of handLevels) {
       const played = level.played !== undefined ? ` — played ${String(level.played)}x` : ""
       lines.push(
         `- **${String(level.name ?? "?")}**: Lv.${String(level.level ?? "?")} — ${String(level.chips ?? "?")} chips × ${String(level.mult ?? "?")} mult${played}`,
@@ -602,11 +632,11 @@ function runToMarkdown(payload: Record<string, unknown>): string {
   return lines.join("\n").trimEnd() + "\n"
 }
 
-function anteToMarkdown(payload: Record<string, unknown>): string {
+function anteToMarkdown(payload: Record<string, unknown>, uri: string): string {
   const selection = asRecord(payload.blind_select)
   if (!selection) {
     throw unavailable(
-      "balatro://ante",
+      uri,
       phaseOf(payload),
       "No blind overview is available for the current state.",
     )
@@ -726,11 +756,10 @@ function appendDeckView(lines: string[], title: string, value: unknown): void {
       )
     }
   }
-  if (Array.isArray(view.cards)) appendDeckCards(lines, view.cards, title === "Remaining")
+  // The full deck is a superset of the remaining cards, so identities are listed once.
+  if (title === "Remaining" && Array.isArray(view.cards)) appendDeckCards(lines, view.cards, true)
   lines.push("")
 }
-
-type LiveRenderer = (payload: Record<string, unknown>) => string
 
 interface LiveResourceDefinition {
   name: string
@@ -804,8 +833,22 @@ const LIVE_RESOURCES: LiveResourceDefinition[] = [
   },
 ]
 
-const LIVE_RENDERERS: Record<string, LiveRenderer> = {}
-for (const definition of LIVE_RESOURCES) LIVE_RENDERERS[definition.name] = definition.render
+const SCOPED_SECTION = /^balatro:\/\/instances\/([^/]+)\/([^/]+)$/
+const UNSCOPED_SECTION = /^balatro:\/\/([^/]+)$/
+
+function liveResourceFor(section: string | undefined): LiveResourceDefinition | undefined {
+  return LIVE_RESOURCES.find((definition) => definition.name === section)
+}
+
+function selectedInstance(bridge: BridgeClient, uri: string): string {
+  const instanceId = bridge.getSelectedInstanceId()
+  if (instanceId !== undefined) return instanceId
+  throw new ProtocolError(
+    ProtocolErrorCode.InternalError,
+    "No Balatro instance is selected; read balatro://instances and connect to an instance first.",
+    { error_code: "INSTANCE_NOT_CONNECTED", uri },
+  )
+}
 
 function instanceResourceUri(instanceId: string, section: string): string {
   return `balatro://instances/${encodeURIComponent(instanceId)}/${section}`
@@ -837,24 +880,38 @@ export function renderSuccessor(
   uri: string,
   payload: Record<string, unknown>,
 ): { uri: string; markdown: string } {
-  const match = /^balatro:\/\/instances\/([^/]+)\/([^/]+)$/.exec(uri)
-  const section = match?.[2]
-  const render = section === undefined ? undefined : LIVE_RENDERERS[section]
+  const scoped = SCOPED_SECTION.exec(uri)
+  const section = scoped?.[2] ?? UNSCOPED_SECTION.exec(uri)?.[1]
+  const render = liveResourceFor(section)?.render
   if (render !== undefined) {
     try {
-      return { uri, markdown: render(payload) }
+      return { uri, markdown: render(payload, uri) }
     } catch {
       // Fall through to the always-available turn snapshot.
     }
   }
-  const instanceId = match?.[1]
+  const instanceId = scoped?.[1]
   return {
-    uri: instanceId === undefined ? "balatro://instances" : instanceResourceUri(instanceId, "turn"),
-    markdown: turnToMarkdown(payload),
+    uri: instanceId === undefined ? "balatro://turn" : instanceResourceUri(instanceId, "turn"),
+    markdown: turnToMarkdown(payload, uri),
   }
 }
 
 export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
+  for (const definition of LIVE_RESOURCES) {
+    server.registerResource(
+      `${definition.name}-selected`,
+      `balatro://${definition.name}`,
+      {
+        title: definition.title,
+        description: `${definition.description} Reads the selected Balatro instance.`,
+        mimeType: "text/markdown",
+      },
+      (uri) =>
+        readLiveResource(bridge, uri, selectedInstance(bridge, uri.toString()), definition.render),
+    )
+  }
+
   server.registerResource(
     "instances",
     "balatro://instances",
@@ -912,7 +969,7 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
           "Instance and section are required",
         )
       }
-      const definition = LIVE_RESOURCES.find((candidate) => candidate.name === section)
+      const definition = liveResourceFor(section)
       if (definition === undefined) {
         throw new ProtocolError(ProtocolErrorCode.InvalidParams, "Unknown live resource section")
       }

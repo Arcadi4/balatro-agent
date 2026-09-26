@@ -48,6 +48,10 @@ interface SuccessorRule {
   changedField?: "hand" | "jokers"
 }
 
+function phaseOf(payload: Record<string, unknown>): string {
+  return typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
+}
+
 function changedCards(
   before: Record<string, unknown> | undefined,
   after: Record<string, unknown>,
@@ -80,8 +84,7 @@ function boosterReady(payload: Record<string, unknown>): boolean {
 }
 
 function packTransitionReady(payload: Record<string, unknown>): boolean {
-  const phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
-  return BOOSTER_PHASES[phase] !== true || boosterReady(payload)
+  return BOOSTER_PHASES[phaseOf(payload)] !== true || boosterReady(payload)
 }
 
 // Attach only a new, actionable surface. Returning to an inspected parent,
@@ -103,10 +106,8 @@ const SUCCESSOR_RULES: Record<string, SuccessorRule> = {
   },
   play_hand: {
     awaitedPhases: { SELECTING_HAND: true, ROUND_EVAL: true, GAME_OVER: true },
-    resolveUri: (payload) => {
-      const phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
-      return phase === "SELECTING_HAND" ? "balatro://hand" : "balatro://turn"
-    },
+    resolveUri: (payload) =>
+      phaseOf(payload) === "SELECTING_HAND" ? "balatro://hand" : "balatro://turn",
   },
   discard_hand: {
     uri: "balatro://hand",
@@ -140,7 +141,7 @@ const SUCCESSOR_RULES: Record<string, SuccessorRule> = {
   select_booster_card: {
     awaitedPhases: { ...BOOSTER_PHASES, SHOP: true },
     resolveUri: (payload) => {
-      const phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
+      const phase = phaseOf(payload)
       return BOOSTER_PHASES[phase] === true ? "balatro://booster" : undefined
     },
     ready: packTransitionReady,
@@ -161,30 +162,30 @@ const SUCCESSOR_RULES: Record<string, SuccessorRule> = {
   continue_game: {
     awaitedPhases: RUN_PHASES,
     resolveUri: (payload) => {
-      const phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
+      const phase = phaseOf(payload)
       return BOOSTER_PHASES[phase] === true ? "balatro://booster" : "balatro://turn"
     },
     ready: packTransitionReady,
   },
   buy_card: {
-    uri: "balatro://turn",
+    uri: "balatro://shop",
     awaitedPhases: { SHOP: true },
   },
   buy_consumable: {
-    uri: "balatro://turn",
+    uri: "balatro://shop",
     awaitedPhases: { SHOP: true },
   },
   buy_voucher: {
-    uri: "balatro://run",
+    uri: "balatro://shop",
     awaitedPhases: { SHOP: true },
   },
   sell_card: {
-    uri: "balatro://turn",
     awaitedPhases: { BLIND_SELECT: true, SELECTING_HAND: true, ROUND_EVAL: true, SHOP: true },
+    resolveUri: (payload) => (phaseOf(payload) === "SHOP" ? "balatro://shop" : "balatro://turn"),
   },
   use_consumable: {
-    uri: "balatro://turn",
     awaitedPhases: { SELECTING_HAND: true, SHOP: true },
+    resolveUri: (payload) => (phaseOf(payload) === "SHOP" ? "balatro://shop" : "balatro://turn"),
   },
   reorder_jokers: {
     uri: "balatro://jokers",
@@ -224,7 +225,7 @@ async function settleState(
   let phase: string
   try {
     payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
-    phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
+    phase = phaseOf(payload)
   } catch {
     return { settled: false }
   }
@@ -235,7 +236,7 @@ async function settleState(
     await Bun.sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())))
     try {
       payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
-      phase = typeof payload.phase === "string" ? payload.phase : "UNKNOWN"
+      phase = phaseOf(payload)
     } catch {
       return { payload, settled: false }
     }
@@ -297,8 +298,11 @@ export async function commandWithSuccessor(
           ? uri
           : uri.replace("balatro://", `balatro://instances/${encodeURIComponent(instanceId)}/`)
       const rendered = renderSuccessor(scopedUri, outcome.payload)
-      const phase = typeof outcome.payload.phase === "string" ? outcome.payload.phase : "UNKNOWN"
-      envelope.next = { uri: rendered.uri, phase, settled: outcome.settled }
+      envelope.next = {
+        uri: rendered.uri,
+        phase: phaseOf(outcome.payload),
+        settled: outcome.settled,
+      }
       const successor: SuccessorSection = {
         uri: rendered.uri,
         markdown: rendered.markdown,
