@@ -8,11 +8,11 @@
 
 <!-- README-I18N:END -->
 
-[![npm](https://img.shields.io/npm/v/balatro-mcp?style=flat-square)](https://www.npmjs.com/package/balatro-mcp) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-3c873a?style=flat-square)](https://nodejs.org) [![Bun](https://img.shields.io/badge/Bun-1.4.0-f9f1e1?style=flat-square&logo=bun)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
+[![npm](https://img.shields.io/npm/v/balatro-mcp?style=flat-square)](https://www.npmjs.com/package/balatro-mcp) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-3c873a?style=flat-square)](https://nodejs.org) [![Bun](https://img.shields.io/badge/Bun-1.4.2-f9f1e1?style=flat-square&logo=bun)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
 
 </div>
 
-让 AI 也可以享受小丑牌。Balatro Agent 可以把任何兼容 MCP 的 AI 客户端接入正在运行的游戏。智能体读取实时游戏状态，选盲注、出牌弃牌、逛商店买小丑，以及任何人类玩家可以执行的操作。不需要截屏，也不需要模型视觉，一切都基于纯文本的工具调用。
+让 AI 也能玩小丑牌。Balatro Agent 可将任何兼容 MCP 的 AI 客户端接入运行中的游戏。智能体可以读取实时状态、选盲注、出牌弃牌、购买小丑牌，并执行人类玩家的操作。无需截屏或视觉模型，所有操作都通过文本工具调用完成。
 
 <https://github.com/user-attachments/assets/bcb40bd1-a9f8-491c-9a98-6f1a11c90fab>
 
@@ -49,7 +49,7 @@
 > [!TIP]
 > 在 macOS 上，也可以克隆并在仓库根目录运行 `make install-mods`，不用手动复制。
 
-复制完成后，路径应该是 `.../Balatro/Mods/balatro-agent/main.lua`。
+最终路径应该是 `.../Balatro/Mods/balatro-agent/main.lua`。
 
 ### 3. 接入 MCP
 
@@ -66,7 +66,7 @@
 }
 ```
 
-命令：
+完整命令：
 
 ```bash
 npx -y balatro-mcp
@@ -86,7 +86,7 @@ npx -y balatro-mcp
 - 在商店购买小丑、消耗牌、优惠券和补充包，刷新商店、结算收益
 - 使用和出售卡牌，调整小丑顺序以优化触发次序
 - 用任意牌组、赌注或挑战开始、继续、重开一局游戏
-- 内置 Balatro 规则文档，并可实时查询 Balatro Wiki 上的卡牌、盲注和机制说明
+- 内置 Balatro 手册和参考数据，并可实时查询 Balatro Wiki 上的卡牌、盲注和机制说明
 
 > [!IMPORTANT]
-> Wiki 读取是通过 [MCP 资源](https://modelcontextprotocol.io/specification/2026-07-28/server/resources)实现的，如果你的 Agent 客户端没有正确支持这个功能，Agent 可能无法顺利获取 Wiki 内容。
+> 实时游戏状态和 Wiki 都通过 [MCP 资源](https://modelcontextprotocol.io/specification/2026-07-28/server/resources) 提供。如果客户端没有完整支持资源功能，Agent 可能无法读取当前游戏状态或 Wiki 内容。

@@ -7,64 +7,45 @@ Two runtime components:
 - `mcp/`: Bun TypeScript stdio MCP server
 - `mod/`: Lua Steamodded mod running inside Balatro
 
-IPC: newline-delimited JSON-RPC 2.0 over per-instance `/tmp/balatro-mcp-<instance>.sock` (macOS/Linux) or `\\.\pipe\balatro-mcp-<instance>` (Windows). `BALATRO_BRIDGE_SOCKET` overrides the endpoint prefix; `BALATRO_BRIDGE_REGISTRY` overrides the discovery-record prefix. Both processes must use the same overrides.
+IPC is newline-delimited JSON-RPC 2.0 over a per-instance endpoint:
+`/tmp/balatro-mcp-<instance>.sock` (macOS/Linux) or `\\.\pipe\balatro-mcp-<instance>`
+(Windows). Each launch publishes a discovery record (`/tmp/balatro-mcp-<instance>`,
+`%TEMP%\balatro-mcp-<instance>` on Windows) that clients scan, and each connection carries an
+instance id, so one process can drive several Balatro instances. `BALATRO_BRIDGE_SOCKET`
+overrides the endpoint prefix and `BALATRO_BRIDGE_REGISTRY` the record prefix; both processes
+must use the same overrides or discovery finds nothing.
+
+Live state ships as resources: `balatro://instances`,
+`balatro://instances/{instance_id}/{turn,hand,jokers,consumables,deck,shop,booster,run,ante}`,
+and the unscoped aliases `balatro://turn` … `balatro://ante`, which resolve to the selected
+instance. `connect` selects an instance; action tools take an optional `instance_id` and
+otherwise use the selected one.
 
 ## Toolchain
 
 ### Bun
 
-The MCP package is Bun-first. Use Bun 1.4.2 or later from `mcp/` for dependency
-installation, development, formatting, typechecking, tests, and builds:
+`mcp/` is Bun-first. Use Bun 1.4.2 or later for dependency installation, development,
+formatting, typechecking, tests, and builds; the script names live in `mcp/package.json`.
+Install with `bun install --frozen-lockfile`.
 
-```sh
-cd mcp
-bun install --frozen-lockfile
-bun run dev             # watch mode
-bun run typecheck
-bun run format
-bun test
-bun run build
-```
-
-Do not introduce a Node-based development command or require Node in the MCP build
-job. `bunfig.toml` selects Bun for package executables, and Bun's built-in Node
-compatibility APIs cover the remaining `node:` imports. Use Bun APIs when a suitable
-native API exists.
-
-Release builds use Bun:
-
-```sh
-bun run build:release   # build native binaries and npm packages
-```
-
-Run `bun run release:setup` once to configure npm packages. It may use native npm for
-the interactive trust flow. The GitHub Actions build job uses only Bun; Node/npm are
-used only by the publishing job. End users running `npx` receive a native binary.
+Do not introduce a Node-based development command or require Node in the MCP build job.
+`bunfig.toml` selects Bun for package executables, and Bun's built-in Node compatibility APIs
+cover the remaining `node:` imports. Use Bun APIs when a suitable native API exists. The
+GitHub Actions build job uses only Bun; Node/npm appear solely in the publishing job, and end
+users running `npx` receive a native binary. `bun run release:setup` is the one interactive npm
+step; `mcp/README.md` owns the release flow.
 
 ### Make
 
-```sh
-make doctor        # check local Balatro, Lovely, and SMODS paths
-make install-mods  # sync mod into the Balatro Mods directory
-make run           # sync mod, then launch Balatro with Lovely (pass ARGS="...")
-```
+`make doctor` checks the local Balatro, Lovely, and SMODS paths, `make install-mods` syncs
+`mod/` into the Balatro `Mods` directory, and `make run` syncs and then launches Balatro with
+Lovely (`ARGS="..."` passes game arguments). `BALATRO_DIR` and `BALATRO_SAVE` override the
+macOS defaults.
 
-## MCP server layout
+## Code conventions
 
-```text
-mcp/src/
-├── index.ts          server + stdio lifecycle
-├── response.ts       MCP result rendering, bridge error mapping
-├── wiki.ts           Wiki HTML→Markdown, MediaWiki API
-├── postgame.ts       post-game analysis storage
-├── text-imports.d.ts ambient types for .txt/.md imports
-├── bridge/           JSON-RPC framing + connect handshake + IPC client
-├── tools/            connect.ts, actions.ts, entities.ts, postgame.ts, descriptions/
-├── prompts/          handbook.ts + handbook.md
-└── resources/        live.ts, wiki.ts, postgame.ts, cardModifiers.ts, decks.ts, stakes.ts, challenges.ts
-```
-
-Static reference data: `mcp/data/`. Run with `bun run start`; bundling embeds text imports.
+Static reference data lives in `mcp/data/`; the bundle embeds those text imports.
 
 ### TypeScript conventions
 
@@ -78,24 +59,16 @@ Static reference data: `mcp/data/`. Run with `bun run start`; bundling embeds te
 
 - Import from `@modelcontextprotocol/server`; stdio from `.../stdio`. Use `serveStdio`.
 - Every tool: title, strict Zod input schema, output schema where applicable, accurate annotations.
-- Hints: `readOnlyHint` for reads; `destructiveHint` for state-changing actions; `idempotentHint` only when repeat-safe; `openWorldHint: true` for wiki, `false` for local game ops.
+- Hints: `readOnlyHint` for reads; `destructiveHint: true` only where a tool spends, discards,
+  or irreversibly replaces game state — not for every state change, so selection, sorting, and
+  reordering stay `false`; `idempotentHint` only when repeat-safe; `openWorldHint: true` for
+  wiki, `false` for local game ops.
 - Machine-readable data in `structuredContent`; useful Markdown in text content.
 - Live-play guidance in `balatro_play_handbook`. Verify rules via wiki; do not duplicate static rule resources. Cache discovery/list and immutable resources.
 
 [MCP 2026-07-28 docs](https://modelcontextprotocol.io/docs/2026-07-28) · [TS SDK v2](https://ts.sdk.modelcontextprotocol.io/v2/)
 
-## Lua mod layout
-
-```text
-mod/src/
-├── actions.lua                phase/target checks and game mutations
-├── commands.lua               command dispatch and deferred scoring
-├── jsonrpc.lua                JSON-RPC validation and error mapping
-├── socket_codec.lua           shared NDJSON codec
-├── socket_server.lua          macOS/Linux AF_UNIX server
-├── socket_server_windows.lua  Windows named-pipe server
-└── state.lua                  state snapshots
-```
+## Lua mod
 
 Platform transport is selected before FFI declarations load; keep protocol behavior identical across POSIX and Windows.
 
@@ -103,7 +76,15 @@ Validate input shape once in the MCP Zod schema. Lua validates only game-authori
 
 ## Testing
 
-You may create minimal PoC tests and dispose them once the targeted module passes verification. No persisted and serious tests unless explicitly asked.
+Use disposable smoke tests for verification. Do not commit new test suites unless requested.
+
+## Validation ownership
+
+The agent that owns a change set runs project-wide validation once, after every concurrent
+edit has landed: `bun run typecheck`, `bun run format`, `bun test`, `bun run build`, and the
+Lua parse over `mod/`. Siblings and subagents must not run these mid-flight, because
+half-finished edits elsewhere turn into phantom failures. Verify a change with a scoped
+command or a targeted repro that exercises the path you touched.
 
 ## Windows compatibility
 

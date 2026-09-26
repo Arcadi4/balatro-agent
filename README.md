@@ -8,11 +8,11 @@
 
 <!-- README-I18N:END -->
 
-[![npm](https://img.shields.io/npm/v/balatro-mcp?style=flat-square)](https://www.npmjs.com/package/balatro-mcp) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-3c873a?style=flat-square)](https://nodejs.org) [![Bun](https://img.shields.io/badge/Bun-1.4.0-f9f1e1?style=flat-square&logo=bun)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
+[![npm](https://img.shields.io/npm/v/balatro-mcp?style=flat-square)](https://www.npmjs.com/package/balatro-mcp) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-3c873a?style=flat-square)](https://nodejs.org) [![Bun](https://img.shields.io/badge/Bun-1.4.2-f9f1e1?style=flat-square&logo=bun)](https://bun.sh) [![TypeScript](https://img.shields.io/badge/TypeScript-7.x-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org) [![MCP](https://img.shields.io/badge/MCP-2026--07--28-111827?style=flat-square)](https://modelcontextprotocol.io) [![SMODS](https://img.shields.io/badge/SMODS-Powered-8a2be2?style=flat-square)](https://github.com/Steamodded/smods)
 
 </div>
 
-Let an AI agent play Balatro. Balatro Agent connects any MCP-compatible AI client to a running game. The agent may read the live game state, pick blinds, play and discard hands, purchase jokers, and anything a human player is capable of. No screen capture or model vision required, everything works over text-based tool calls.
+Let an AI agent play Balatro. Balatro Agent connects any MCP-compatible AI client to a running game. The agent can read live state, pick blinds, play and discard hands, buy jokers, and perform any action available to a human player. It needs no screen capture or vision model; everything works through text tool calls.
 
 <https://github.com/user-attachments/assets/bcb40bd1-a9f8-491c-9a98-6f1a11c90fab>
 
@@ -66,7 +66,7 @@ Add the server to your MCP client configuration (Claude Code, Cursor, etc.), che
 }
 ```
 
-The command in one line:
+The whole command on one line:
 
 ```bash
 npx -y balatro-mcp
@@ -86,7 +86,7 @@ npx -y balatro-mcp
 - Interact with the shop to buy jokers, consumables, vouchers and boosters, reroll, cash out
 - Use and sell cards, reorder jokers for optimal trigger order
 - Start, continue, and restart runs with any deck, stake, or challenges
-- Provides a built-in Balatro rule doc, plus live lookup of every card, blind, and mechanic from the Balatro Wiki
+- Provides a play handbook and reference data, plus live lookup of cards, blinds, and mechanics from the Balatro Wiki
 
 > [!IMPORTANT]
-> Wiki was exposed as [MCP resoruces](https://modelcontextprotocol.io/specification/2026-07-28/server/resources). If your agent client does not support resources properly, agents might not have access to wiki pages.
+> Live game state and the wiki are exposed as [MCP resources](https://modelcontextprotocol.io/specification/2026-07-28/server/resources). If your agent client does not support resources properly, the agent may be unable to read the current game state or wiki pages.

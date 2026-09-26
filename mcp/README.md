@@ -6,7 +6,7 @@
 
 </div>
 
-Use this MCP server with the [game mod](https://www.nexusmods.com/games/balatro/mods/927) to allow AI agents play Balatro.
+Use this MCP server with the [game mod](https://www.nexusmods.com/games/balatro/mods/927) to allow AI agents to play Balatro.
 
 [GitHub](https://github.com/Arcadi4/balatro-agent)
 
@@ -29,16 +29,14 @@ bun run dev
 bun run build
 ```
 
-The local build produces `dist/balatro-mcp` (`dist/balatro-mcp.exe` on Windows).
-Development, formatting, typechecking, and compilation all run with Bun; Node is
-not required. `bunfig.toml` forces package executables to use Bun and selects Bun's
-cross-platform shell. `node:net`, `node:path`, and `node:os` imports use Bun's built-in
-compatibility APIs, including Windows named pipes. The MCP SDK owns stdio.
+The local build produces `dist/balatro-mcp` (`dist/balatro-mcp.exe` on Windows). Node is not
+required: `bunfig.toml` forces package executables to use Bun and selects Bun's cross-platform
+shell, and the `node:net`, `node:path`, and `node:os` imports use Bun's built-in compatibility
+APIs, including Windows named pipes. The MCP SDK owns stdio.
 
-Postgame files use Bun file I/O, globbing, and YAML. Reference hashes use
-`Bun.CryptoHasher`. The wiki keeps its HTML-to-Markdown pipeline because Bun's
-Markdown API converts Markdown to HTML; the custom infobox, MathML, and table
-conversion still needs an HTML tree.
+Postgame files use Bun file I/O, globbing, and YAML, reference hashes use `Bun.CryptoHasher`, and
+the wiki keeps its own HTML-to-Markdown pipeline because Bun's Markdown API converts Markdown to
+HTML, which would leave the infobox, MathML, and table conversion without an HTML tree.
 
 ## Releases
 
@@ -74,9 +72,8 @@ For each release, bump the mod and MCP versions together and push the matching
 4. Uploads the mod and native archives to GitHub Releases.
 
 You manage one version and approve one launcher package per release. No individual
-binary package approvals or expiring publish tokens are required. Node/npm are used
-only for registry operations; development, builds, and the release workflow's build
-job run with Bun.
+binary package approvals or expiring publish tokens are required; Node/npm are used
+only for registry operations.
 
 See [npm bulk trusted-publisher setup](https://docs.npmjs.com/cli/v11/commands/npm-trust/#bulk-usage)
 for the shared 2FA session behavior.
