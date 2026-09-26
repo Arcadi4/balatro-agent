@@ -1,39 +1,31 @@
 import { expect, test } from "bun:test"
 
-import type { McpServer } from "@modelcontextprotocol/server"
-
 import type { BridgeClient } from "../bridge/socket-client.js"
-import { readLiveResourceUri, registerLiveResources } from "./live.js"
+import { liveResources, readLiveResourceUri } from "./live.js"
 
-test("registers all live resources without tools", () => {
-  const registeredResources: string[] = []
-  const tools: string[] = []
-  const server = {
-    registerResource(name: string) {
-      registeredResources.push(name)
-      return { enable() {}, disable() {} }
-    },
-    registerTool(name: string) {
-      tools.push(name)
-    },
-  } as unknown as McpServer
-
-  registerLiveResources(server, {} as BridgeClient)
-
-  expect(registeredResources).toContain("turn")
-  expect(registeredResources).toContain("hand")
-  expect(registeredResources).toContain("jokers")
-  expect(registeredResources).toContain("consumables")
-  expect(registeredResources).toContain("deck")
-  expect(registeredResources).toContain("shop")
-  expect(registeredResources).toContain("booster")
-  expect(registeredResources).toContain("run")
-  expect(registeredResources).toContain("ante")
-  expect(tools).toEqual([])
+test("builds unscoped live resources and the instance template", () => {
+  const resources = liveResources({} as BridgeClient, async () => [])
+  const names = resources.map((resource) => resource.name)
+  for (const section of [
+    "turn",
+    "hand",
+    "jokers",
+    "consumables",
+    "deck",
+    "shop",
+    "booster",
+    "run",
+    "ante",
+  ]) {
+    expect(names).toContain(`${section}-single`)
+  }
+  expect(names).toContain("instances")
+  expect(names).toContain("live")
 })
 
 test("reads live resource by URI when in a run", async () => {
   const bridge = {
+    getSelectedInstanceId: () => "instance-1",
     getState: async () => ({
       phase: "SELECTING_HAND",
       ante: 1,
@@ -54,6 +46,7 @@ test("reads live resource by URI when in a run", async () => {
 
 test("fails with UNAVAILABLE when reading live resource during menu phase", async () => {
   const bridge = {
+    getSelectedInstanceId: () => "instance-1",
     getState: async () => ({
       phase: "MENU",
     }),
