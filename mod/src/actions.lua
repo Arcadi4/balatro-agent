@@ -58,16 +58,69 @@ local function phase_name()
   return 'STATE_' .. tostring(G.STATE)
 end
 
+-- SMODS routes every booster through the generic SMODS_BOOSTER_OPENED
+-- pseudo-state, which carries no pack identity. The live phase says a pack
+-- screen is up; the booster object says which pack. Both are required:
+-- SMODS.OPENED_BOOSTER is only reset when SMODS initialises, so trusting it
+-- alone would report a phantom pack long after the pack closed.
+local PACK_STATE_NAME = 'SMODS_BOOSTER_OPENED'
+
+local VANILLA_PACK_STATES = {
+  TAROT_PACK = true,
+  PLANET_PACK = true,
+  SPECTRAL_PACK = true,
+  STANDARD_PACK = true,
+  BUFFOON_PACK = true,
+}
+
+local function pack_center()
+  if type(booster_obj) == 'table' then return booster_obj end
+  local booster = SMODS and SMODS.OPENED_BOOSTER or nil
+  if booster and booster.config and type(booster.config.center) == 'table' then
+    return booster.config.center
+  end
+  return nil
+end
+
+local function is_pack_phase()
+  if not G or not G.STATE or not G.STATES then return false end
+  if pack_center() == nil then return false end
+  local smods_state = G.STATES[PACK_STATE_NAME]
+  if smods_state and G.STATE == smods_state then return true end
+  -- Vanilla pack states only exist when SMODS is not installed.
+  for name in pairs(VANILLA_PACK_STATES) do
+    if G.STATES[name] and G.STATE == G.STATES[name] then return true end
+  end
+  return false
+end
+
+-- A phase target is a G.STATES name, or { name, match } for a phase the game
+-- marks with live state instead of a state name.
+local function target_name(target)
+  if type(target) == 'string' then return target end
+  return target.name
+end
+
+local function target_matches(target)
+  if type(target) == 'string' then
+    if not G or not G.STATE or not G.STATES then return false end
+    return G.STATE == G.STATES[target] and true or false
+  end
+  return target.match() and true or false
+end
+
 local function check_phase(allowed_phases)
   if not G or not G.STATE or not G.STATES then
     return err("WRONG_PHASE", "Game state not available")
   end
+  local names = {}
   for _, phase in ipairs(allowed_phases) do
-    if G.STATE == G.STATES[phase] then return nil end
+    if target_matches(phase) then return nil end
+    names[#names + 1] = target_name(phase)
   end
   return err(
     "WRONG_PHASE",
-    "Action not allowed in phase " .. phase_name() .. "; allowed: " .. table.concat(allowed_phases, ", ")
+    "Action not allowed in phase " .. phase_name() .. "; allowed: " .. table.concat(names, ", ")
   )
 end
 
@@ -276,27 +329,22 @@ local function purchase_from_shop(card, buy_and_use)
   return nil
 end
 
-local PACK_PHASES = {
-  "TAROT_PACK",
-  "PLANET_PACK",
-  "SPECTRAL_PACK",
-  "STANDARD_PACK",
-  "BUFFOON_PACK",
-  "SMODS_BOOSTER_OPENED",
+local PACK_TARGETS = {
+  { name = PACK_STATE_NAME, match = is_pack_phase },
 }
 
--- Restored saves can resume in any of these run phases.
+-- Restored saves can resume in any of these run phases; the SMODS pack state
+-- resolves through the live booster object.
 local RUN_PHASES = {
   "BLIND_SELECT", "SELECTING_HAND", "HAND_PLAYED", "DRAW_TO_HAND",
   "SHOP", "ROUND_EVAL", "GAME_OVER",
-  "TAROT_PACK", "PLANET_PACK", "SPECTRAL_PACK", "STANDARD_PACK",
-  "BUFFOON_PACK", "SMODS_BOOSTER_OPENED",
+  { name = PACK_STATE_NAME, match = is_pack_phase },
 }
 
-local function settle_result(data, timed_out)
-  data = data or {}
-  data.timed_out = timed_out or nil
-  return { ok = true, data = data }
+-- A settle timeout is transport detail, not a result: the command still
+-- reports whatever the game had reached.
+local function settle_result(data)
+  return { ok = true, data = data or {} }
 end
 
 -- True when every queued event is deletable; persistent events do not block
@@ -312,12 +360,17 @@ local function events_drained()
   return true
 end
 
+-- A named state still needs G.STATE_COMPLETE to reject transition frames; a
+-- live phase (booster pack) is the game's own state and settles on a match.
+local function target_settled(target)
+  if type(target) ~= 'string' then return target_matches(target) end
+  if not G or not G.STATE or not G.STATES then return false end
+  return G.STATE == G.STATES[target] and G.STATE_COMPLETE and true or false
+end
+
 -- Complete after queued work drains and the game rests in a target phase.
--- G.STATE_COMPLETE rejects transition frames, while screen wipes hide run
--- transitions and keep the controller input-locked.
+-- Screen wipes hide run transitions and keep the controller input-locked.
 local function phase_settle(target_phases, data, timeout_seconds)
-  local targets = {}
-  for _, name in ipairs(target_phases) do targets[G.STATES[name]] = true end
   local armed = false
   return {
     ok = true,
@@ -330,12 +383,13 @@ local function phase_settle(target_phases, data, timeout_seconds)
           if events_drained() then armed = true end
           return nil
         end
-        if not G.screenwipe and targets[G.STATE] and G.STATE_COMPLETE then
-          return settle_result(data, false)
+        if G.screenwipe then return nil end
+        for _, target in ipairs(target_phases) do
+          if target_settled(target) then return settle_result(data) end
         end
         return nil
       end,
-      on_timeout = function() return settle_result(data, true) end,
+      on_timeout = function() return settle_result(data) end,
     },
   }
 end
@@ -346,10 +400,10 @@ local function anim_settle(data, timeout_seconds)
     settle = {
       timeout_seconds = timeout_seconds,
       poll = function()
-        if events_drained() then return settle_result(data, false) end
+        if events_drained() then return settle_result(data) end
         return nil
       end,
-      on_timeout = function() return settle_result(data, true) end,
+      on_timeout = function() return settle_result(data) end,
     },
   }
 end
@@ -835,7 +889,7 @@ local function cash_out_settle(pressed)
           return err("WRONG_PHASE", "Game state is not available")
         end
         if G.STATE == G.STATES.SHOP and G.STATE_COMPLETE then
-          return settle_result({ cashed_out = true }, false)
+          return settle_result({ cashed_out = true })
         end
         if not pressed and G.STATE == G.STATES.ROUND_EVAL then
           local button = round_eval and round_eval.cash_out_button()
@@ -1003,14 +1057,14 @@ handlers.buy_booster = function(args)
   G.FUNCS.use_card({ config = { ref_table = card } })
 
   return phase_settle(
-    PACK_PHASES,
+    PACK_TARGETS,
     { cost = cost, pack = card.ability and card.ability.name },
     8
   )
 end
 
 handlers.select_booster_card = function(args)
-  local phase_err = check_phase(PACK_PHASES)
+  local phase_err = check_phase(PACK_TARGETS)
   if phase_err then return phase_err end
 
   local card_id = args.card_id
@@ -1043,7 +1097,7 @@ handlers.select_booster_card = function(args)
 end
 
 handlers.skip_booster = function(args)
-  local phase_err = check_phase(PACK_PHASES)
+  local phase_err = check_phase(PACK_TARGETS)
   if phase_err then return phase_err end
 
   G.FUNCS.skip_booster()

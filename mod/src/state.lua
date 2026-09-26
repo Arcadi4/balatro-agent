@@ -26,14 +26,6 @@ local PHASE_NAMES = {
   'SMODS_BOOSTER_OPENED',
   'SMODS_REDEEM_VOUCHER',
 }
-local PACK_KINDS = {
-  TAROT_PACK = 'tarot',
-  PLANET_PACK = 'planet',
-  SPECTRAL_PACK = 'spectral',
-  STANDARD_PACK = 'standard',
-  BUFFOON_PACK = 'buffoon',
-  SMODS_BOOSTER_OPENED = 'modded',
-}
 local SHOP_KINDS = {
   Joker = 'joker',
   Voucher = 'voucher',
@@ -44,6 +36,55 @@ local SHOP_KINDS = {
   Default = 'playing_card',
   Enhanced = 'playing_card',
 }
+-- The game tracks the open booster itself: `booster_obj` holds the booster
+-- center (set by Card:open, cleared when the pack closes) and
+-- SMODS.OPENED_BOOSTER is the booster Card while SMODS owns the pseudo-state.
+-- Both carry the real kind and name, so pack identity is read from them
+-- instead of from a phase-name table. The live phase is also required:
+-- SMODS.OPENED_BOOSTER is only reset when SMODS initialises, so trusting it
+-- alone would report a phantom pack long after the pack closed.
+local PACK_STATE_NAME = 'SMODS_BOOSTER_OPENED'
+
+local VANILLA_PACK_STATES = {
+  TAROT_PACK = true,
+  PLANET_PACK = true,
+  SPECTRAL_PACK = true,
+  STANDARD_PACK = true,
+  BUFFOON_PACK = true,
+}
+
+local function in_pack_phase()
+  if not G or not G.STATE or not G.STATES then return false end
+  local smods_state = G.STATES[PACK_STATE_NAME]
+  if smods_state and G.STATE == smods_state then return true end
+  for name in pairs(VANILLA_PACK_STATES) do
+    if G.STATES[name] and G.STATE == G.STATES[name] then return true end
+  end
+  return false
+end
+
+local function resolve_open_pack()
+  if not in_pack_phase() then return nil end
+
+  local booster = SMODS and SMODS.OPENED_BOOSTER or nil
+  local center = booster_obj
+  if not center and booster and booster.config then center = booster.config.center end
+  if not center and not booster then return nil end
+
+  local pack = {}
+  if type(center) == 'table' and type(center.kind) == 'string' and center.kind ~= '' then
+    pack.kind = string.lower(center.kind)
+  end
+
+  local name = type(center) == 'table' and center.name or nil
+  if type(name) ~= 'string' or name == '' then
+    name = booster and (booster.ability and booster.ability.name
+        or (booster.config and booster.config.center and booster.config.center.name)) or nil
+  end
+  if type(name) == 'string' and name ~= '' then pack.name = name end
+  if not pack.kind and not pack.name then return nil end
+  return pack
+end
 
 local function card_id(card)
   return card.sort_id or (card.config and card.config.card_id)
@@ -448,13 +489,7 @@ local function compute_legal_actions()
   end
 
   local states = G.STATES
-  local pack_state = false
-  for phase in pairs(PACK_KINDS) do
-    if gs == states[phase] then
-      pack_state = true
-      break
-    end
-  end
+  local pack_state = resolve_open_pack() ~= nil
 
   if gs == states.SELECTING_HAND then
     actions[#actions + 1] = 'select_hand_cards'
@@ -748,17 +783,12 @@ local function snapshot_shop()
 end
 
 local function snapshot_pack()
-  if not G or not G.STATES then return nil end
-  local kind
-  for phase, phase_kind in pairs(PACK_KINDS) do
-    if G.STATE == G.STATES[phase] then
-      kind = phase_kind
-      break
-    end
-  end
-  if not kind then return nil end
+  local resolved = resolve_open_pack()
+  if not resolved then return nil end
 
-  local pack = { kind = kind }
+  local pack = {}
+  if resolved.kind then pack.kind = resolved.kind end
+  if resolved.name then pack.name = resolved.name end
 
   if G.pack_cards then
     pack.picks_remaining = G.GAME and G.GAME.pack_choices or 1

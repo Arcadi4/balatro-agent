@@ -341,7 +341,7 @@ function appendShopSection(lines: string[], shop: Record<string, unknown>): void
 
 function appendPackSection(lines: string[], pack: Record<string, unknown>): void {
   lines.push("# Booster Pack\n")
-  appendField(lines, "Kind", pack.kind)
+  if (pack.name !== undefined) appendField(lines, "Pack", pack.name)
   appendField(lines, "Picks Remaining", pack.picks_remaining)
 
   if (Array.isArray(pack.options) && pack.options.length > 0) {
