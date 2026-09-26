@@ -11,6 +11,7 @@ import {
 
 function mockBridge(state: Record<string, unknown> = {}): BridgeClient {
   return {
+    getSelectedInstanceId: () => "instance-1",
     getState: async () => ({
       phase: "SELECTING_HAND",
       ante: 1,
@@ -155,6 +156,7 @@ test("rejects invalid postgame URI with INVALID_URI error", async () => {
 
 test("handles bridge errors gracefully", async () => {
   const bridge = {
+    getSelectedInstanceId: () => "instance-1",
     getState: async () => {
       throw new BridgeError("GAME_NOT_RUNNING", "Balatro is not running")
     },
