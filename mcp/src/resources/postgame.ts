@@ -40,8 +40,8 @@ export async function readPostgameResource(
   uri: string,
 ): Promise<{ uri: string; markdown: string }> {
   if (uri === POSTGAME_URI_SCHEME || uri === `${POSTGAME_URI_SCHEME}/`) {
-    const { dir, entries } = await listPostgames()
-    return { uri: POSTGAME_URI_SCHEME, markdown: renderList(dir, entries) }
+    const { entries } = await listPostgames()
+    return { uri: POSTGAME_URI_SCHEME, markdown: renderList(entries) }
   }
   if (uri.startsWith(POSTGAME_URI_SCHEME)) {
     const raw = uri.slice(POSTGAME_URI_SCHEME.length).replace(/^\/+|\/+$/g, "")
