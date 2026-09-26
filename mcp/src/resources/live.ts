@@ -582,6 +582,16 @@ function boosterToMarkdown(payload: Record<string, unknown>, uri: string): strin
   return lines.join("\n")
 }
 
+function displayVoucher(entry: unknown): string {
+  const voucher = asRecord(entry)
+  if (!voucher) return String(entry)
+  const name = voucher.name ?? voucher.key
+  const label = name === undefined ? String(entry) : `**${String(name)}**`
+  const description = voucher.description
+  if (description === undefined || description === null || description === "") return label
+  return `${label} — ${String(description)}`
+}
+
 function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
   const lines: string[] = []
 
@@ -589,6 +599,10 @@ function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
 
   appendField(lines, "Ante", payload.ante)
   if (payload.money !== undefined) lines.push(`- **Money:** $${String(payload.money)}`)
+  const deck = asRecord(payload.deck)
+  if (deck) appendField(lines, "Deck", deck.name ?? deck.key)
+  const stake = asRecord(payload.stake)
+  if (stake) appendField(lines, "Stake", stake.name ?? stake.key)
   if (typeof payload.active_challenge === "string") {
     lines.push(`- **Active Challenge:** ${payload.active_challenge}`)
   }
@@ -616,7 +630,7 @@ function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
 
   if (Array.isArray(payload.used_vouchers) && payload.used_vouchers.length > 0) {
     lines.push("## Vouchers\n")
-    for (const voucher of payload.used_vouchers) lines.push(`- \`${String(voucher)}\``)
+    for (const entry of payload.used_vouchers) lines.push(`- ${displayVoucher(entry)}`)
     lines.push("")
   }
 

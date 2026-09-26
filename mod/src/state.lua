@@ -286,17 +286,13 @@ local function get_card_description(card)
   if #lines == 0 then return nil end
   return table.concat(lines, ' ')
 end
-local function blind_description(blind)
-  if not blind then return nil end
-  local loc_vars
-  if blind.name == 'The Ox' and G and G.GAME and G.GAME.current_round then
-    local most_played = G.GAME.current_round.most_played_poker_hand
-    if most_played then loc_vars = { localize(most_played, 'poker_hands') } end
-  end
-
-  local target = { type = 'raw_descriptions', key = blind.key, set = 'Blind', vars = loc_vars or blind.vars }
-  if type(blind.loc_vars) == 'function' then
-    local result = blind:loc_vars() or {}
+-- Localize a center's raw_descriptions the way the game does: let the center
+-- resolve its own vars, then flatten and trim the localized rows.
+local function raw_description_lines(center, set, extra_vars)
+  if not center or not center.key then return nil end
+  local target = { type = 'raw_descriptions', key = center.key, set = set or center.set, vars = extra_vars or center.vars }
+  if type(center.loc_vars) == 'function' then
+    local result = center:loc_vars() or {}
     target.vars = result.vars or target.vars
     target.key = result.key or target.key
     target.set = result.set or target.set
@@ -309,7 +305,25 @@ local function blind_description(blind)
     local text = trim_text(line)
     if text then lines[#lines + 1] = text end
   end
-  return #lines > 0 and table.concat(lines, ' ') or nil
+  return #lines > 0 and lines or nil
+end
+
+local function blind_description(blind)
+  if not blind then return nil end
+  local loc_vars
+  if blind.name == 'The Ox' and G and G.GAME and G.GAME.current_round then
+    local most_played = G.GAME.current_round.most_played_poker_hand
+    if most_played then loc_vars = { localize(most_played, 'poker_hands') } end
+  end
+
+  local lines = raw_description_lines(blind, 'Blind', loc_vars)
+  return lines and table.concat(lines, ' ') or nil
+end
+
+local function center_description(center, set)
+  local lines = raw_description_lines(center, set)
+  if not lines then return nil end
+  return trim_text(clean_description_text(table.concat(lines, ' ')))
 end
 local function can_reroll_boss()
   local game = G and G.GAME
@@ -988,6 +1002,25 @@ local function snapshot()
   payload.bankrupt_at = G.GAME and G.GAME.bankrupt_at
   payload.ante = G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante
 
+  if G.GAME and G.GAME.selected_back then
+    local back = G.GAME.selected_back
+    payload.deck = {
+      name = back.name,
+      key = back.config and back.config.center and back.config.center.key or nil,
+    }
+  end
+
+  if G.GAME and G.GAME.stake then
+    local stake = { index = G.GAME.stake }
+    if SMODS and type(SMODS.stake_from_index) == 'function' then
+      stake.key = SMODS.stake_from_index(G.GAME.stake)
+    end
+    local pool = G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake
+    local center = pool and pool[G.GAME.stake]
+    if center and type(center.name) == 'string' then stake.name = center.name end
+    payload.stake = stake
+  end
+
   payload.round = snapshot_round()
 
   payload.hand_size = G.hand and G.hand.config and G.hand.config.card_limit
@@ -1051,11 +1084,17 @@ local function snapshot()
     local vouchers = {}
     for k, v in pairs(G.GAME.used_vouchers) do
       if v then
-        vouchers[#vouchers + 1] = k
+        local voucher = { key = k }
+        local center = G.P_CENTERS and G.P_CENTERS[k]
+        if center then
+          if type(center.name) == 'string' then voucher.name = center.name end
+          voucher.description = center_description(center, 'Voucher')
+        end
+        vouchers[#vouchers + 1] = voucher
       end
     end
     if #vouchers > 0 then
-      table.sort(vouchers)
+      table.sort(vouchers, function(a, b) return a.key < b.key end)
       payload.used_vouchers = vouchers
     end
   end
