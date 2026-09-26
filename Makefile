@@ -7,6 +7,10 @@ BALATRO_SAVE ?= $(HOME)/Library/Application Support/Balatro
 BALATRO_DIR ?= $(HOME)/Library/Application Support/Steam/steamapps/common/Balatro
 BALATRO_APP ?= $(BALATRO_DIR)/Balatro.app
 
+VERSION ?=
+
+BUMP_SCRIPT := $(ROOT_DIR)/scripts/bump-version.ts
+
 MODS_DIR := $(BALATRO_SAVE)/Mods
 MOD_DST := $(MODS_DIR)/balatro-agent
 SMODS_DIR := $(MODS_DIR)/smods
@@ -14,7 +18,7 @@ LOVE_BIN := $(BALATRO_APP)/Contents/MacOS/love
 LOVELY_DYLIB := $(BALATRO_DIR)/liblovely.dylib
 LOVELY_RUN := $(BALATRO_DIR)/run_lovely_macos.sh
 
-.PHONY: help doctor install-mods run
+.PHONY: help doctor install-mods run bump
 
 help:
 	@printf 'Balatro MCP development workflow\n\n'
@@ -22,6 +26,7 @@ help:
 	@printf '  make doctor        Check local Balatro/Lovely/SMODS paths\n'
 	@printf '  make install-mods  Sync the repo mod into the Balatro Mods directory\n'
 	@printf '  make run           Sync the mod, then launch Balatro with Lovely\n'
+	@printf '  make bump          Set the shared mod + MCP release version (VERSION=x.y.z)\n'
 	@printf '\nConfiguration:\n'
 	@printf '  BALATRO_DIR=%s\n' '$(BALATRO_DIR)'
 	@printf '  BALATRO_SAVE=%s\n' '$(BALATRO_SAVE)'
@@ -89,4 +94,17 @@ run: install-mods
 		cd "$(BALATRO_DIR)"; \
 		export DYLD_INSERT_LIBRARIES="$(LOVELY_DYLIB)"; \
 		exec "$(LOVE_BIN)" $(ARGS) \
+	'
+
+bump:
+	@bash -eu -o pipefail -c ' \
+		if [[ -z "$(VERSION)" ]]; then \
+			printf "Usage: make bump VERSION=x.y.z\n" >&2; \
+			exit 2; \
+		fi; \
+		if ! command -v bun >/dev/null 2>&1; then \
+			printf "bun is required to bump the version\n" >&2; \
+			exit 1; \
+		fi; \
+		bun run "$(BUMP_SCRIPT)" "$(VERSION)" \
 	'
