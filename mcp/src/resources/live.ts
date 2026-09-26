@@ -23,34 +23,45 @@ function unavailable(uri: string, phase: string, message: string): ProtocolError
   })
 }
 
-function markdownContents(
-  uri: URL,
-  markdown: string,
-): { contents: Array<{ uri: string; mimeType: string; text: string }> } {
+/**
+ * A game snapshot plus the instance it was taken from, so a batch of live
+ * reads reuses one bridge round-trip without ever serving another
+ * instance's state under the wrong URI.
+ */
+export interface CachedLiveState {
+  instanceId: string
+  payload: Record<string, unknown>
+}
+
+function markdownContents(uri: URL, markdown: string) {
   return { contents: [{ uri: uri.toString(), mimeType: "text/markdown", text: markdown }] }
 }
 
-async function readLiveResource(
+export async function readLiveResource(
   bridge: BridgeClient,
-  uri: URL,
+  uri: URL | string,
   instanceId: string,
   render: LiveRenderer,
-): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  cachedState?: CachedLiveState,
+): Promise<{ payload: Record<string, unknown>; markdown: string }> {
   const uriString = uri.toString()
   let payload: Record<string, unknown>
-  try {
-    payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
-  } catch (error) {
-    if (error instanceof BridgeError) {
-      throw new ProtocolError(ProtocolErrorCode.InternalError, error.message, {
-        error_code: error.code,
-        uri: uriString,
-        instance_id: instanceId,
-      })
+  if (cachedState?.instanceId === instanceId) {
+    payload = cachedState.payload
+  } else {
+    try {
+      payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
+    } catch (error) {
+      if (error instanceof BridgeError) {
+        throw new ProtocolError(ProtocolErrorCode.InternalError, error.message, {
+          error_code: error.code,
+          uri: uriString,
+          instance_id: instanceId,
+        })
+      }
+      throw error
     }
-    throw error
   }
-
   const phase = phaseOf(payload)
   if (MENU_PHASES.has(phase)) {
     throw unavailable(
@@ -59,7 +70,23 @@ async function readLiveResource(
       "Balatro is not in a run; start or continue a game to read this resource.",
     )
   }
-  return markdownContents(uri, render(payload, uriString))
+  return { payload, markdown: render(payload, uriString) }
+}
+
+export async function readLiveResourceUri(
+  bridge: BridgeClient,
+  uri: string,
+  cachedState?: CachedLiveState,
+): Promise<
+  { uri: string; markdown: string; state: Record<string, unknown>; instanceId: string } | undefined
+> {
+  const scoped = SCOPED_SECTION.exec(uri)
+  const section = scoped?.[2] ?? UNSCOPED_SECTION.exec(uri)?.[1]
+  const definition = liveResourceFor(section)
+  if (!definition) return undefined
+  const instanceId = scoped?.[1] ?? selectedInstance(bridge, uri)
+  const result = await readLiveResource(bridge, uri, instanceId, definition.render, cachedState)
+  return { uri, markdown: result.markdown, state: result.payload, instanceId }
 }
 
 const EDITION_NAMES: Record<string, string> = {
@@ -907,8 +934,15 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
         description: `${definition.description} Reads the selected Balatro instance.`,
         mimeType: "text/markdown",
       },
-      (uri) =>
-        readLiveResource(bridge, uri, selectedInstance(bridge, uri.toString()), definition.render),
+      async (uri) => {
+        const result = await readLiveResource(
+          bridge,
+          uri,
+          selectedInstance(bridge, uri.toString()),
+          definition.render,
+        )
+        return markdownContents(uri, result.markdown)
+      },
     )
   }
 
@@ -960,7 +994,7 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
       description: "Instance-scoped live state for a selected Balatro process.",
       mimeType: "text/markdown",
     },
-    (uri, variables) => {
+    async (uri, variables) => {
       const instanceId = variables.instance_id
       const section = variables.section
       if (typeof instanceId !== "string" || typeof section !== "string") {
@@ -973,7 +1007,8 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
       if (definition === undefined) {
         throw new ProtocolError(ProtocolErrorCode.InvalidParams, "Unknown live resource section")
       }
-      return readLiveResource(bridge, uri, instanceId, definition.render)
+      const result = await readLiveResource(bridge, uri, instanceId, definition.render)
+      return markdownContents(uri, result.markdown)
     },
   )
 }
