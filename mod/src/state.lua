@@ -126,21 +126,34 @@ local function get_card_edition(card)
   return nil
 end
 
+-- An enhanced card's identity is its center key (`m_bonus`, `m_glass`, ...),
+-- not its display name: `m_bonus.name` is "Bonus" while its effect is
+-- "Bonus Card", so matching on ability text misses every enhancement.
+-- SMODS.get_enhancements also reports enhancements granted outside the card's
+-- own center, so union both sources when SMODS is loaded.
 local function get_card_enhancement(card)
-  if not card or not card.ability or not card.ability.name then return nil end
-  local name = card.ability.name
-  if name == '' or name == 'Default Base' then return nil end
-  local enhancements = {
-    ['Bonus Card'] = 'bonus',
-    ['Mult Card'] = 'mult',
-    ['Wild Card'] = 'wild',
-    ['Glass Card'] = 'glass',
-    ['Steel Card'] = 'steel',
-    ['Stone Card'] = 'stone',
-    ['Gold Card'] = 'gold',
-    ['Lucky Card'] = 'lucky',
-  }
-  return enhancements[name]
+  if not card then return nil end
+  local found = {}
+
+  local center = card.config and card.config.center
+  local key = center and center.key
+  if type(key) == 'string' and key:sub(1, 2) == 'm_' then
+    found[key:sub(3)] = true
+  end
+
+  if SMODS and type(SMODS.get_enhancements) == 'function' then
+    local ok, enhancements = pcall(SMODS.get_enhancements, card)
+    if ok and type(enhancements) == 'table' then
+      for extra in pairs(enhancements) do
+        if type(extra) == 'string' and extra:sub(1, 2) == 'm_' then
+          found[extra:sub(3)] = true
+        end
+      end
+    end
+  end
+
+  for name in pairs(found) do return name end
+  return nil
 end
 
 local function clean_description_text(text)
