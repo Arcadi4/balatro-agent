@@ -98,6 +98,15 @@ function instanceNotConnected(instanceId?: string): BridgeError {
   )
 }
 
+// The socket died mid-flight. The game may still be running, so report the lost
+// bridge connection rather than claiming Balatro stopped.
+function bridgeDisconnected(
+  instanceId: string,
+  message = "Lost the Balatro bridge connection",
+): BridgeError {
+  return new BridgeError("INSTANCE_NOT_CONNECTED", message, { instance_id: instanceId })
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -176,13 +185,9 @@ export class BridgeClient {
       throw new BridgeError(
         "INSTANCE_SELECTION_REQUIRED",
         "Multiple Balatro instances are available; select one with instance_id",
-        {
-          instances: instances.map(({ instance_id, endpoint, updated_at }) => ({
-            instance_id,
-            endpoint,
-            updated_at,
-          })),
-        },
+        // Socket paths and discovery timestamps are transport internals; the
+        // caller only needs the IDs it can pass to connect.
+        { instances: instances.map(({ instance_id }) => ({ instance_id })) },
       )
     }
     const instance = instances[0]
@@ -243,14 +248,14 @@ export class BridgeClient {
   ): Promise<Record<string, unknown> | StateEnvelope> {
     const timeoutMs = typeof timeoutOrOptions === "number" ? timeoutOrOptions : STATE_TIMEOUT_MS
     const result = asRecord(await this.request("get_state", undefined, timeoutMs, instanceId))
-    if (!result) throw new BridgeError("STATE_NOT_FOUND", "State response is not an object")
+    if (!result) throw new BridgeError("PROTOCOL_MISMATCH", "State response is not an object")
     if (typeof timeoutOrOptions === "object") {
       if (!asRecord(result.payload))
-        throw new BridgeError("STATE_NOT_FOUND", "State response has no payload")
+        throw new BridgeError("PROTOCOL_MISMATCH", "State response has no payload object")
       return result as unknown as StateEnvelope
     }
     const payload = asRecord(result.payload)
-    if (!payload) throw new BridgeError("STATE_NOT_FOUND", "State response has no payload")
+    if (!payload) throw new BridgeError("PROTOCOL_MISMATCH", "State response has no payload")
     return payload
   }
 
@@ -299,10 +304,10 @@ export class BridgeClient {
         ? this.pendingRequestSessions.get(seq)
         : this.requireSession(options.instanceId)
     if (session === undefined || this.pendingRequestSessions.get(seq) !== session) {
-      throw new BridgeError("STATE_NOT_FOUND", `No pending bridge request ${seq}`)
+      throw new BridgeError("INTERNAL_ERROR", `No pending bridge request ${seq}`)
     }
     const pending = session.pendingRequests.get(seq)
-    if (!pending) throw new BridgeError("STATE_NOT_FOUND", `No pending bridge request ${seq}`)
+    if (!pending) throw new BridgeError("INTERNAL_ERROR", `No pending bridge request ${seq}`)
     try {
       const response = await this.awaitJsonRpcResponse(
         session,
@@ -363,7 +368,9 @@ export class BridgeClient {
     if (this.defaultInstanceId === session.instanceId) this.defaultInstanceId = undefined
     socket?.destroy()
     if (established) {
-      process.stderr.write(`[balatro-mcp] bridge ${session.instanceId} disconnected: ${error.message}\n`)
+      process.stderr.write(
+        `[balatro-mcp] bridge ${session.instanceId} disconnected: ${error.message}\n`,
+      )
       this.onDisconnect?.(session.instanceId)
     }
   }
@@ -527,20 +534,20 @@ export class BridgeClient {
       socket.destroyed ||
       !socket.writable
     ) {
-      throw session.lastDisconnectError ?? gameNotRunning()
+      throw session.lastDisconnectError ?? bridgeDisconnected(session.instanceId)
     }
     const { promise, resolve, reject } = Promise.withResolvers<void>()
     const onClose = () =>
       reject(
         session.lastDisconnectError ??
-          gameNotRunning("Bridge connection closed before the command was written"),
+          bridgeDisconnected(session.instanceId, "Bridge connection closed before the write"),
       )
     socket.once("close", onClose)
     socket.write(serializeFrame(request), (error) => {
       socket.removeListener("close", onClose)
       if (error) reject(error)
       else if (session.socket !== socket || session.connectionGeneration !== generation)
-        reject(gameNotRunning("Bridge connection changed before the command was written"))
+        reject(bridgeDisconnected(session.instanceId, "Bridge connection changed mid-write"))
       else resolve()
     })
     await promise
@@ -560,7 +567,7 @@ export class BridgeClient {
       pending.timeout = setTimeout(() => {
         session.pendingRequests.delete(id)
         this.pendingRequestSessions.delete(id)
-        pending.reject(new BridgeError("STATE_STALE", "Bridge response timed out"))
+        pending.reject(new BridgeError("BRIDGE_TIMEOUT", "No bridge response before the timeout"))
       }, timeoutMs)
     }
     return pending
@@ -576,7 +583,7 @@ export class BridgeClient {
       pending.timeout = setTimeout(() => {
         session.pendingRequests.delete(id)
         this.pendingRequestSessions.delete(id)
-        pending.reject(new BridgeError("STATE_STALE", "Bridge response timed out"))
+        pending.reject(new BridgeError("BRIDGE_TIMEOUT", "No bridge response before the timeout"))
       }, timeoutMs)
     }
     try {
