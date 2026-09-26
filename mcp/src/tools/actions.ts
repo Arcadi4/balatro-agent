@@ -137,6 +137,10 @@ function playHandToMarkdown(result: Record<string, unknown>): string {
     "",
     `- **Cards played:** ${String(data.cards_played ?? "unknown")}`,
   ]
+  if (data.hand_name !== undefined) {
+    const level = data.hand_level !== undefined ? ` (level ${String(data.hand_level)})` : ""
+    lines.push(`- **Hand:** ${String(data.hand_name)}${level}`)
+  }
   if (Array.isArray(data.played_cards) && data.played_cards.length > 0) {
     lines.push("- **Played cards:**")
     for (const value of data.played_cards) {
@@ -153,19 +157,27 @@ function playHandToMarkdown(result: Record<string, unknown>): string {
       lines.push(`  - ${String(card.rank ?? "?")} of ${String(card.suit ?? "?")}${suffix}`)
     }
   }
-  if (data.points_gained !== undefined) lines.push(`- **Points gained:** ${data.points_gained}`)
-  if (data.score_before !== undefined && data.score_after !== undefined) {
-    lines.push(`- **Score:** ${data.score_before} -> ${data.score_after}`)
+  if (data.hand_chips !== undefined || data.hand_mult !== undefined) {
+    const chips = data.hand_chips !== undefined ? `${String(data.hand_chips)} chips` : "?"
+    const mult = data.hand_mult !== undefined ? `${String(data.hand_mult)} mult` : "?"
+    lines.push(`- **Hand scoring:** ${chips} x ${mult}`)
   }
-  if (data.blind_chips !== undefined) lines.push(`- **Blind target:** ${data.blind_chips}`)
+  if (data.chip_total !== undefined) {
+    lines.push(`- **Hand score:** ${String(data.chip_total)}`)
+  }
+  if (data.points_gained !== undefined)
+    lines.push(`- **Points gained:** ${String(data.points_gained)}`)
+  if (data.score_before !== undefined && data.score_after !== undefined) {
+    lines.push(`- **Score:** ${String(data.score_before)} -> ${String(data.score_after)}`)
+  }
+  if (data.blind_chips !== undefined) lines.push(`- **Blind target:** ${String(data.blind_chips)}`)
   if (data.blind_defeated !== undefined) {
-    lines.push(`- **Blind defeated:** ${data.blind_defeated}`)
+    lines.push(`- **Blind defeated:** ${String(data.blind_defeated)}`)
   }
   if (data.hands_played_before !== undefined && data.hands_played_after !== undefined) {
-    lines.push(`- **Hands played:** ${data.hands_played_before} -> ${data.hands_played_after}`)
-  }
-  if (data.timed_out) {
-    lines.push("- **Warning:** scoring timed out; values reflect the latest game state.")
+    lines.push(
+      `- **Hands played:** ${String(data.hands_played_before)} -> ${String(data.hands_played_after)}`,
+    )
   }
   return lines.join("\n")
 }

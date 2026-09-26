@@ -594,8 +594,22 @@ end
 -- meaningful once the state leaves it.
 local function play_hand_settle(seed)
   local saw_hand_played = false
+  -- The game zeroes current_hand as the hand resolves, so the final chip
+  -- total has to be sampled while the hand is still on the table.
+  local chip_total_sampled
 
-  local function scoring_result(timed_out)
+  local function scoring_result()
+    local game = G and G.GAME
+    local current_hand = game and game.current_round and game.current_round.current_hand
+    local preview = seed.preview
+    -- The pre-play evaluation is authoritative; the post-play fields are only
+    -- a fallback for when the highlight could not be resolved beforehand.
+    local hand_key = preview and preview.hand_name or game and game.last_hand_played
+    if hand_key == nil or hand_key == '' then
+      hand_key = current_hand and current_hand.handname
+    end
+    if hand_key == '' then hand_key = nil end
+    local hand = game and hand_key and game.hands and game.hands[hand_key]
     local score_after = current_score()
     local blind_chips = current_blind_chips() or seed.blind_chips
     return settle_result({
@@ -609,7 +623,12 @@ local function play_hand_settle(seed)
       hands_played_before = seed.hands_played_before,
       hands_played_after = current_hands_played(),
       final_phase = G and phase_name() or nil,
-    }, timed_out)
+      hand_name = hand_key,
+      hand_level = hand and hand.level or nil,
+      hand_chips = hand and hand.chips or nil,
+      hand_mult = hand and hand.mult or nil,
+      chip_total = chip_total_sampled,
+    })
   end
 
   return { ok = true, settle = {
@@ -618,14 +637,22 @@ local function play_hand_settle(seed)
       if G and G.STATES then
         if G.STATE == G.STATES.HAND_PLAYED then
           saw_hand_played = true
+          local round = G.GAME and G.GAME.current_round
+          local total = round and round.current_hand and round.current_hand.chip_total
+          -- Latch the first positive total: the game eases chip_total back to
+          -- zero once the hand resolves, so later poll frames would overwrite
+          -- the real value with the post-ease zero.
+          if chip_total_sampled == nil and type(total) == 'number' and total > 0 then
+            chip_total_sampled = total
+          end
         elseif saw_hand_played then
-          return scoring_result(false)
+          return scoring_result()
         end
       end
       return nil
     end,
     on_timeout = function()
-      return scoring_result(true)
+      return scoring_result()
     end,
   } }
 end
@@ -655,6 +682,11 @@ handlers.play_hand = function(args)
   local hands_played_before = G.GAME and G.GAME.current_round and G.GAME.current_round.hands_played or 0
   local blind_chips = G.GAME and G.GAME.blind and G.GAME.blind.chips or nil
 
+  -- Resolve the hand from the live highlight before it is consumed, so the
+  -- reported name and level come from the game's own evaluation rather than
+  -- from whatever survives the play animation.
+  local preview = hand_preview()
+
   G.FUNCS.play_cards_from_highlighted()
 
   return play_hand_settle({
@@ -663,6 +695,7 @@ handlers.play_hand = function(args)
     score_before = score_before,
     hands_played_before = hands_played_before,
     blind_chips = blind_chips,
+    preview = preview,
   })
 end
 
