@@ -161,12 +161,21 @@ function displayCardPrice(card: Record<string, unknown>): string | undefined {
   return `Buy $${buy} / Sell $${sell}`
 }
 
-function displayJokerLine(card: Record<string, unknown>, index: number): string {
+// A buy price is only truthful in the shop, the one place a purchase can happen.
+function displaySellPrice(card: Record<string, unknown>): string | undefined {
+  if (card.sell_value === undefined) return undefined
+  return `Sell $${String(card.sell_value)}`
+}
+
+function displayJokerLine(
+  card: Record<string, unknown>,
+  index: number,
+  price: string | undefined = displaySellPrice(card),
+): string {
   if (card.faced_down === true) {
     return `${index}. [${String(card.card_id ?? "?")}] Face-down Joker`
   }
   const rarity = displayJokerRarity(card.rarity)
-  const price = displayCardPrice(card)
   const edition = displayCardModifier(card.edition, EDITION_NAMES)
   const status = [
     edition,
@@ -219,13 +228,16 @@ function displayConsumableType(value: unknown): string {
   return kinds[kind] ?? "Consumable"
 }
 
-function displayConsumableLine(card: Record<string, unknown>, index: number): string {
+function displayConsumableLine(
+  card: Record<string, unknown>,
+  index: number,
+  price: string | undefined = displaySellPrice(card),
+): string {
   const edition = displayCardModifier(card.edition, EDITION_NAMES)
   const status = [
     edition !== undefined ? `(${edition})` : undefined,
     card.usable === false ? "(unusable)" : undefined,
   ].filter((value): value is string => value !== undefined)
-  const price = displayCardPrice(card)
   const parts = [
     `${index}. [${String(card.card_id ?? "?")}]`,
     `${displayConsumableType(card.kind)} ${String(card.name ?? card.entity_id ?? "Unknown Consumable")}`,
@@ -247,8 +259,8 @@ function isConsumableCard(card: Record<string, unknown>): boolean {
 }
 
 function displayShopCardLine(card: Record<string, unknown>): string {
-  if (isJokerCard(card)) return displayJokerLine(card, 1)
-  if (isConsumableCard(card)) return displayConsumableLine(card, 1)
+  if (isJokerCard(card)) return displayJokerLine(card, 1, displayCardPrice(card))
+  if (isConsumableCard(card)) return displayConsumableLine(card, 1, displayCardPrice(card))
   if (card.kind === "playing_card") {
     const cost = card.cost !== undefined ? ` — $${String(card.cost)}` : ""
     return `${displayHandCardLine(card)}${cost}`
@@ -280,14 +292,15 @@ function appendCompactCardLine(
   lines: string[],
   card: Record<string, unknown>,
   index: number,
+  price: (card: Record<string, unknown>) => string | undefined = displaySellPrice,
 ): void {
   if (isJokerCard(card)) {
-    lines.push(displayJokerLine(card, index))
+    lines.push(displayJokerLine(card, index, price(card)))
     appendLiveDescription(lines, card)
     return
   }
   if (isConsumableCard(card)) {
-    lines.push(displayConsumableLine(card, index))
+    lines.push(displayConsumableLine(card, index, price(card)))
     appendLiveDescription(lines, card)
     return
   }
@@ -315,7 +328,7 @@ function appendShopSection(lines: string[], shop: Record<string, unknown>): void
       const card = asRecord(item)
       if (!card) continue
       if (isJokerCard(card) || isConsumableCard(card)) {
-        appendCompactCardLine(lines, card, index)
+        appendCompactCardLine(lines, card, index, displayCardPrice)
       } else {
         lines.push(`- ${displayShopCardLine(card)}`)
       }
