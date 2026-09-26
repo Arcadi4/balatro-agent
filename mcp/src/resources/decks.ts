@@ -13,7 +13,7 @@ export function registerDecksResource(server: McpServer): void {
     {
       title: "Balatro Decks",
       description:
-        "Balatro deck reference: every playable deck key, effect summary, and wiki link for balatro_new_game.",
+        "Balatro deck reference: playable deck keys and effect summaries for balatro_new_game.",
       mimeType: "text/markdown",
       cacheHint: { ttlMs: 86_400_000, cacheScope: "public" },
       _meta: {

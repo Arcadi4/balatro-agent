@@ -14,7 +14,7 @@ export function registerWikiResource(server: McpServer): void {
     {
       title: "Balatro Wiki Index",
       description:
-        "Index of important Balatro Wiki pages with their resource URI, URL, and content summary.",
+        "Index of important Balatro Wiki pages with their resource URI and content summary.",
       mimeType: "text/markdown",
       cacheHint: { ttlMs: 86_400_000, cacheScope: "public" },
     },

@@ -13,7 +13,7 @@ export function registerChallengesResource(server: McpServer): void {
     {
       title: "Balatro Challenges",
       description:
-        "Balatro challenge reference: every challenge id, rule summary, and wiki link for balatro_new_game.",
+        "Balatro challenge reference: challenge ids and rule summaries for balatro_new_game.",
       mimeType: "text/markdown",
       cacheHint: { ttlMs: 86_400_000, cacheScope: "public" },
       _meta: {

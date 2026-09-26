@@ -5,22 +5,10 @@ import { listPostgames, POSTGAME_URI_SCHEME, readPostgame } from "../postgame.js
 
 const LIST_URI = POSTGAME_URI_SCHEME
 
-function renderList(
-  dir: string,
-  entries: Array<{ index: number; title: string; summary: string }>,
-): string {
-  const header = [
-    "# Post-Game Analyses",
-    "",
-    `All analyses are stored as markdown files under: ${dir}`,
-    "",
-  ]
+function renderList(entries: Array<{ index: number; title: string; summary: string }>): string {
+  const header = ["# Post-Game Analyses", ""]
   if (entries.length === 0) {
-    return [
-      ...header,
-      "No post-game analyses stored yet. Create one with new_postgame(title, summary, content) after a run ends.",
-      "",
-    ].join("\n")
+    return [...header, "No post-game analyses stored yet.", ""].join("\n")
   }
   const rows = entries.map(
     (entry) =>
@@ -43,14 +31,13 @@ export function registerPostgameResource(server: McpServer): void {
     LIST_URI,
     {
       title: "Post-Game Analyses",
-      description:
-        "List of all stored post-game run analyses with their index, title, and summary, plus the directory where they are stored.",
+      description: "List of stored post-game analyses with their index, title, and summary.",
       mimeType: "text/markdown",
     },
     async () => {
-      const { dir, entries } = await listPostgames()
+      const { entries } = await listPostgames()
       return {
-        contents: [{ uri: LIST_URI, mimeType: "text/markdown", text: renderList(dir, entries) }],
+        contents: [{ uri: LIST_URI, mimeType: "text/markdown", text: renderList(entries) }],
       }
     },
   )
@@ -60,8 +47,7 @@ export function registerPostgameResource(server: McpServer): void {
     new ResourceTemplate(`${POSTGAME_URI_SCHEME}{index}`, { list: undefined }),
     {
       title: "Post-Game Analysis",
-      description:
-        "A stored post-game analysis document. Browse indices at postgame://; create new analyses with the new_postgame tool after a run ends.",
+      description: "Stored post-game analysis. Browse indices at postgame://.",
       mimeType: "text/markdown",
     },
     async (uri: URL, variables: Record<string, string | string[]>) => {
