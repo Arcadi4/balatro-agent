@@ -507,6 +507,27 @@ handlers.reroll_boss = function(args)
   return anim_settle({ rerolled = true, previous_boss = previous_boss, cost = 10 }, 8)
 end
 
+-- Native hand evaluation: the game resolves the poker hand from the live
+-- highlight through get_poker_hand_info, so the preview cannot drift from what
+-- play_hand will actually score.
+local function hand_preview()
+  if not G.hand or not G.hand.highlighted or #G.hand.highlighted == 0 then return nil end
+  if not G.FUNCS or type(G.FUNCS.get_poker_hand_info) ~= 'function' then return nil end
+
+  local evaluated, hand_name, display_name, _, _, plain_name =
+    pcall(G.FUNCS.get_poker_hand_info, G.hand.highlighted)
+  if not evaluated or not hand_name then return nil end
+
+  local hand = G.GAME and G.GAME.hands and G.GAME.hands[hand_name]
+  return {
+    selected = #G.hand.highlighted,
+    hand_name = hand_name,
+    hand_display = display_name or plain_name or hand_name,
+    hand_level = hand and hand.level or nil,
+    hand_chips = hand and hand.chips or nil,
+    hand_mult = hand and hand.mult or nil,
+  }
+end
 handlers.select_hand_cards = function(args)
   local phase_err = check_phase({ "SELECTING_HAND" })
   if phase_err then return phase_err end
@@ -524,7 +545,7 @@ handlers.select_hand_cards = function(args)
   local selected_ids, _, selection_err = replace_requested_highlights(cards_to_select, requested)
   if selection_err then return selection_err end
 
-  return ok()
+  return ok(hand_preview())
 end
 
 handlers.sort_hand = function(args)

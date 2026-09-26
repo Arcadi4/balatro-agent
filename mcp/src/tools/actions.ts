@@ -182,6 +182,22 @@ function playHandToMarkdown(result: Record<string, unknown>): string {
   return lines.join("\n")
 }
 
+// The mod previews the selection through the game's own hand evaluation, so the
+// agent can see what a selection scores before spending a hand on it.
+function handSelectionToMarkdown(result: Record<string, unknown>): string {
+  const data = asRecord(result.data) ?? {}
+  const name = data.hand_name
+  if (name === undefined) return "Cards selected."
+  const level = data.hand_level !== undefined ? ` (level ${String(data.hand_level)})` : ""
+  const lines = [`Selected ${String(data.selected ?? "?")} cards as ${String(name)}${level}.`]
+  if (data.hand_chips !== undefined || data.hand_mult !== undefined) {
+    const chips = data.hand_chips !== undefined ? `${String(data.hand_chips)} chips` : "?"
+    const mult = data.hand_mult !== undefined ? `${String(data.hand_mult)} mult` : "?"
+    lines.push(`Base scoring: ${chips} x ${mult}, before card chips, jokers and blind effects.`)
+  }
+  return lines.join("\n")
+}
+
 interface ActionTool {
   name: string
   title: string
@@ -359,7 +375,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
         bridge,
         "select_hand_cards",
         { card_ids: card_ids.map(String) },
-        { instanceId: instance_id },
+        { instanceId: instance_id, toMarkdown: handSelectionToMarkdown },
       ),
   )
 
