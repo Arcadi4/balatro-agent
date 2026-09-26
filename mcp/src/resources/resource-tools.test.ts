@@ -169,3 +169,60 @@ test("handles bridge errors gracefully", async () => {
   expect(structured.error_code).toBe("GAME_NOT_RUNNING")
   expect(structured.message).toBe("Balatro is not running")
 })
+
+test("does not reuse one instance's cached state for another instance", async () => {
+  const requested: Array<string | undefined> = []
+  const bridge = {
+    getSelectedInstanceId: () => "alpha",
+    getState: async (_timeout: number, instanceId?: string) => {
+      requested.push(instanceId)
+      return {
+        phase: "SELECTING_HAND",
+        ante: instanceId === "beta" ? 9 : 1,
+        money: 10,
+        hand: [],
+        jokers: [],
+        consumables: [],
+      }
+    },
+  } as unknown as BridgeClient
+
+  const result = await executeReadResource(bridge, [
+    "balatro://instances/alpha/turn",
+    "balatro://instances/beta/turn",
+  ])
+
+  const structured = result.structuredContent as {
+    results: Array<{ uri: string; markdown: string }>
+  }
+  expect(structured.results[0]?.markdown).toContain("**Ante:** 1")
+  expect(structured.results[1]?.markdown).toContain("**Ante:** 9")
+  expect(requested).toEqual(["alpha", "beta"])
+})
+
+test("reuses one snapshot for same-instance reads in a single call", async () => {
+  const requested: Array<string | undefined> = []
+  const bridge = {
+    getSelectedInstanceId: () => "alpha",
+    getState: async (_timeout: number, instanceId?: string) => {
+      requested.push(instanceId)
+      return {
+        phase: "SELECTING_HAND",
+        ante: 4,
+        money: 10,
+        hand: [],
+        jokers: [],
+        consumables: [],
+      }
+    },
+  } as unknown as BridgeClient
+
+  const result = await executeReadResource(bridge, [
+    "balatro://turn",
+    "balatro://hand",
+    "balatro://instances/alpha/run",
+  ])
+
+  expect(result.isError).toBeUndefined()
+  expect(requested).toEqual(["alpha"])
+})

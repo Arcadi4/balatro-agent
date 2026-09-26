@@ -23,12 +23,14 @@ function unavailable(uri: string, phase: string, message: string): ProtocolError
   })
 }
 
-interface LiveResource {
-  name: string
-  uri: string
-  title: string
-  description: string
-  render: (payload: Record<string, unknown>) => string
+/**
+ * A game snapshot plus the instance it was taken from, so a batch of live
+ * reads reuses one bridge round-trip without ever serving another
+ * instance's state under the wrong URI.
+ */
+export interface CachedLiveState {
+  instanceId: string
+  payload: Record<string, unknown>
 }
 
 function markdownContents(uri: URL, markdown: string) {
@@ -58,6 +60,9 @@ export async function readLiveResource(
         uri: uriString,
         ...error.details,
       })
+    }
+    throw error
+  }
     }
     throw error
   }
