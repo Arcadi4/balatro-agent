@@ -23,12 +23,14 @@ function unavailable(uri: string, phase: string, message: string): ProtocolError
   })
 }
 
-interface LiveResource {
-  name: string
-  uri: string
-  title: string
-  description: string
-  render: (payload: Record<string, unknown>) => string
+/**
+ * A game snapshot plus the instance it was taken from, so a batch of live
+ * reads reuses one bridge round-trip without ever serving another
+ * instance's state under the wrong URI.
+ */
+export interface CachedLiveState {
+  instanceId: string
+  payload: Record<string, unknown>
 }
 
 function markdownContents(uri: URL, markdown: string) {
@@ -40,12 +42,12 @@ export async function readLiveResource(
   uri: URL | string,
   instanceId: string,
   render: LiveRenderer,
-  cachedState?: Record<string, unknown>,
+  cachedState?: CachedLiveState,
 ): Promise<{ payload: Record<string, unknown>; markdown: string }> {
   const uriString = uri.toString()
   let payload: Record<string, unknown>
-  if (cachedState !== undefined) {
-    payload = cachedState
+  if (cachedState?.instanceId === instanceId) {
+    payload = cachedState.payload
   } else {
     try {
       payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
@@ -74,15 +76,17 @@ export async function readLiveResource(
 export async function readLiveResourceUri(
   bridge: BridgeClient,
   uri: string,
-  cachedState?: Record<string, unknown>,
-): Promise<{ uri: string; markdown: string; state: Record<string, unknown> } | undefined> {
+  cachedState?: CachedLiveState,
+): Promise<
+  { uri: string; markdown: string; state: Record<string, unknown>; instanceId: string } | undefined
+> {
   const scoped = SCOPED_SECTION.exec(uri)
   const section = scoped?.[2] ?? UNSCOPED_SECTION.exec(uri)?.[1]
   const definition = liveResourceFor(section)
   if (!definition) return undefined
   const instanceId = scoped?.[1] ?? selectedInstance(bridge, uri)
   const result = await readLiveResource(bridge, uri, instanceId, definition.render, cachedState)
-  return { uri, markdown: result.markdown, state: result.payload }
+  return { uri, markdown: result.markdown, state: result.payload, instanceId }
 }
 
 const EDITION_NAMES: Record<string, string> = {
