@@ -12,9 +12,8 @@ A mutating action returns a `## Next: <uri>` section holding the freshest snapsh
 
 Re-read `balatro://turn` when:
 
-- the result carries no `## Next` section, meaning the state returned to a surface you already hold;
-- the action only changed your own selection, such as `balatro_select_hand_cards` or `balatro_skip_booster`;
-- the snapshot reports `settled: false`, meaning the game was still animating.
+- the result carries no `## Next` section, meaning no new decision surface was reached or the state returned to a surface you already hold;
+- the action only changed your own selection, such as `balatro_select_hand_cards` or `balatro_skip_booster`.
 
 ## Verify Rules, Not Memory
 

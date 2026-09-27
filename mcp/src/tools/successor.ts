@@ -25,9 +25,9 @@ const PACK_PHASE = "SMODS_BOOSTER_OPENED"
 // DRAW_TO_HAND, PLAY_TAROT, ROUND_EVAL, NEW_ROUND and GAME_OVER, is a
 // transition with no decision behind it. The action that proves each one is
 // genuinely ready is its primary action: the mod emits sell_card, restart and
-// new_game in every run phase, so a non-empty legal-action list proves
-// nothing. BLIND_SELECT reports its phase before the blind panel is built, and
-// only select_blind tells those two states apart.
+// new_game in every run phase, so a non-empty legal-action list proves nothing.
+// BLIND_SELECT reports its phase before the blind panel is built, and only
+// select_blind tells those two states apart.
 const PHASE_PRIMARY_ACTION: Record<string, string> = {
   BLIND_SELECT: "select_blind",
   SELECTING_HAND: "select_hand_cards",
@@ -279,12 +279,11 @@ async function settleState(
 interface SuccessorSection {
   uri: string
   markdown: string
-  settled: boolean
 }
 
 /**
  * Command errors propagate without a successor read; successful commands attach
- * the next settled decision surface.
+ * the next settled decision surface, and nothing when none settles in time.
  */
 export async function commandWithSuccessor(
   bridge: BridgeClient,
@@ -318,7 +317,12 @@ export async function commandWithSuccessor(
         options.pollMs ?? SETTLE_POLL_MS,
         instanceId,
       )
-      if (outcome.payload === undefined) return { envelope, successor: undefined }
+      // Only a settled surface is worth predicting. A run that ends mid-hand
+      // never settles, so it returns no successor; the agent reads the resource
+      // to learn the run is over.
+      if (!outcome.settled || outcome.payload === undefined) {
+        return { envelope, successor: undefined }
+      }
       const uri = successorUri(rule, outcome.payload, before)
       if (uri === undefined) return { envelope, successor: undefined }
       const scopedUri =
@@ -329,12 +333,10 @@ export async function commandWithSuccessor(
       envelope.next = {
         uri: rendered.uri,
         phase: phaseOf(outcome.payload),
-        settled: outcome.settled,
       }
       const successor: SuccessorSection = {
         uri: rendered.uri,
         markdown: rendered.markdown,
-        settled: outcome.settled,
       }
       return { envelope, successor }
     },
@@ -349,14 +351,7 @@ export async function commandWithSuccessor(
         const formatBase = options.toMarkdown ?? defaultMarkdown
         const base = formatBase(result)
         if (successor === undefined) return base
-        const lines = [base, "", "---", "", `## Next: ${successor.uri}`, ""]
-        if (!successor.settled) {
-          lines.push(
-            "*The game was still animating when this context was captured; re-read the resource if it looks stale.*",
-            "",
-          )
-        }
-        lines.push(successor.markdown)
+        const lines = [base, "", "---", "", `## Next: ${successor.uri}`, "", successor.markdown]
         return lines.join("\n")
       }),
   )

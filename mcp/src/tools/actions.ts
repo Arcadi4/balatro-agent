@@ -116,7 +116,6 @@ const successorSchema = z
   .object({
     uri: z.string(),
     phase: z.string(),
-    settled: z.boolean(),
   })
   .strict()
 const commandOutputSchema = z
