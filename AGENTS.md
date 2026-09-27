@@ -43,10 +43,6 @@ step; `mcp/README.md` owns the release flow.
 Lovely (`ARGS="..."` passes game arguments). `BALATRO_DIR` and `BALATRO_SAVE` override the
 macOS defaults.
 
-## Code conventions
-
-Static reference data lives in `mcp/data/`; the bundle embeds those text imports.
-
 ### TypeScript conventions
 
 - Strict TypeScript; no suppressions or `any`.
@@ -89,3 +85,20 @@ command or a targeted repro that exercises the path you touched.
 ## Windows compatibility
 
 No POSIX-only endpoints, paths, shell assumptions, or FFI in shared runtime code. Framing, reconnect, env overrides, and module loading changes must be validated against both transports.
+
+## Code style
+
+Before implementing a new abstraction, always ask yourself: "does SMODS or the game already does this for me?". Never build systems and logics external to the game, this is a typical over-engineering pattern. Always build around the game/SMODS for best behavior alignment.
+
+To achieve this, you should always check the game wiki for simple domain knowledge. Upon complicated bug fix and feature implementations, you should read SMODS's source and the game's source code dump for better understanding.
+
+On bugs that involves game behavior/information, the right fix is usually removing logic and abstractions, not adding more
+
+## Comment style
+
+- Comment when the reason for the code is non-obvious just by reading.
+- Comment when something was deliberately not implemented or fixed, state the exact decision or technical constraint that blocks it.
+- Do not restate the code's behavior. Code should be self-explanatory. If not, its a coding style issue, refactor.
+- Do not repeat docs across all call sites. Keep an unique source for each doc statement.
+- Colocate one rationale. If
+- Do not record the history of the code's shape. That is `git blame`'s job.
