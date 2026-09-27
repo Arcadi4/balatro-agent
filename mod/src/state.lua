@@ -271,15 +271,29 @@ end
 
 local function rendered_rows_to_description(rows)
   if type(rows) ~= 'table' then return nil end
-  local lines = {}
+  local prose, badges = {}, {}
   for _, row in ipairs(rows) do
     local parts = {}
     collect_node_text(row, parts)
     local line = trim_text(table.concat(parts, ''))
-    if line then lines[#lines + 1] = line end
+    if line then
+      -- generate_card_ui appends main_end after the body and the game draws it
+      -- as a badge, not prose. Each row is a wrapper array, so the badge's own
+      -- config lives on the first child. "bm" is the inline form (The Fool,
+      -- Blueprint, Luchador); the remove_negative badge is localized instead.
+      local config = type(row.config) == 'table' and row.config
+        or (type(row[1]) == 'table' and row[1].config) or nil
+      local is_badge = config ~= nil and config.align == 'bm'
+      if is_badge then badges[#badges + 1] = line else prose[#prose + 1] = line end
+    end
   end
-  if #lines == 0 then return nil end
-  return table.concat(lines, ' ')
+  if #prose == 0 and #badges == 0 then return nil end
+  local out = table.concat(prose, ' ')
+  for _, badge in ipairs(badges) do
+    if out ~= '' then out = out .. ' ' end
+    out = out .. '(' .. badge .. ')'
+  end
+  return trim_text(out)
 end
 
 -- generate_UIBox_ability_table creates unparented Moveables that self-register
