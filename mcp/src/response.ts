@@ -5,7 +5,6 @@ import { BridgeError, type BridgeClient } from "./bridge/socket-client.js"
 export type MarkdownFormatter = (data: Record<string, unknown>) => string
 
 export interface CommandResultOptions {
-  timeoutMs?: number
   instanceId?: string
   toMarkdown?: MarkdownFormatter
 }
@@ -64,7 +63,7 @@ export async function commandResult(
   options: CommandResultOptions = {},
 ): Promise<CallToolResult> {
   return withBridgeErrors(
-    () => bridge.command(kind, args, options.timeoutMs, options.instanceId),
+    () => bridge.command(kind, args, options.instanceId),
     (data) => {
       const envelope: Record<string, unknown> = { ok: true }
       const record = asRecord(data)

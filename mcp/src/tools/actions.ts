@@ -228,7 +228,7 @@ const NO_ARG_TOOLS: ActionTool[] = [
     description: PLAY_HAND_DESCRIPTION,
     command: "play_hand",
     annotations: annotations(true, false),
-    options: { timeoutMs: 15_000, toMarkdown: playHandToMarkdown },
+    options: { toMarkdown: playHandToMarkdown },
   },
   {
     name: "balatro_discard_hand",
@@ -264,7 +264,6 @@ const NO_ARG_TOOLS: ActionTool[] = [
     description: CASH_OUT_DESCRIPTION,
     command: "cash_out",
     annotations: annotations(true, false),
-    options: { timeoutMs: 18_000 },
   },
   {
     name: "balatro_skip_booster",
@@ -279,7 +278,6 @@ const NO_ARG_TOOLS: ActionTool[] = [
     description: RESTART_DESCRIPTION,
     command: "restart",
     annotations: annotations(true, false),
-    options: { timeoutMs: 18_000 },
   },
   {
     name: "balatro_continue_game",
@@ -287,7 +285,6 @@ const NO_ARG_TOOLS: ActionTool[] = [
     description: CONTINUE_GAME_DESCRIPTION,
     command: "continue_game",
     annotations: annotations(true, false),
-    options: { timeoutMs: 18_000 },
   },
 ]
 
@@ -497,7 +494,6 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
           ? { challenge: args.challenge }
           : { deck: args.deck, stake: args.stake, seed: args.seed }
       return commandWithSuccessor(bridge, "new_game", params, {
-        timeoutMs: 18_000,
         instanceId: args.instance_id,
       })
     },

@@ -262,10 +262,12 @@ export class BridgeClient {
   async command(
     kind: string,
     args?: Record<string, unknown>,
-    timeoutMs = RESPONSE_TIMEOUT_MS,
     instanceId?: string,
   ): Promise<unknown> {
-    const result = asRecord(await this.request(kind, args ?? {}, timeoutMs, instanceId))
+    // Game commands complete when the game completes them; a response deadline
+    // here can only truncate a legitimate long-running action. Dead bridges
+    // reject pending requests when the socket closes.
+    const result = asRecord(await this.request(kind, args ?? {}, undefined, instanceId))
     if (!result || result.ok !== true)
       throw new BridgeError("PROTOCOL_MISMATCH", `Command ${kind} returned an invalid result`)
     return result.data
@@ -472,7 +474,7 @@ export class BridgeClient {
   private async request(
     method: string,
     params: Record<string, unknown> | undefined,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     instanceId?: string,
   ): Promise<unknown> {
     const session = this.requireSession(instanceId)

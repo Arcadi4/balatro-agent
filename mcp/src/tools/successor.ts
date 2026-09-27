@@ -303,7 +303,7 @@ export async function commandWithSuccessor(
           before = undefined
         }
       }
-      const data = await bridge.command(kind, args, options.timeoutMs, instanceId)
+      const data = await bridge.command(kind, args, instanceId)
       const envelope: Record<string, unknown> = { ok: true }
       const record = asRecord(data)
       if (record && Object.keys(record).length > 0) {
