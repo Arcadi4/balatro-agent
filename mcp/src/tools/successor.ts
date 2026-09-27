@@ -22,16 +22,23 @@ export interface SuccessorOptions extends CommandResultOptions {
 const PACK_PHASE = "SMODS_BOOSTER_OPENED"
 
 // Phases the agent can decide in. Everything else, including HAND_PLAYED,
-// DRAW_TO_HAND, PLAY_TAROT, ROUND_EVAL, NEW_ROUND and GAME_OVER, is a
-// transition with no decision behind it. The action that proves each one is
-// genuinely ready is its primary action: the mod emits sell_card, restart and
-// new_game in every run phase, so a non-empty legal-action list proves nothing.
+// DRAW_TO_HAND, PLAY_TAROT, ROUND_EVAL and NEW_ROUND, is a transition with no
+// decision behind it. The action that proves each one is genuinely ready is its
+// primary action: the mod emits sell_card, restart and new_game in every run
+// phase, so a non-empty legal-action list proves nothing.
 // BLIND_SELECT reports its phase before the blind panel is built, and only
 // select_blind tells those two states apart.
 const PHASE_PRIMARY_ACTION: Record<string, string> = {
   BLIND_SELECT: "select_blind",
   SELECTING_HAND: "select_hand_cards",
   SHOP: "leave_shop",
+}
+
+// A finished run offers nothing to act on, so it has no primary action and
+// never settles. It is still worth reporting: the round is over, so nothing
+// behind it can change and the snapshot is final as soon as it is announced.
+const TERMINAL_PHASES: Record<string, true> = {
+  GAME_OVER: true,
 }
 
 const RUN_PHASES: Record<string, true> = {
@@ -272,7 +279,7 @@ async function settleState(
     settled:
       rule.awaitedPhases[phase] === true &&
       (rule.ready === undefined || rule.ready(payload)) &&
-      isActionablePhase(payload),
+      (isActionablePhase(payload) || TERMINAL_PHASES[phase] === true),
   }
 }
 
