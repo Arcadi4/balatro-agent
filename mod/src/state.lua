@@ -288,12 +288,13 @@ local function rendered_rows_to_description(rows)
     end
   end
   if #prose == 0 and #badges == 0 then return nil end
-  local out = table.concat(prose, ' ')
+  local out = { table.concat(prose, ' ') }
   for _, badge in ipairs(badges) do
-    if out ~= '' then out = out .. ' ' end
-    out = out .. '(' .. badge .. ')'
+    out[#out + 1] = '*' .. badge .. '*'
   end
-  return trim_text(out)
+  if #out == 1 then return trim_text(out[1]) end
+  if trim_text(out[1]) == nil then table.remove(out, 1) end
+  return out
 end
 
 -- generate_UIBox_ability_table creates unparented Moveables that self-register
