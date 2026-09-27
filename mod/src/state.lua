@@ -191,17 +191,72 @@ local function append_plain_text(parts, value)
   end
 end
 
+local function dynatext_candidates(object)
+  if type(object.strings) ~= 'table' then return nil end
+  local out = {}
+  for _, entry in ipairs(object.strings) do
+    if type(entry) == 'table' and entry.string ~= nil then
+      local parts = {}
+      append_plain_text(parts, entry.string)
+      local text = table.concat(parts, '')
+      if trim_text(text) then out[#out + 1] = text end
+    end
+  end
+  return #out > 0 and out or nil
+end
+
+-- A DynaText's `config.string` is its candidate list, not its text. The live
+-- value is `strings[focused_string].string`, and `focused_string` only advances
+-- in `align_letters`, which `update` drives — the DynaText
+-- `generate_UIBox_ability_table` hands back is unparented and never updated, so
+-- `string` stays frozen on candidate 1. Collapse the candidate set instead, and
+-- keep each candidate raw: the game pads its own text for its layout (' '..k_mult..' ').
+local function append_dynatext_text(parts, object)
+  local candidates = dynatext_candidates(object)
+  if not candidates then
+    append_plain_text(parts, object.string)
+    return
+  end
+  if #candidates == 1 then
+    append_plain_text(parts, candidates[1])
+    return
+  end
+
+  local lo, hi, all_numeric = nil, nil, true
+  for _, candidate in ipairs(candidates) do
+    local value = tonumber(candidate)
+    if not value then
+      all_numeric = false
+      break
+    end
+    if not lo or value < lo then lo = value end
+    if not hi or value > hi then hi = value end
+  end
+  if all_numeric then
+    parts[#parts + 1] = lo == hi and tostring(lo) or (lo .. '-' .. hi)
+    return
+  end
+
+  local counts, best, best_count = {}, nil, 0
+  for _, candidate in ipairs(candidates) do
+    local count = (counts[candidate] or 0) + 1
+    counts[candidate] = count
+    if count > best_count then
+      best, best_count = candidate, count
+    end
+  end
+  if best_count * 2 > #candidates then
+    parts[#parts + 1] = best
+  end
+end
+
 local function collect_node_text(node, parts)
   if type(node) ~= 'table' then return end
   local config = node.config
   if type(config) == 'table' then
     append_plain_text(parts, config.text)
     if type(config.object) == 'table' then
-      append_plain_text(parts, config.object.string)
-      if type(config.object.config) == 'table' then
-        append_plain_text(parts, config.object.config.string)
-        append_plain_text(parts, config.object.config.text)
-      end
+      append_dynatext_text(parts, config.object)
     end
   end
   if type(node.nodes) == 'table' then
