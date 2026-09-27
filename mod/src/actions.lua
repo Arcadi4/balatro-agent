@@ -611,8 +611,9 @@ local function current_blind_chips()
   return G and G.GAME and G.GAME.blind and G.GAME.blind.chips or nil
 end
 
--- Scoring plays out across many frames of HAND_PLAYED; the delta is only
--- meaningful once the state leaves it.
+-- Scoring plays out across many frames of HAND_PLAYED, and the game credits
+-- G.GAME.chips through a queued ease that only runs after it, so every score
+-- field is only meaningful once the state leaves HAND_PLAYED.
 local function play_hand_settle(seed)
   local saw_hand_played = false
   -- The game zeroes current_hand as the hand resolves, so the final chip
@@ -636,7 +637,7 @@ local function play_hand_settle(seed)
     return settle_result({
       cards_played = seed.cards_played,
       played_cards = seed.played_cards,
-      points_gained = score_after - seed.score_before,
+      points_gained = chip_total_sampled or (score_after - seed.score_before),
       score_before = seed.score_before,
       score_after = score_after,
       blind_chips = blind_chips,
@@ -653,7 +654,6 @@ local function play_hand_settle(seed)
   end
 
   return { ok = true, settle = {
-    timeout_seconds = 12,
     poll = function()
       if G and G.STATES then
         if G.STATE == G.STATES.HAND_PLAYED then
@@ -671,9 +671,6 @@ local function play_hand_settle(seed)
         end
       end
       return nil
-    end,
-    on_timeout = function()
-      return scoring_result()
     end,
   } }
 end

@@ -6,11 +6,10 @@ local socket
 local pending_responses = {}
 local bridge_active = false
 
-local DEFAULT_SETTLE_TIMEOUT = 10
-
--- Deferred actions return `settle = { timeout_seconds, poll, on_timeout }`.
--- `poll` returns nil while pending and a result once the effect is observable;
--- `on_timeout` supplies the terminal result when the deadline expires.
+-- Deferred actions return `settle = { poll, timeout_seconds?, on_timeout? }`.
+-- `poll` returns nil while pending and a result once the effect is observable.
+-- `timeout_seconds` is an optional deadline; `on_timeout` supplies the terminal
+-- result when it expires.
 local function run_settle_step(fn)
   local success, result = pcall(fn)
   if success then return result end
@@ -24,7 +23,7 @@ local function update_pending_responses()
   local now = love.timer.getTime()
   for _, pending in ipairs(pending_responses) do
     local result = run_settle_step(pending.poll)
-    if result == nil and now >= pending.deadline then
+    if result == nil and pending.deadline and now >= pending.deadline then
       result = run_settle_step(pending.on_timeout)
     end
     if result then
@@ -56,7 +55,9 @@ local function handle_request(method, params, request_id, send, owner)
   if result.ok ~= false and type(result.settle) == 'table' then
     pending_responses[#pending_responses + 1] = {
       request_id = request_id,
-      deadline = love.timer.getTime() + (result.settle.timeout_seconds or DEFAULT_SETTLE_TIMEOUT),
+      deadline = result.settle.timeout_seconds
+          and (love.timer.getTime() + result.settle.timeout_seconds)
+        or nil,
       poll = result.settle.poll,
       on_timeout = result.settle.on_timeout,
       send = send or socket.send_response,
