@@ -110,7 +110,7 @@ local function target_matches(target)
   return target.match() and true or false
 end
 
-local function check_phase(allowed_phases)
+local function check_phase(allowed_phases, hint)
   if not G or not G.STATE or not G.STATES then
     return err("WRONG_PHASE", "Game state not available")
   end
@@ -119,11 +119,14 @@ local function check_phase(allowed_phases)
     if target_matches(phase) then return nil end
     names[#names + 1] = target_name(phase)
   end
-  return err(
-    "WRONG_PHASE",
-    "Action not allowed in phase " .. phase_name() .. "; allowed: " .. table.concat(names, ", ")
-  )
+  local message = "Action not allowed in phase " .. phase_name() .. "; allowed: " .. table.concat(names, ", ")
+  if hint then message = message .. "; " .. hint end
+  return err("WRONG_PHASE", message)
 end
+
+-- Pack targeting rides on select_booster_card's targets argument; the hand
+-- selection and slot-use actions are refused while a pack is open.
+local PACK_TARGET_HINT = "during a booster pack, hand targeting rides on balatro_select_booster_card's targets argument"
 
 local function find_card_in(area, target_card_id)
   return card_ids.resolve(area, target_card_id)
@@ -514,7 +517,7 @@ local function hand_preview()
   }
 end
 handlers.select_hand_cards = function(args)
-  local phase_err = check_phase({ "SELECTING_HAND" })
+  local phase_err = check_phase({ "SELECTING_HAND" }, is_pack_phase() and PACK_TARGET_HINT or nil)
   if phase_err then return phase_err end
 
   local card_ids = args.card_ids
@@ -721,7 +724,7 @@ handlers.discard_hand = function(args)
 end
 
 handlers.use_consumable = function(args)
-  local phase_err = check_phase({ "SELECTING_HAND", "SHOP" })
+  local phase_err = check_phase({ "SELECTING_HAND", "SHOP" }, is_pack_phase() and PACK_TARGET_HINT or nil)
   if phase_err then return phase_err end
 
   local card_id = args.card_id
