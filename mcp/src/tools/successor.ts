@@ -21,13 +21,17 @@ export interface SuccessorOptions extends CommandResultOptions {
 // itself is the only reliable signal.
 const PACK_PHASE = "SMODS_BOOSTER_OPENED"
 
-// Phases the agent can actually decide in. Everything else, including
-// HAND_PLAYED, DRAW_TO_HAND, PLAY_TAROT, ROUND_EVAL, NEW_ROUND and GAME_OVER,
-// is a transition with no decision behind it.
-const ACTIONABLE_PHASES: Record<string, true> = {
-  SELECTING_HAND: true,
-  BLIND_SELECT: true,
-  SHOP: true,
+// Phases the agent can decide in. Everything else, including HAND_PLAYED,
+// DRAW_TO_HAND, PLAY_TAROT, ROUND_EVAL, NEW_ROUND and GAME_OVER, is a
+// transition with no decision behind it. The action that proves each one is
+// genuinely ready is its primary action: the mod emits sell_card, restart and
+// new_game in every run phase, so a non-empty legal-action list proves
+// nothing. BLIND_SELECT reports its phase before the blind panel is built, and
+// only select_blind tells those two states apart.
+const PHASE_PRIMARY_ACTION: Record<string, string> = {
+  BLIND_SELECT: "select_blind",
+  SELECTING_HAND: "select_hand_cards",
+  SHOP: "leave_shop",
 }
 
 const RUN_PHASES: Record<string, true> = {
@@ -96,22 +100,19 @@ function packTransitionReady(payload: Record<string, unknown>): boolean {
   return !packOpen(payload) || boosterReady(payload)
 }
 
-// Settled means the snapshot is a decision surface, not merely a phase we were
-// waiting for: the agent must be able to act in it, and at least one legal
-// action has to be behind that phase. An open pack counts as its own surface.
-// The blind-select screen reports its phase before the panel is built, so the
-// payload can look ready while select_blind is not yet legal. Legal actions are
-// computed by the mod against the live UI, so they are the readiness signal.
-function hasLegalAction(payload: Record<string, unknown>, action?: string): boolean {
+// Legal actions are computed by the mod against the live UI, so they are the
+// readiness signal. Asking for the phase's primary action is what separates a
+// built screen from a phase that has merely been entered; a bare length check
+// cannot, because sell_card, restart and new_game are legal in every phase.
+function hasLegalAction(payload: Record<string, unknown>, action: string): boolean {
   const actions = Array.isArray(payload.legal_actions) ? payload.legal_actions : []
-  return action === undefined
-    ? actions.length > 0
-    : actions.some((entry) => String(entry) === action)
+  return actions.some((entry) => String(entry) === action)
 }
 
 function isActionablePhase(payload: Record<string, unknown>): boolean {
-  const actionable = ACTIONABLE_PHASES[phaseOf(payload)] === true || packOpen(payload)
-  return actionable && hasLegalAction(payload)
+  if (packOpen(payload)) return true
+  const primary = PHASE_PRIMARY_ACTION[phaseOf(payload)]
+  return primary !== undefined && hasLegalAction(payload, primary)
 }
 
 // Attach only a new, actionable surface. Returning to an inspected parent,
