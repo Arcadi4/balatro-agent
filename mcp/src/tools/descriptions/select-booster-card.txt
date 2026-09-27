@@ -1,1 +1,1 @@
-Pick a card from an open booster pack. Jokers and playing cards are added to your collection; consumables are used immediately.
+Pick a card from an open booster pack. Jokers and playing cards are added to your collection; consumables are used immediately and never stored. Targeted consumables need targets on this call — hand selection is unavailable during packs.

@@ -1,1 +1,1 @@
-Use a consumable from your slots, applying its effect. Pass targets for cards that affect specific hand cards.
+Use a consumable from your slots, applying its effect. Hand-targeting consumables require targets; others must not receive them.
