@@ -1,6 +1,7 @@
 local handlers = {}
 local card_ids
 local connect_info
+local game_events
 
 local round_eval
 
@@ -341,25 +342,6 @@ local RUN_PHASES = {
   { name = PACK_STATE_NAME, match = is_pack_phase },
 }
 
--- A settle timeout is transport detail, not a result: the command still
--- reports whatever the game had reached.
-local function settle_result(data)
-  return { ok = true, data = data or {} }
-end
-
--- True when every queued event is deletable; persistent events do not block
--- action completion.
-local function events_drained()
-  local manager = G and G.E_MANAGER
-  if not manager or not manager.queues then return false end
-  for _, queue in pairs(manager.queues) do
-    for i = 1, #queue do
-      if not queue[i].no_delete then return false end
-    end
-  end
-  return true
-end
-
 -- A named state still needs G.STATE_COMPLETE to reject transition frames; a
 -- live phase (booster pack) is the game's own state and settles on a match.
 local function target_settled(target)
@@ -370,40 +352,36 @@ end
 
 -- Complete after queued work drains and the game rests in a target phase.
 -- Screen wipes hide run transitions and keep the controller input-locked.
-local function phase_settle(target_phases, data, timeout_seconds)
+local function phase_settle(target_phases, data)
   local armed = false
   return {
     ok = true,
     settle = {
-      timeout_seconds = timeout_seconds,
-      poll = function()
+      on_game_update = function(work_mark)
         if not G then return nil end
         if not armed then
           -- Do not count the pre-action phase until the action's queued work drains.
-          if events_drained() then armed = true end
+          if game_events.work_settled(work_mark) then armed = true end
           return nil
         end
         if G.screenwipe then return nil end
         for _, target in ipairs(target_phases) do
-          if target_settled(target) then return settle_result(data) end
+          if target_settled(target) then return ok(data) end
         end
         return nil
       end,
-      on_timeout = function() return settle_result(data) end,
     },
   }
 end
 
-local function anim_settle(data, timeout_seconds)
+local function anim_settle(data)
   return {
     ok = true,
     settle = {
-      timeout_seconds = timeout_seconds,
-      poll = function()
-        if events_drained() then return settle_result(data) end
+      on_game_update = function(work_mark)
+        if game_events.work_settled(work_mark) then return ok(data) end
         return nil
       end,
-      on_timeout = function() return settle_result(data) end,
     },
   }
 end
@@ -439,8 +417,7 @@ handlers.select_blind = function(args)
     {
       blind_selected = string.lower(blind_key),
       blind_id = G.GAME.round_resets.blind_choices[blind_key],
-    },
-    8
+    }
   )
 end
 
@@ -474,7 +451,7 @@ handlers.skip_blind = function(args)
     skipped = true,
     blind = string.lower(blind_key),
     tag = tag_key,
-  }, 8)
+  })
 end
 
 handlers.reroll_boss = function(args)
@@ -504,7 +481,7 @@ handlers.reroll_boss = function(args)
 
   local previous_boss = resets.blind_choices.Boss
   G.FUNCS.reroll_boss()
-  return anim_settle({ rerolled = true, previous_boss = previous_boss, cost = 10 }, 8)
+  return anim_settle({ rerolled = true, previous_boss = previous_boss, cost = 10 })
 end
 
 -- Native hand evaluation: the game resolves the poker hand from the live
@@ -634,7 +611,7 @@ local function play_hand_settle(seed)
     local hand = game and hand_key and game.hands and game.hands[hand_key]
     local score_after = current_score()
     local blind_chips = current_blind_chips() or seed.blind_chips
-    return settle_result({
+    return ok({
       cards_played = seed.cards_played,
       played_cards = seed.played_cards,
       points_gained = chip_total_sampled or (score_after - seed.score_before),
@@ -654,15 +631,15 @@ local function play_hand_settle(seed)
   end
 
   return { ok = true, settle = {
-    poll = function()
+    on_game_update = function()
       if G and G.STATES then
         if G.STATE == G.STATES.HAND_PLAYED then
           saw_hand_played = true
           local round = G.GAME and G.GAME.current_round
           local total = round and round.current_hand and round.current_hand.chip_total
           -- Latch the first positive total: the game eases chip_total back to
-          -- zero once the hand resolves, so later poll frames would overwrite
-          -- the real value with the post-ease zero.
+          -- zero once the hand resolves, so later frames would overwrite the
+          -- real value with the post-ease zero.
           if chip_total_sampled == nil and type(total) == 'number' and total > 0 then
             chip_total_sampled = total
           end
@@ -732,7 +709,7 @@ handlers.discard_hand = function(args)
   local cards_discarded = #G.hand.highlighted
   G.FUNCS.discard_cards_from_highlighted()
 
-  return anim_settle({ cards_discarded = cards_discarded }, 8)
+  return anim_settle({ cards_discarded = cards_discarded })
 end
 
 handlers.use_consumable = function(args)
@@ -751,7 +728,7 @@ handlers.use_consumable = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return anim_settle({}, 8)
+  return anim_settle({})
 end
 
 handlers.sell_card = function(args)
@@ -777,7 +754,7 @@ handlers.sell_card = function(args)
 
   G.FUNCS.sell_card({ config = { ref_table = card } })
 
-  return anim_settle({ sell_value = card.sell_cost }, 8)
+  return anim_settle({ sell_value = card.sell_cost })
 end
 
 handlers.buy_card = function(args)
@@ -808,7 +785,7 @@ handlers.buy_card = function(args)
   local buy_err = purchase_from_shop(card, false)
   if buy_err then return buy_err end
 
-  return anim_settle({ cost = cost, kind = is_joker and "joker" or "playing_card" }, 8)
+  return anim_settle({ cost = cost, kind = is_joker and "joker" or "playing_card" })
 end
 
 handlers.buy_consumable = function(args)
@@ -852,7 +829,7 @@ handlers.buy_consumable = function(args)
     return buy_err
   end
 
-  return anim_settle({ cost = cost }, 8)
+  return anim_settle({ cost = cost })
 end
 
 handlers.buy_voucher = function(args)
@@ -890,7 +867,7 @@ handlers.buy_voucher = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return anim_settle({ cost = cost, voucher_key = voucher_key }, 8)
+  return anim_settle({ cost = cost, voucher_key = voucher_key })
 end
 
 handlers.reroll_shop = function(args)
@@ -907,7 +884,7 @@ handlers.reroll_shop = function(args)
 
   G.FUNCS.reroll_shop()
 
-  return anim_settle({ rerolled = true }, 8)
+  return anim_settle({ rerolled = true })
 end
 
 handlers.leave_shop = function(args)
@@ -916,7 +893,7 @@ handlers.leave_shop = function(args)
 
   G.FUNCS.toggle_shop()
 
-  return phase_settle({ "BLIND_SELECT" }, { left_shop = true }, 8)
+  return phase_settle({ "BLIND_SELECT" }, { left_shop = true })
 end
 
 -- G.FUNCS.cash_out leaves the pressed button's UIBox attached; drop it so
@@ -929,18 +906,20 @@ local function release_cash_out_ui(button)
 end
 
 -- Waits for the cash-out button to render (the round-eval UI builds across
--- frames), presses it once, then holds until the shop settles.
+-- frames), presses it once, then holds until the shop settles. The deadline
+-- is a stall watchdog: if another mod breaks the round-eval UI the button may
+-- never render, and that must surface as an error rather than a hanging call.
 local function cash_out_settle(pressed)
   return {
     ok = true,
     settle = {
       timeout_seconds = 15,
-      poll = function()
+      on_game_update = function()
         if not G or not G.STATES then
           return err("WRONG_PHASE", "Game state is not available")
         end
         if G.STATE == G.STATES.SHOP and G.STATE_COMPLETE then
-          return settle_result({ cashed_out = true })
+          return ok({ cashed_out = true })
         end
         if not pressed and G.STATE == G.STATES.ROUND_EVAL then
           local button = round_eval and round_eval.cash_out_button()
@@ -1004,7 +983,7 @@ handlers.restart = function(args)
   G.challenge_tab = nil
   G.forced_seed = nil
 
-  return phase_settle({ "BLIND_SELECT" }, { restarted = true }, 15)
+  return phase_settle({ "BLIND_SELECT" }, { restarted = true })
 end
 
 handlers.continue_game = function(args)
@@ -1028,7 +1007,7 @@ handlers.continue_game = function(args)
   end
 
   G.FUNCS.start_run(nil, { savetext = G.SAVED_GAME })
-  return phase_settle(RUN_PHASES, { continued = true }, 15)
+  return phase_settle(RUN_PHASES, { continued = true })
 end
  
 handlers.new_game = function(args)
@@ -1087,7 +1066,7 @@ handlers.new_game = function(args)
   G.challenge_tab = nil
   G.forced_seed = nil
 
-  return phase_settle({ "BLIND_SELECT" }, { started = true }, 15)
+  return phase_settle({ "BLIND_SELECT" }, { started = true })
 end
 
 handlers.buy_booster = function(args)
@@ -1109,8 +1088,7 @@ handlers.buy_booster = function(args)
 
   return phase_settle(
     PACK_TARGETS,
-    { cost = cost, pack = card.ability and card.ability.name },
-    8
+    { cost = cost, pack = card.ability and card.ability.name }
   )
 end
 
@@ -1144,7 +1122,7 @@ handlers.select_booster_card = function(args)
 
   G.FUNCS.use_card({ config = { ref_table = card } })
 
-  return anim_settle({}, 8)
+  return anim_settle({})
 end
 
 handlers.skip_booster = function(args)
@@ -1153,7 +1131,7 @@ handlers.skip_booster = function(args)
 
   G.FUNCS.skip_booster()
 
-  return anim_settle({ skipped_booster = true }, 8)
+  return anim_settle({ skipped_booster = true })
 end
 
 handlers.reorder_jokers = function(args)
@@ -1198,10 +1176,11 @@ handlers.reorder_jokers = function(args)
   return ok()
 end
 
-function handlers.configure(ids, eval, get_connect_info)
+function handlers.configure(ids, eval, get_connect_info, events)
   card_ids = ids
   round_eval = eval
   connect_info = get_connect_info
+  game_events = events
 end
 
 return handlers

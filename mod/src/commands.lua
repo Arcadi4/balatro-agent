@@ -1,17 +1,22 @@
 local Commands = {}
 
 local actions
+local game_events
 local jsonrpc
 local socket
 local pending_responses = {}
 local bridge_active = false
 
--- Deferred actions return `settle = { poll, timeout_seconds?, on_timeout? }`.
--- `poll` returns nil while pending and a result once the effect is observable.
--- `timeout_seconds` is an optional deadline; `on_timeout` supplies the terminal
--- result when it expires.
-local function run_settle_step(fn)
-  local success, result = pcall(fn)
+-- Deferred actions return `settle = { on_game_update, timeout_seconds?, on_timeout? }`.
+-- `on_game_update(work_mark)` runs once per game update and returns nil while
+-- pending and a result once the game makes the effect observable; game
+-- progression is the only completion signal. `work_mark` snapshots the event
+-- queues from before the action ran (see game_events), so persistent or
+-- unrelated queued events cannot stall completion.
+-- `timeout_seconds` is a stall watchdog for effects the game may legitimately
+-- never produce: `on_timeout` reports an error, never a synthesized result.
+local function run_settle_step(fn, work_mark)
+  local success, result = pcall(fn, work_mark)
   if success then return result end
   return { ok = false, error_code = 'INTERNAL_ERROR', error_message = tostring(result) }
 end
@@ -22,7 +27,7 @@ local function update_pending_responses()
   local remaining = {}
   local now = love.timer.getTime()
   for _, pending in ipairs(pending_responses) do
-    local result = run_settle_step(pending.poll)
+    local result = run_settle_step(pending.on_game_update, pending.work_mark)
     if result == nil and pending.deadline and now >= pending.deadline then
       result = run_settle_step(pending.on_timeout)
     end
@@ -45,6 +50,7 @@ local function handle_request(method, params, request_id, send, owner)
     }
   end
 
+  local work_mark = game_events.mark_work()
   local success, result = pcall(handler, params or {}, request_id, send, owner)
   if not success then
     return { ok = false, error_code = 'INTERNAL_ERROR', error_message = tostring(result) }
@@ -55,10 +61,11 @@ local function handle_request(method, params, request_id, send, owner)
   if result.ok ~= false and type(result.settle) == 'table' then
     pending_responses[#pending_responses + 1] = {
       request_id = request_id,
+      work_mark = work_mark,
       deadline = result.settle.timeout_seconds
           and (love.timer.getTime() + result.settle.timeout_seconds)
         or nil,
-      poll = result.settle.poll,
+      on_game_update = result.settle.on_game_update,
       on_timeout = result.settle.on_timeout,
       send = send or socket.send_response,
       owner = owner,
@@ -84,6 +91,7 @@ end
 
 function Commands.init(modules)
   actions = modules.actions
+  game_events = modules.game_events
   jsonrpc = modules.jsonrpc
   socket = modules.socket
   jsonrpc.configure({

@@ -16,16 +16,18 @@ SMODS.current_mod.description_loc_vars = function()
 end
 
 local bridge_commands = load_module('commands')
+local game_events = load_module('game_events')
 local socket_module = jit.os == 'Windows' and 'socket_server_windows' or 'socket_server'
 local card_ids = load_module('card_ids')
 local round_eval = load_module('round_eval')
 local actions = load_module('actions')
 local state = load_module('state')
 local instance = load_module('instance')
-actions.configure(card_ids, round_eval, state.connect_info)
+actions.configure(card_ids, round_eval, state.connect_info, game_events)
 state.configure(card_ids)
 local bridge_active = bridge_commands.init({
   actions = actions,
+  game_events = game_events,
   state = state,
   jsonrpc = load_module('jsonrpc'),
   socket = load_module(socket_module),
