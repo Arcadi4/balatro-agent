@@ -279,8 +279,16 @@ local function prepare_consumable_targets(card, args, shop_context)
       end
     end
     if not use_err then
-      local hint = #target_card_ids == 0 and '; provide targets for targeted consumables' or ''
-      use_err = err('INVALID_TARGET', 'Consumable cannot be used with the supplied targets' .. hint)
+      local min_h = min_highlighted or 1
+      if #target_card_ids == 0 and min_h > 0 then
+        local range = min_h == max_highlighted and tostring(min_h) or (min_h .. '-' .. max_highlighted)
+        use_err = err('INVALID_TARGET', "'" .. name .. "' requires targets (" .. range
+          .. (max_highlighted == 1 and ' hand card' or ' hand cards') .. ')')
+      elseif #target_card_ids == 0 then
+        use_err = err('CANNOT_USE_NOW', "'" .. name .. "' cannot be used right now")
+      else
+        use_err = err('INVALID_TARGET', "'" .. name .. "' cannot be used with the supplied targets")
+      end
     end
     replace_highlights(previous)
     return use_err
