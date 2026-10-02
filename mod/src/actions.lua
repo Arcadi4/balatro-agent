@@ -165,13 +165,25 @@ local function contains_card(cards, target)
   return false
 end
 
+local function current_hand_ids()
+  local ids = {}
+  if G.hand and G.hand.cards then
+    for _, card in ipairs(G.hand.cards) do
+      ids[#ids + 1] = tostring(card_id(card))
+    end
+  end
+  return #ids > 0 and table.concat(ids, ", ") or "none"
+end
+
 local function resolve_hand_cards(card_ids)
   local cards = {}
   local requested = {}
   for _, target_id in ipairs(card_ids) do
     local card = find_card_in_hand(target_id)
     if not card then
-      return nil, nil, err("INVALID_TARGET", "Card not found in hand: " .. tostring(target_id))
+      return nil, nil, err("INVALID_TARGET", "Card not found in current hand: " .. tostring(target_id)
+        .. "; current hand IDs: " .. current_hand_ids()
+        .. "; read balatro://hand before retrying")
     end
     local key = tostring(card_id(card))
     if requested[key] then
@@ -239,6 +251,46 @@ local function consumable_target_limits(card)
   return min_h, max_h
 end
 
+local function is_death_consumable(card)
+  local center = card and card.config and card.config.center
+  return (card and card.ability and card.ability.name == 'Death')
+    or (center and center.key == 'c_death')
+end
+
+local function position_death_targets(targets)
+  if #targets ~= 2 or not G.hand or not G.hand.cards then return end
+
+  -- Death copies the physically right card onto the left card. The bridge API
+  -- defines targets as [card_to_transform, template_card], so make that order
+  -- concrete before Balatro resolves the effect.
+  local transform_card = targets[1]
+  local template_card = targets[2]
+  local transform_index, template_index
+
+  for index, hand_card in ipairs(G.hand.cards) do
+    if hand_card == transform_card then transform_index = index end
+    if hand_card == template_card then template_index = index end
+  end
+
+  if transform_index and template_index and transform_index > template_index then
+    G.hand.cards[transform_index], G.hand.cards[template_index] =
+      G.hand.cards[template_index], G.hand.cards[transform_index]
+    if G.hand.set_ranks then G.hand:set_ranks() end
+  end
+
+  local transform_x = transform_card.T and transform_card.T.x
+  local template_x = template_card.T and template_card.T.x
+  if transform_x and template_x and transform_x >= template_x then
+    transform_card.T.x, template_card.T.x = template_x, transform_x
+  end
+
+  local transform_vx = transform_card.VT and transform_card.VT.x
+  local template_vx = template_card.VT and template_card.VT.x
+  if transform_vx and template_vx and transform_vx >= template_vx then
+    transform_card.VT.x, template_card.VT.x = template_vx, transform_vx
+  end
+end
+
 local function prepare_consumable_targets(card, args, shop_context)
   local target_card_ids = args.targets or {}
   local min_highlighted, max_highlighted = consumable_target_limits(card)
@@ -267,6 +319,8 @@ local function prepare_consumable_targets(card, args, shop_context)
   local _, previous, selection_err = replace_requested_highlights(targets, requested)
   if selection_err then return selection_err end
 
+  if is_death_consumable(card) then position_death_targets(targets) end
+
   if card.can_use_consumeable and not card:can_use_consumeable() then
     local name = card.ability and card.ability.name or 'this consumable'
     local use_err
@@ -286,7 +340,8 @@ local function prepare_consumable_targets(card, args, shop_context)
       if #target_card_ids == 0 and min_h > 0 then
         local range = min_h == max_highlighted and tostring(min_h) or (min_h .. '-' .. max_highlighted)
         use_err = err('INVALID_TARGET', "'" .. name .. "' requires targets (" .. range
-          .. (max_highlighted == 1 and ' hand card' or ' hand cards') .. ')')
+          .. (max_highlighted == 1 and ' hand card' or ' hand cards')
+          .. '); read balatro://hand for the current target card IDs')
       elseif #target_card_ids == 0 then
         use_err = err('CANNOT_USE_NOW', "'" .. name .. "' cannot be used right now")
       else

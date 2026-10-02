@@ -45,7 +45,9 @@ const targetsSchema = z
     message: "targets must not contain duplicates",
   })
   .optional()
-  .describe("Target hand card IDs; required for hand-targeting consumables.")
+  .describe(
+    "Target hand card IDs; required for hand-targeting consumables. For Death, pass [card to transform, template card].",
+  )
 const targetedCardSchema = z
   .object({ card_id: cardIdSchema, targets: targetsSchema, instance_id: instanceIdSchema })
   .strict()
