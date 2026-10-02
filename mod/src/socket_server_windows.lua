@@ -87,31 +87,38 @@ local function send_response(client, response)
   return flush_client(client)
 end
 
+local function register_connected_listener()
+  local client
+  client = {
+    pipe = listener,
+    buffer = ffi.new('char[?]', BUFFER_SIZE),
+    codec = socket_codec_factory.new(function(request)
+      request_handler(request, function(response)
+        send_response(client, response)
+      end, client)
+    end, log),
+  }
+  clients[listener] = client
+  listener = create_pipe()
+  if listener == INVALID_HANDLE_VALUE then
+    listener = nil
+    log('Named-pipe listener creation failed (error ' .. tonumber(kernel32.GetLastError()) .. ')')
+    return
+  end
+  log('Named-pipe client connected')
+end
+
 local function accept_client()
   if not listener then return end
   local accepted = kernel32.ConnectNamedPipe(listener, nil)
-  if accepted ~= 0 then return end
+  if accepted ~= 0 then
+    register_connected_listener()
+    return
+  end
 
   local error_code = tonumber(kernel32.GetLastError())
   if error_code == ERROR_PIPE_CONNECTED then
-    local client
-    client = {
-      pipe = listener,
-      buffer = ffi.new('char[?]', BUFFER_SIZE),
-      codec = socket_codec_factory.new(function(request)
-        request_handler(request, function(response)
-          send_response(client, response)
-        end, client)
-      end, log),
-    }
-    clients[listener] = client
-    listener = create_pipe()
-    if listener == INVALID_HANDLE_VALUE then
-      listener = nil
-      log('Named-pipe listener creation failed (error ' .. tonumber(kernel32.GetLastError()) .. ')')
-      return
-    end
-    log('Named-pipe client connected')
+    register_connected_listener()
   elseif error_code == ERROR_NO_DATA then
     kernel32.CloseHandle(listener)
     listener = create_pipe()
