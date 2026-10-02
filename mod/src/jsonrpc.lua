@@ -57,11 +57,20 @@ function JsonRpc.dispatch(request, sender, owner)
     if state_ok and state then
       JsonRpc.send_result(request.id, state, sender)
     else
+      local message = 'Game state is unavailable'
+      local data = { error_code = 'STATE_NOT_FOUND' }
+      if not state_ok then
+        data.detail = tostring(state)
+        message = message .. ': ' .. data.detail
+        if type(sendDebugMessage) == 'function' then
+          pcall(sendDebugMessage, 'MCP: State snapshot failed: ' .. data.detail, 'balatro-agent')
+        end
+      end
       JsonRpc.send_error(
         request.id,
         -32005,
-        'Game state is unavailable',
-        { error_code = 'STATE_NOT_FOUND' },
+        message,
+        data,
         sender
       )
     end

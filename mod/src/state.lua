@@ -332,7 +332,8 @@ local function get_rendered_card_description(card)
   if not G or not G.MOVEABLES then return nil end
   local ui = generate_ability_table_untracked(card)
   if not ui then return nil end
-  return rendered_rows_to_description(ui.main)
+  local ok, description = pcall(rendered_rows_to_description, ui.main)
+  return ok and description or nil
 end
 
 local function get_card_description(card)
@@ -362,17 +363,22 @@ local function raw_description_lines(center, set, extra_vars)
   if not center or not center.key then return nil end
   local target = { type = 'raw_descriptions', key = center.key, set = set or center.set, vars = extra_vars or center.vars }
   if type(center.loc_vars) == 'function' then
-    local result = center:loc_vars() or {}
-    target.vars = result.vars or target.vars
-    target.key = result.key or target.key
-    target.set = result.set or target.set
+    local ok, result = pcall(center.loc_vars, center)
+    if ok and type(result) == 'table' then
+      target.vars = result.vars or target.vars
+      target.key = result.key or target.key
+      target.set = result.set or target.set
+    end
   end
 
-  local localized = localize and localize(target)
-  if type(localized) ~= 'table' then return nil end
+  if type(localize) ~= 'function' then return nil end
+  local ok, localized = pcall(localize, target)
+  if not ok or type(localized) ~= 'table' then return nil end
   local lines = {}
   for _, line in ipairs(localized) do
-    local text = trim_text(line)
+    local value_type = type(line)
+    local text = (value_type == 'string' or value_type == 'number' or value_type == 'boolean')
+      and trim_text(tostring(line)) or nil
     if text then lines[#lines + 1] = text end
   end
   return #lines > 0 and lines or nil
