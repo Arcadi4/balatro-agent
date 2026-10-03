@@ -1,1 +1,1 @@
-Set the highlighted hand cards for the next play or discard. Pass an empty array to clear selection. Unavailable during booster packs, where consumables take targets instead.
+Set the highlighted hand cards for the next play or discard. IDs are unordered and do not reorder the hand; see balatro://hand for left-to-right order. Pass an empty array to clear selection. Unavailable during booster packs, where consumables take targets instead.
