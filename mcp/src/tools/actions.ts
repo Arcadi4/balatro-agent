@@ -2,7 +2,7 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import { asRecord, type CommandResultOptions } from "../response.js"
+import { asRecord, toolErrorSchema, type CommandResultOptions } from "../response.js"
 import BUY_BOOSTER_DESCRIPTION from "./descriptions/buy-booster.txt" with { type: "text" }
 import BUY_CARD_DESCRIPTION from "./descriptions/buy-card.txt" with { type: "text" }
 import BUY_CONSUMABLE_DESCRIPTION from "./descriptions/buy-consumable.txt" with { type: "text" }
@@ -118,9 +118,12 @@ const successorSchema = z
     phase: z.string(),
   })
   .strict()
-const commandOutputSchema = z
-  .object({ ok: z.literal(true), data: z.unknown().optional(), next: successorSchema.optional() })
-  .strict()
+const commandOutputSchema = z.union([
+  z
+    .object({ ok: z.literal(true), data: z.unknown().optional(), next: successorSchema.optional() })
+    .strict(),
+  toolErrorSchema,
+])
 
 const annotations = (destructive: boolean, idempotent: boolean): ToolAnnotations => ({
   readOnlyHint: false,

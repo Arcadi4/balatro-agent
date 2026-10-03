@@ -1,7 +1,7 @@
 import type { CallToolResult, McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
-import { toolError, toolResult } from "../response.js"
+import { toolError, toolErrorSchema, toolResult } from "../response.js"
 import { searchWiki } from "../wiki.js"
 import WIKI_SEARCH_DESCRIPTION from "./descriptions/wiki-search.txt" with { type: "text" }
 
@@ -17,17 +17,20 @@ const wikiSearchInputSchema = z
       .describe("Maximum number of results. Default 10."),
   })
   .strict()
-const wikiSearchOutputSchema = z
-  .object({
-    results: z.array(
-      z.object({
-        title: z.string(),
-        snippet: z.string(),
-        url: z.string(),
-      }),
-    ),
-  })
-  .strict()
+const wikiSearchOutputSchema = z.union([
+  z
+    .object({
+      results: z.array(
+        z.object({
+          title: z.string(),
+          snippet: z.string(),
+          url: z.string(),
+        }),
+      ),
+    })
+    .strict(),
+  toolErrorSchema,
+])
 
 const WIKI_ANNOTATIONS = {
   readOnlyHint: true,

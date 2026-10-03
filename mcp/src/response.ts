@@ -1,4 +1,5 @@
 import type { CallToolResult } from "@modelcontextprotocol/server"
+import { z } from "zod"
 
 import { BridgeError, type BridgeClient } from "./bridge/socket-client.js"
 
@@ -8,6 +9,15 @@ export interface CommandResultOptions {
   instanceId?: string
   toMarkdown?: MarkdownFormatter
 }
+
+// Keep diagnostics nested so they cannot replace the error code or message.
+export const toolErrorSchema = z
+  .object({
+    error_code: z.string(),
+    message: z.string(),
+    details: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
 
 export function defaultMarkdown(data: Record<string, unknown>): string {
   return JSON.stringify(data)
@@ -34,9 +44,11 @@ export function toolError(
   message: string,
   details: Record<string, unknown> = {},
 ): CallToolResult {
-  // Text stays scannable for the model; the full envelope, details included,
-  // stays in structuredContent.
-  const structuredContent = { error_code: errorCode, message, ...details }
+  const structuredContent = {
+    error_code: errorCode,
+    message,
+    ...(Object.keys(details).length > 0 ? { details } : {}),
+  }
   return {
     content: [{ type: "text", text: `Error [${errorCode}]: ${message}` }],
     structuredContent,

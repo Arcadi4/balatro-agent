@@ -2,7 +2,7 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import { toolResult, withBridgeErrors } from "../response.js"
+import { toolErrorSchema, toolResult, withBridgeErrors } from "../response.js"
 import { INSTANCE_ID_DESCRIPTION } from "./actions.js"
 import CONNECT_DESCRIPTION from "./descriptions/connect.txt" with { type: "text" }
 import DISCONNECT_DESCRIPTION from "./descriptions/disconnect.txt" with { type: "text" }
@@ -12,13 +12,16 @@ const STATE_TIMEOUT_MS = 1_500
 const connectInputSchema = z
   .object({ instance_id: z.string().min(1).optional().describe(INSTANCE_ID_DESCRIPTION) })
   .strict()
-const connectOutputSchema = z
-  .object({
-    ok: z.literal(true),
-    instance_id: z.string(),
-    phase: z.string(),
-  })
-  .strict()
+const connectOutputSchema = z.union([
+  z
+    .object({
+      ok: z.literal(true),
+      instance_id: z.string(),
+      phase: z.string(),
+    })
+    .strict(),
+  toolErrorSchema,
+])
 
 const CONNECT_ANNOTATIONS = {
   readOnlyHint: false,
@@ -30,18 +33,21 @@ const CONNECT_ANNOTATIONS = {
 const disconnectInputSchema = z
   .object({ instance_id: z.string().min(1).optional().describe(INSTANCE_ID_DESCRIPTION) })
   .strict()
-const disconnectOutputSchema = z
-  .object({
-    ok: z.literal(true),
-    instance_id: z.string(),
-  })
-  .strict()
-const DISCONNECT_ANNOTATIONS = {
-  readOnlyHint: false,
-  destructiveHint: true,
-  idempotentHint: false,
-  openWorldHint: false,
-} as const satisfies ToolAnnotations
+const disconnectOutputSchema = z.union([
+  z
+    .object({
+      ok: z.literal(true),
+      instance_id: z.string(),
+    })
+    .strict()
+  const DISCONNECT_ANNOTATIONS = {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  } as const satisfies ToolAnnotations,
+  toolErrorSchema,
+])
 
 function disconnectToMarkdown(data: Record<string, unknown>): string {
   return `Disconnected from Balatro instance ${String(data.instance_id)}.`

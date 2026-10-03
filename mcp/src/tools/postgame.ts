@@ -2,7 +2,7 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { createPostgame } from "../postgame.js"
-import { toolError, toolResult } from "../response.js"
+import { toolError, toolErrorSchema, toolResult } from "../response.js"
 import NEW_POSTGAME_DESCRIPTION from "./descriptions/new-postgame.txt" with { type: "text" }
 
 const newPostgameInputSchema = z
@@ -23,13 +23,16 @@ const newPostgameInputSchema = z
   })
   .strict()
 
-const newPostgameOutputSchema = z
-  .object({
-    index: z.number().int().min(1),
-    uri: z.string(),
-    filepath: z.string(),
-  })
-  .strict()
+const newPostgameOutputSchema = z.union([
+  z
+    .object({
+      index: z.number().int().min(1),
+      uri: z.string(),
+      filepath: z.string(),
+    })
+    .strict(),
+  toolErrorSchema,
+])
 
 const NEW_POSTGAME_ANNOTATIONS = {
   readOnlyHint: false,

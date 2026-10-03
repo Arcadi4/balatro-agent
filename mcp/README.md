@@ -23,6 +23,12 @@ agent never has to read it again. Pass `--no-auto-context` to turn that feed off
 action results then report only what they changed, and the client reads
 `balatro://turn` itself.
 
+## Tool errors
+
+Tool output schemas cover success and structured errors. Error results set `isError`
+and carry `{ "error_code": "...", "message": "...", "details": { ... } }` in
+`structuredContent`; `details` is optional.
+
 ## Wiki resources
 
 Resource reads report protocol errors. Missing wiki articles return `-32602` with the
