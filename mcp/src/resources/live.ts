@@ -919,6 +919,38 @@ export function renderSuccessor(
 }
 
 export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
+  let previousInstances: string | undefined
+  const discover = async () => {
+    const instances = await bridge.listInstances()
+    const signature = instances.map(({ instance_id }) => instance_id).join("\n")
+    if (previousInstances !== undefined && previousInstances !== signature) {
+      server.sendResourceListChanged()
+    }
+    previousInstances = signature
+    return instances
+  }
+  let polling = false
+  const refresh = async () => {
+    if (polling) return
+    polling = true
+    try {
+      await discover()
+    } catch (error) {
+      server.server.onerror?.(error instanceof Error ? error : new Error(String(error)))
+    } finally {
+      polling = false
+    }
+  }
+  // Registry heartbeats and expiry change template listings without SDK registrations.
+  const discoveryTimer = setInterval(() => void refresh(), 1_000)
+  discoveryTimer.unref()
+  const onclose = server.server.onclose
+  server.server.onclose = () => {
+    clearInterval(discoveryTimer)
+    onclose?.()
+  }
+  void refresh()
+
   for (const definition of LIVE_RESOURCES) {
     server.registerResource(
       `${definition.name}-single`,
@@ -945,7 +977,7 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
       markdownContents(
         uri,
         instancesToMarkdown(
-          (await bridge.listInstances()).map((instance, instance_index) => ({
+          (await discover()).map((instance, instance_index) => ({
             instance_index,
             connected: bridge.isConnected(instance.instance_id),
           })),
@@ -955,7 +987,7 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
 
   const template = new ResourceTemplate("balatro://instances/{instance_index}/{section}", {
     list: async () => ({
-      resources: (await bridge.listInstances()).flatMap((_instance, instanceIndex) =>
+      resources: (await discover()).flatMap((_instance, instanceIndex) =>
         LIVE_RESOURCES.map((definition) => ({
           uri: instanceResourceUri(instanceIndex, definition.name),
           name: `${definition.name}-${instanceIndex}`,

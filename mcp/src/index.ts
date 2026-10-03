@@ -63,6 +63,8 @@ class VersionGatedStdioTransport extends StdioServerTransport {
 
 const LIST_CACHE_HINT = { ttlMs: 60_000, cacheScope: "public" } as const
 
+const LIVE_LIST_CACHE_HINT = { ttlMs: 1_000, cacheScope: "public" } as const
+
 // The auto-context feed changes what an action result carries, so the client
 // instructions have to describe the mode the server actually runs in.
 const AUTO_CONTEXT_GUIDANCE =
@@ -98,7 +100,8 @@ function createServer(bridge: BridgeClient, autoContext: boolean): McpServer {
         "server/discover": LIST_CACHE_HINT,
         "tools/list": LIST_CACHE_HINT,
         "prompts/list": LIST_CACHE_HINT,
-        "resources/list": LIST_CACHE_HINT,
+        "resources/templates/list": LIST_CACHE_HINT,
+        "resources/list": LIVE_LIST_CACHE_HINT,
       },
     },
   )

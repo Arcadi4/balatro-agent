@@ -23,7 +23,8 @@ Tools take an optional `instance_index`; omitting it or reading an unscoped alia
 exactly one live discovered instance. Multiple instances produce a recoverable selection
 error before acting. Actions and live reads connect on demand; `connect` establishes IPC
 without selecting a default. Resolve once per request and pin the private identity through
-all IPC work and successor reads.
+all IPC work and successor reads. Registry observation emits resource-list change
+notifications, including index remapping.
 
 ## Toolchain
 

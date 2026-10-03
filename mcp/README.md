@@ -41,6 +41,9 @@ no default. Each request keeps its resolved game identity through the command an
 successor reads, even if discovery changes while it runs. Internal IDs and endpoint paths
 do not appear in the agent-facing instance list.
 
+The server checks discovery records on requests and once per second for resource-list
+change notifications. Records expire after ten seconds without a mod heartbeat.
+
 ## Tool errors
 
 Tool output schemas cover success and structured errors. Error results set `isError`
