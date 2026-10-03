@@ -1,8 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/server"
-import { ProtocolError, ProtocolErrorCode, ResourceTemplate } from "@modelcontextprotocol/server"
+import {
+  ProtocolError,
+  ProtocolErrorCode,
+  ResourceNotFoundError,
+  ResourceTemplate,
+} from "@modelcontextprotocol/server"
 
 import wikiIndexMarkdown from "../../data/wiki/index.md" with { type: "text" }
-import { fetchWikiPage } from "../wiki.js"
+import { fetchWikiPage, type WikiPage } from "../wiki.js"
 
 const WIKI_URI = "balatro://wiki"
 const WIKI_INDEX_URI = `${WIKI_URI}/index`
@@ -44,7 +49,20 @@ export function registerWikiResource(server: McpServer): void {
           `Wiki article title cannot be empty in "${uriString}": use balatro://wiki/<Title>`,
         )
       }
-      const page = await fetchWikiPage(title)
+      // Only a page the wiki itself reports as absent becomes a read miss;
+      // HTTP, network, and rendering failures stay distinct internal errors.
+      let page: WikiPage
+      try {
+        page = await fetchWikiPage(title)
+      } catch (error) {
+        if (error instanceof Error && error.message === "WIKI_PAGE_NOT_FOUND") {
+          throw new ResourceNotFoundError(
+            uriString,
+            `No Balatro Wiki article for "${title}" at ${uriString}; use balatro_wiki_search to find a title.`,
+          )
+        }
+        throw error
+      }
       return {
         contents: [
           {

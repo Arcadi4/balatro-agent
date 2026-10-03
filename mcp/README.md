@@ -23,6 +23,11 @@ agent never has to read it again. Pass `--no-auto-context` to turn that feed off
 action results then report only what they changed, and the client reads
 `balatro://turn` itself.
 
+## Wiki resources
+
+Resource reads report protocol errors. Missing wiki articles return `-32602` with the
+requested URI; HTTP and network failures remain internal errors.
+
 ## Development
 
 Install [Bun](https://bun.com) 1.4.2 or later, then run these commands in `mcp/`:
