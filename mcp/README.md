@@ -40,9 +40,10 @@ required: `bunfig.toml` forces package executables to use Bun and selects Bun's 
 shell, and the `node:net`, `node:path`, and `node:os` imports use Bun's built-in compatibility
 APIs, including Windows named pipes. The MCP SDK owns stdio.
 
-Postgame files use Bun file I/O, globbing, and YAML, reference hashes use `Bun.CryptoHasher`, and
-the wiki keeps its own HTML-to-Markdown pipeline because Bun's Markdown API converts Markdown to
-HTML, which would leave the infobox, MathML, and table conversion without an HTML tree.
+Postgame files use Bun globbing, file reads, and YAML. Writes allocate numbered files with
+exclusive creation so concurrent server processes cannot overwrite an analysis. Reference
+hashes use `Bun.CryptoHasher`; the wiki uses its own HTML-to-Markdown pipeline because Bun's
+Markdown API converts in the opposite direction.
 
 ## Releases
 

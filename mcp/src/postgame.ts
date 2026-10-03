@@ -1,3 +1,4 @@
+import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
@@ -65,32 +66,34 @@ function parseFrontmatter(text: string): Partial<PostgameEntry> | undefined {
   }
 }
 
-// Serialize index allocation so concurrent creates cannot choose the same index.
-let createQueue: Promise<unknown> = Promise.resolve()
-
-export function createPostgame(input: {
-  title: string
-  summary: string
-  content: string
-}): Promise<PostgameRef> {
-  const task = createQueue.then(() => writeNextPostgame(input))
-  createQueue = task.catch(() => undefined)
-  return task
-}
-
-async function writeNextPostgame(input: {
+export async function createPostgame(input: {
   title: string
   summary: string
   content: string
 }): Promise<PostgameRef> {
   const dir = postgameDir()
+  await fs.mkdir(dir, { recursive: true })
   const indices = await existingIndices(dir)
-  const index = indices.reduce((max, current) => Math.max(max, current), 0) + 1
-  const filepath = path.join(dir, `${index}.md`)
-  await Bun.write(filepath, renderDocument(input.title, input.summary, input.content), {
-    createPath: true,
-  })
-  return { index, uri: `${POSTGAME_URI_SCHEME}${index}`, filepath }
+  let index = indices.reduce((max, current) => Math.max(max, current), 0) + 1
+  const document = renderDocument(input.title, input.summary, input.content)
+  for (;;) {
+    const filepath = path.join(dir, `${index}.md`)
+    // `wx` fails with EEXIST instead of truncating, so concurrent processes
+    // cannot claim — or clobber — the same index.
+    const handle = await fs.open(filepath, "wx").catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return null
+      throw error
+    })
+    if (handle !== null) {
+      try {
+        await handle.writeFile(document, "utf8")
+      } finally {
+        await handle.close()
+      }
+      return { index, uri: `${POSTGAME_URI_SCHEME}${index}`, filepath }
+    }
+    index += 1
+  }
 }
 
 export async function listPostgames(): Promise<PostgameListing> {
