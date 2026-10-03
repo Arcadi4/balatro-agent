@@ -61,8 +61,6 @@ class VersionGatedStdioTransport extends StdioServerTransport {
   }
 }
 
-// MCP 2026-07-28 requires public cache scope because registered listings do not
-// vary by connection.
 const LIST_CACHE_HINT = { ttlMs: 60_000, cacheScope: "public" } as const
 
 // The auto-context feed changes what an action result carries, so the client
@@ -70,7 +68,16 @@ const LIST_CACHE_HINT = { ttlMs: 60_000, cacheScope: "public" } as const
 const AUTO_CONTEXT_GUIDANCE =
   "After an action the response carries a '## Next' snapshot of the next decision surface, so prefer it over re-reading."
 const NO_AUTO_CONTEXT_GUIDANCE =
-  "After an action, re-read balatro://turn for the next decision surface: no snapshot follows the response."
+  "After an action, re-read the target instance's turn resource for the next decision surface: no snapshot follows the response."
+
+const INSTANCE_TARGETING_GUIDANCE =
+  "Read balatro://instances for live instances numbered oldest-first from 0. Indices are recomputed on discovery " +
+  "and can shift when instances appear or exit. Pass instance_index on tools and use balatro://instances/<index>/<section> " +
+  "for resources. Actions and resources open IPC connections on demand; connect is optional and does not select a default. " +
+  "Omit instance_index or use an unscoped live resource only when exactly one live instance exists. With multiple instances, " +
+  "bare requests fail before acting with INSTANCE_SELECTION_REQUIRED and the current numbered list; retry with an index. " +
+  "With no live instances, requests return GAME_NOT_RUNNING. Read the target's turn resource before the first action " +
+  "for its phase, round, legal actions, hand, jokers, and consumables. "
 
 function createServer(bridge: BridgeClient, autoContext: boolean): McpServer {
   const server = new McpServer(
@@ -80,7 +87,13 @@ function createServer(bridge: BridgeClient, autoContext: boolean): McpServer {
       description: packageJson.description,
     },
     {
-      instructions: `Read balatro://instances to see the running Balatro processes, then call connect with the instance_id you want to play. Unscoped live resources (balatro://turn, /hand, /jokers, /consumables, /deck, /shop, /booster, /run, /ante) and action tools target the selected instance unless you pass instance_id. Read balatro://turn before the first action: it carries the phase, round, legal actions, hand, jokers, and consumables. ${autoContext ? AUTO_CONTEXT_GUIDANCE : NO_AUTO_CONTEXT_GUIDANCE} Use the balatro_play_handbook prompt for live-play strategy and balatro_wiki_search to verify rules. When a run ends, ask the user before recording an analysis with new_postgame; stored analyses are listed at postgame://.`,
+      instructions:
+        INSTANCE_TARGETING_GUIDANCE +
+        (autoContext
+          ? `${AUTO_CONTEXT_GUIDANCE} The snapshot's URIs already carry the instance_index it was read from, so follow them as written. `
+          : `${NO_AUTO_CONTEXT_GUIDANCE} `) +
+        "Use the balatro_play_handbook prompt for live-play strategy and balatro_wiki_search to verify rules. " +
+        "When a run ends, ask the user before recording an analysis with new_postgame; stored analyses are listed at postgame://.",
       cacheHints: {
         "server/discover": LIST_CACHE_HINT,
         "tools/list": LIST_CACHE_HINT,

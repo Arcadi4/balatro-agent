@@ -8,7 +8,7 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from "./protocol.js"
-import { discoverBridgeInstances, instanceEndpoint, type BridgeInstance } from "./registry.js"
+import { discoverBridgeInstances, type BridgeInstance } from "./registry.js"
 
 const RESPONSE_TIMEOUT_MS = 10_000
 const STATE_TIMEOUT_MS = 5_000
@@ -40,6 +40,11 @@ export interface ResponseEnvelope {
 export interface ConnectInfo {
   instance_id: string
   phase?: string
+}
+
+export interface ResolvedInstance {
+  instance_index: number
+  instance: BridgeInstance
 }
 
 interface BridgeSession {
@@ -88,23 +93,10 @@ function gameNotRunning(message = "Balatro is not running"): BridgeError {
   return new BridgeError("GAME_NOT_RUNNING", message)
 }
 
-function instanceNotConnected(instanceId?: string): BridgeError {
-  return new BridgeError(
-    "INSTANCE_NOT_CONNECTED",
-    instanceId === undefined
-      ? "No Balatro instance is connected"
-      : `Balatro instance ${instanceId} is not connected`,
-    instanceId === undefined ? {} : { instance_id: instanceId },
-  )
-}
-
 // The socket died mid-flight. The game may still be running, so report the lost
 // bridge connection rather than claiming Balatro stopped.
-function bridgeDisconnected(
-  instanceId: string,
-  message = "Lost the Balatro bridge connection",
-): BridgeError {
-  return new BridgeError("INSTANCE_NOT_CONNECTED", message, { instance_id: instanceId })
+function bridgeDisconnected(message = "Lost the Balatro bridge connection"): BridgeError {
+  return new BridgeError("INSTANCE_NOT_CONNECTED", message)
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -127,94 +119,61 @@ export class BridgeClient {
   private readonly connectPromises = new Map<string, Promise<ConnectInfo>>()
   private readonly pendingRequestSessions = new Map<number, BridgeSession>()
   private commandSeq = 0
-  private selectionPromise?: Promise<ConnectInfo>
-  private defaultInstanceId?: string
   private disposed = false
-  onDisconnect?: (instanceId: string) => void
 
-  constructor(private readonly socketPath?: string) {}
-
-  isConnected(instanceId?: string): boolean {
-    return this.sessions.get(instanceId ?? this.defaultInstanceId ?? "")?.handshaked ?? false
+  isConnected(instanceId: string): boolean {
+    return this.sessions.get(instanceId)?.handshaked ?? false
   }
 
-  getSelectedInstanceId(): string | undefined {
-    return this.defaultInstanceId
-  }
-
-  disconnect(instanceId?: string): string {
-    const resolvedId = instanceId ?? this.defaultInstanceId
-    if (resolvedId === undefined) throw instanceNotConnected(instanceId)
-    const session = this.sessions.get(resolvedId)
-    if (session === undefined || !session.connected) throw instanceNotConnected(resolvedId)
+  disconnect(instanceId: string): void {
+    const session = this.requireSession(instanceId)
     this.detachSession(
       session,
-      new BridgeError("INSTANCE_NOT_CONNECTED", `Disconnected Balatro instance ${resolvedId}`, {
-        instance_id: resolvedId,
-      }),
+      new BridgeError("INSTANCE_NOT_CONNECTED", "Disconnected from Balatro"),
     )
-    return resolvedId
   }
 
   async listInstances(): Promise<BridgeInstance[]> {
     return await discoverBridgeInstances()
   }
 
-  async connect(instanceId?: string): Promise<ConnectInfo> {
-    if (this.disposed) throw gameNotRunning("BridgeClient has been disposed")
-    if (instanceId !== undefined) return await this.connectToInstance(instanceId)
-    if (this.defaultInstanceId !== undefined) {
-      const current = this.sessions.get(this.defaultInstanceId)
-      if (current?.connectInfo !== undefined) return current.connectInfo
-    }
-    if (this.selectionPromise !== undefined) return await this.selectionPromise
-
-    const promise = this.selectAndConnect()
-    this.selectionPromise = promise
-    try {
-      return await promise
-    } finally {
-      if (this.selectionPromise === promise) this.selectionPromise = undefined
-    }
-  }
-
-  private async selectAndConnect(): Promise<ConnectInfo> {
+  async resolveInstance(instanceIndex?: number): Promise<ResolvedInstance> {
     const instances = await this.listInstances()
     if (instances.length === 0) throw gameNotRunning()
-    if (instances.length > 1) {
+    const available = instances.map((instance, index) => ({
+      instance_index: index,
+      connected: this.isConnected(instance.instance_id),
+    }))
+    if (instanceIndex === undefined && instances.length > 1) {
       throw new BridgeError(
         "INSTANCE_SELECTION_REQUIRED",
-        "Multiple Balatro instances are available; select one with instance_id",
-        // Socket paths and discovery timestamps are transport internals; the
-        // caller only needs the IDs it can pass to connect.
-        { instances: instances.map(({ instance_id }) => ({ instance_id })) },
+        `Multiple Balatro instances are available: ${available.map(({ instance_index }) => instance_index).join(", ")}. Retry with instance_index, or read balatro://instances for details.`,
+        { instances: available },
       )
     }
-    const instance = instances[0]
-    if (instance === undefined) throw gameNotRunning()
-    return await this.connectToInstance(instance.instance_id)
+    const index = instanceIndex ?? 0
+    const instance = instances[index]
+    if (instance === undefined) {
+      throw new BridgeError(
+        "GAME_NOT_FOUND",
+        `No Balatro instance exists at index ${index}. Read balatro://instances for the current indices.`,
+        { instance_index: index, instances: available },
+      )
+    }
+    return { instance_index: index, instance }
   }
 
-  private async connectToInstance(instanceId: string): Promise<ConnectInfo> {
+  async connect(instance: BridgeInstance): Promise<ConnectInfo> {
+    if (this.disposed) throw gameNotRunning("BridgeClient has been disposed")
+    const instanceId = instance.instance_id
     const existing = this.sessions.get(instanceId)
-    if (existing?.connectInfo !== undefined) {
-      this.defaultInstanceId = instanceId
-      return existing.connectInfo
-    }
+    if (existing?.connectInfo !== undefined) return existing.connectInfo
     const pending = this.connectPromises.get(instanceId)
     if (pending !== undefined) return await pending
 
-    const instances = await this.listInstances()
-    const record = instances.find((candidate) => candidate.instance_id === instanceId)
-    if (record === undefined && this.socketPath === undefined) {
-      throw new BridgeError("GAME_NOT_FOUND", `Balatro instance ${instanceId} was not found`, {
-        instance_id: instanceId,
-      })
-    }
-
     const session: BridgeSession = {
       instanceId,
-      socketPath: record?.endpoint ?? this.socketPath ?? instanceEndpoint(instanceId),
+      socketPath: instance.endpoint,
       decoder: new TextDecoder(),
       bytesRead: 0,
       connectionGeneration: 0,
@@ -228,9 +187,7 @@ export class BridgeClient {
     const promise = this.establish(session)
     this.connectPromises.set(instanceId, promise)
     try {
-      const info = await promise
-      this.defaultInstanceId = instanceId
-      return info
+      return await promise
     } catch (error) {
       this.detachFailedSession(session, error)
       throw error
@@ -239,12 +196,11 @@ export class BridgeClient {
     }
   }
 
-  async getState(): Promise<Record<string, unknown>>
-  async getState(timeoutMs: number, instanceId?: string): Promise<Record<string, unknown>>
-  async getState(options: { maxAgeMs?: number }, instanceId?: string): Promise<StateEnvelope>
+  async getState(timeoutMs: number, instanceId: string): Promise<Record<string, unknown>>
+  async getState(options: { maxAgeMs?: number }, instanceId: string): Promise<StateEnvelope>
   async getState(
-    timeoutOrOptions: number | { maxAgeMs?: number } = STATE_TIMEOUT_MS,
-    instanceId?: string,
+    timeoutOrOptions: number | { maxAgeMs?: number },
+    instanceId: string,
   ): Promise<Record<string, unknown> | StateEnvelope> {
     const timeoutMs = typeof timeoutOrOptions === "number" ? timeoutOrOptions : STATE_TIMEOUT_MS
     const result = asRecord(await this.request("get_state", undefined, timeoutMs, instanceId))
@@ -261,8 +217,8 @@ export class BridgeClient {
 
   async command(
     kind: string,
-    args?: Record<string, unknown>,
-    instanceId?: string,
+    args: Record<string, unknown> | undefined,
+    instanceId: string,
   ): Promise<unknown> {
     // Game commands complete when the game completes them; a response deadline
     // here can only truncate a legitimate long-running action. Dead bridges
@@ -276,7 +232,7 @@ export class BridgeClient {
   async sendCommand(options: {
     kind: string
     args?: Record<string, unknown>
-    instanceId?: string
+    instanceId: string
   }): Promise<number> {
     const session = this.requireSession(options.instanceId)
     const id = ++this.commandSeq
@@ -350,7 +306,6 @@ export class BridgeClient {
       session.socket = undefined
     }
     this.sessions.clear()
-    this.defaultInstanceId = undefined
   }
 
   private detachSession(session: BridgeSession, error: BridgeError): void {
@@ -367,13 +322,11 @@ export class BridgeClient {
     session.lastDisconnectError = error
     this.rejectAllPending(session, error)
     if (this.sessions.get(session.instanceId) === session) this.sessions.delete(session.instanceId)
-    if (this.defaultInstanceId === session.instanceId) this.defaultInstanceId = undefined
     socket?.destroy()
     if (established) {
       process.stderr.write(
         `[balatro-mcp] bridge ${session.instanceId} disconnected: ${error.message}\n`,
       )
-      this.onDisconnect?.(session.instanceId)
     }
   }
 
@@ -475,7 +428,7 @@ export class BridgeClient {
     method: string,
     params: Record<string, unknown> | undefined,
     timeoutMs: number | undefined,
-    instanceId?: string,
+    instanceId: string,
   ): Promise<unknown> {
     const session = this.requireSession(instanceId)
     const id = ++this.commandSeq
@@ -536,20 +489,20 @@ export class BridgeClient {
       socket.destroyed ||
       !socket.writable
     ) {
-      throw session.lastDisconnectError ?? bridgeDisconnected(session.instanceId)
+      throw session.lastDisconnectError ?? bridgeDisconnected()
     }
     const { promise, resolve, reject } = Promise.withResolvers<void>()
     const onClose = () =>
       reject(
         session.lastDisconnectError ??
-          bridgeDisconnected(session.instanceId, "Bridge connection closed before the write"),
+          bridgeDisconnected("Bridge connection closed before the write"),
       )
     socket.once("close", onClose)
     socket.write(serializeFrame(request), (error) => {
       socket.removeListener("close", onClose)
       if (error) reject(error)
       else if (session.socket !== socket || session.connectionGeneration !== generation)
-        reject(bridgeDisconnected(session.instanceId, "Bridge connection changed mid-write"))
+        reject(bridgeDisconnected("Bridge connection changed mid-write"))
       else resolve()
     })
     await promise
@@ -615,11 +568,11 @@ export class BridgeClient {
     session.pendingRequests.clear()
   }
 
-  private requireSession(instanceId?: string): BridgeSession {
-    const resolvedId = instanceId ?? this.defaultInstanceId
-    if (resolvedId === undefined) throw instanceNotConnected(instanceId)
-    const session = this.sessions.get(resolvedId)
-    if (session === undefined || !session.connected) throw instanceNotConnected(resolvedId)
+  private requireSession(instanceId: string): BridgeSession {
+    const session = this.sessions.get(instanceId)
+    if (session === undefined || !session.connected) {
+      throw new BridgeError("INSTANCE_NOT_CONNECTED", "The Balatro instance is not connected")
+    }
     return session
   }
 }

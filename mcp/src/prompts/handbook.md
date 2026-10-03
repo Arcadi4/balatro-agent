@@ -4,7 +4,13 @@
 
 Read `balatro://turn` before your first action and whenever you need to reorient: after a run start, after a phase change you did not cause, or after a snapshot that turned out stale. It carries the phase, ante, money, round progress, legal actions, hand, jokers, and consumables.
 
-Unscoped aliases — `balatro://turn`, `balatro://hand`, `balatro://jokers`, `balatro://consumables`, `balatro://deck`, `balatro://shop`, `balatro://booster`, `balatro://run`, `balatro://ante` — resolve to the selected instance. Use `balatro://instances/{instance_id}/...` to address one instance explicitly.
+## Address Instances by Index
+
+`balatro://instances` lists the running Balatro processes oldest first, numbered from 0. The numbering is recomputed on every discovery, so an index you learned earlier can name a different game after something starts or stops: re-read the list when that happens.
+
+Pass `instance_index` to an action tool, or to `connect` and `disconnect`, whenever more than one instance is running; with exactly one, omit it. Omitting it while several run fails with `INSTANCE_SELECTION_REQUIRED` and the indices available at that moment. The unscoped aliases — `balatro://turn`, `balatro://hand`, `balatro://jokers`, `balatro://consumables`, `balatro://deck`, `balatro://shop`, `balatro://booster`, `balatro://run`, `balatro://ante` — resolve only when exactly one instance is running; `balatro://instances/{instance_index}/...` addresses one instance explicitly.
+
+Calling `connect` first is optional. Actions and resource reads open the socket they need for the instance they resolve, and `disconnect` only releases that socket.
 
 ## Read After Every Action
 

@@ -1,1 +1,1 @@
-Connect to a running Balatro instance and select it for later live resources and actions. Read balatro://instances first and pass instance_id when more than one instance is running.
+Connect to a live Balatro instance and keep its bridge socket open. Read balatro://instances for the current indices and pass instance_index, or omit it when exactly one instance is running. Connecting changes no default: actions and live resources address instances by instance_index and open their own sockets on demand.

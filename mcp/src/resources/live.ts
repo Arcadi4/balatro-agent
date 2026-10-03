@@ -33,19 +33,25 @@ function markdownContents(
 async function readLiveResource(
   bridge: BridgeClient,
   uri: URL,
-  instanceId: string,
+  instanceIndex: number | undefined,
   render: LiveRenderer,
 ): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
   const uriString = uri.toString()
   let payload: Record<string, unknown>
   try {
-    payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
+    const target = await bridge.resolveInstance(instanceIndex)
+    await bridge.connect(target.instance)
+    payload = await bridge.getState(STATE_TIMEOUT_MS, target.instance.instance_id)
   } catch (error) {
     if (error instanceof BridgeError) {
-      throw new ProtocolError(ProtocolErrorCode.InternalError, error.message, {
+      const code =
+        error.code === "INSTANCE_SELECTION_REQUIRED" || error.code === "GAME_NOT_FOUND"
+          ? ProtocolErrorCode.InvalidParams
+          : ProtocolErrorCode.InternalError
+      throw new ProtocolError(code, error.message, {
         error_code: error.code,
         uri: uriString,
-        instance_id: instanceId,
+        ...error.details,
       })
     }
     throw error
@@ -866,39 +872,25 @@ function liveResourceFor(section: string | undefined): LiveResourceDefinition | 
   return LIVE_RESOURCES.find((definition) => definition.name === section)
 }
 
-function selectedInstance(bridge: BridgeClient, uri: string): string {
-  const instanceId = bridge.getSelectedInstanceId()
-  if (instanceId !== undefined) return instanceId
-  throw new ProtocolError(
-    ProtocolErrorCode.InternalError,
-    "No Balatro instance is selected; read balatro://instances and connect to an instance first.",
-    { error_code: "INSTANCE_NOT_CONNECTED", uri },
-  )
-}
-
-function instanceResourceUri(instanceId: string, section: string): string {
-  return `balatro://instances/${encodeURIComponent(instanceId)}/${section}`
+function instanceResourceUri(instanceIndex: number, section: string): string {
+  return `balatro://instances/${instanceIndex}/${section}`
 }
 
 function instancesToMarkdown(
-  instances: Array<{ instance_id: string }>,
-  selectedInstanceId: string | undefined,
-  connectedInstanceIds: ReadonlySet<string>,
+  instances: Array<{ instance_index: number; connected: boolean }>,
 ): string {
   if (instances.length === 0)
     return "# Balatro Instances\n\nNo running Balatro instances were found."
   return [
     "# Balatro Instances",
     "",
-    "Select an instance before reading or changing its live state.",
+    "Indices are 0-based and oldest-first; they can change when instances appear or exit.",
+    "Omit instance_index only when one live instance is available.",
     "",
-    ...instances.map((instance) => {
-      const markers = [
-        instance.instance_id === selectedInstanceId ? "selected" : undefined,
-        connectedInstanceIds.has(instance.instance_id) ? "connected" : undefined,
-      ].filter((marker): marker is string => marker !== undefined)
-      return `- **${instance.instance_id}**${markers.length === 0 ? "" : ` (${markers.join(", ")})`}`
-    }),
+    ...instances.map(
+      ({ instance_index, connected }) =>
+        `- **${instance_index}**${connected ? " (connected)" : ""} — balatro://instances/${instance_index}/turn`,
+    ),
   ].join("\n")
 }
 
@@ -916,9 +908,12 @@ export function renderSuccessor(
       // Fall through to the always-available turn snapshot.
     }
   }
-  const instanceId = scoped?.[1]
+  const instanceIndex = scoped?.[1]
   return {
-    uri: instanceId === undefined ? "balatro://turn" : instanceResourceUri(instanceId, "turn"),
+    uri:
+      instanceIndex === undefined
+        ? "balatro://turn"
+        : instanceResourceUri(Number(instanceIndex), "turn"),
     markdown: turnToMarkdown(payload, uri),
   }
 }
@@ -926,15 +921,14 @@ export function renderSuccessor(
 export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
   for (const definition of LIVE_RESOURCES) {
     server.registerResource(
-      `${definition.name}-selected`,
+      `${definition.name}-single`,
       `balatro://${definition.name}`,
       {
         title: definition.title,
-        description: `${definition.description} Reads the selected Balatro instance.`,
+        description: `${definition.description} Requires exactly one live Balatro instance.`,
         mimeType: "text/markdown",
       },
-      (uri) =>
-        readLiveResource(bridge, uri, selectedInstance(bridge, uri.toString()), definition.render),
+      (uri) => readLiveResource(bridge, uri, undefined, definition.render),
     )
   }
 
@@ -944,33 +938,28 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
     {
       title: "Balatro Instances",
       description:
-        "Live Balatro processes available for explicit connection and instance-scoped resources; selected and connected instances are marked.",
+        "Live Balatro instances numbered oldest-first from 0, with connected instances marked. Indices are recomputed on discovery.",
       mimeType: "text/markdown",
     },
-    async (uri) => {
-      const instances = await bridge.listInstances()
-      return markdownContents(
+    async (uri) =>
+      markdownContents(
         uri,
         instancesToMarkdown(
-          instances,
-          bridge.getSelectedInstanceId(),
-          new Set(
-            instances
-              .filter((instance) => bridge.isConnected(instance.instance_id))
-              .map((instance) => instance.instance_id),
-          ),
+          (await bridge.listInstances()).map((instance, instance_index) => ({
+            instance_index,
+            connected: bridge.isConnected(instance.instance_id),
+          })),
         ),
-      )
-    },
+      ),
   )
 
-  const template = new ResourceTemplate("balatro://instances/{instance_id}/{section}", {
+  const template = new ResourceTemplate("balatro://instances/{instance_index}/{section}", {
     list: async () => ({
-      resources: (await bridge.listInstances()).flatMap((instance) =>
+      resources: (await bridge.listInstances()).flatMap((_instance, instanceIndex) =>
         LIVE_RESOURCES.map((definition) => ({
-          uri: instanceResourceUri(instance.instance_id, definition.name),
-          name: `${definition.name}-${instance.instance_id}`,
-          title: `${definition.title} — ${instance.instance_id}`,
+          uri: instanceResourceUri(instanceIndex, definition.name),
+          name: `${definition.name}-${instanceIndex}`,
+          title: `${definition.title} — ${instanceIndex}`,
           description: definition.description,
           mimeType: "text/markdown",
         })),
@@ -983,23 +972,28 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
     template,
     {
       title: "Live Balatro State",
-      description: "Instance-scoped live state for a selected Balatro process.",
+      description: "Live state for a discovery-relative, 0-based Balatro instance index.",
       mimeType: "text/markdown",
     },
     (uri, variables) => {
-      const instanceId = variables.instance_id
+      const instanceIndex = variables.instance_index
       const section = variables.section
-      if (typeof instanceId !== "string" || typeof section !== "string") {
+      if (
+        typeof instanceIndex !== "string" ||
+        !/^(0|[1-9]\d*)$/.test(instanceIndex) ||
+        !Number.isSafeInteger(Number(instanceIndex)) ||
+        typeof section !== "string"
+      ) {
         throw new ProtocolError(
           ProtocolErrorCode.InvalidParams,
-          "Instance and section are required",
+          "A nonnegative integer instance index and a section are required",
         )
       }
       const definition = liveResourceFor(section)
       if (definition === undefined) {
         throw new ProtocolError(ProtocolErrorCode.InvalidParams, "Unknown live resource section")
       }
-      return readLiveResource(bridge, uri, instanceId, definition.render)
+      return readLiveResource(bridge, uri, Number(instanceIndex), definition.render)
     },
   )
 }

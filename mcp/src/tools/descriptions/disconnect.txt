@@ -1,1 +1,1 @@
-Disconnect from a connected Balatro instance and release its bridge socket. Omit instance_id to disconnect the selected instance.
+Release the bridge socket held for a live Balatro instance. Read balatro://instances for the current indices and pass instance_index, or omit it when exactly one instance is running. Nothing else changes: later actions and resource reads reconnect on demand.

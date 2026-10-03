@@ -28,15 +28,21 @@ import SORT_HAND_DESCRIPTION from "./descriptions/sort-hand.txt" with { type: "t
 import USE_CONSUMABLE_DESCRIPTION from "./descriptions/use-consumable.txt" with { type: "text" }
 import { commandWithSuccessor } from "./successor.js"
 
-export const INSTANCE_ID_DESCRIPTION = "Target instance ID; defaults to the connected instance."
+export const INSTANCE_INDEX_DESCRIPTION =
+  "Index of the live Balatro instance to act on, as listed by balatro://instances. " +
+  "Omit it when exactly one instance is running; with several running an omitted index " +
+  "fails with INSTANCE_SELECTION_REQUIRED, so read balatro://instances and pass the index " +
+  "you want. Indices are recomputed on every discovery and shift when instances start or " +
+  "stop, so re-read the list before acting much later in a session. Actions connect on " +
+  "demand: calling connect first is optional."
 
-const instanceIdSchema = z.string().min(1).optional().describe(INSTANCE_ID_DESCRIPTION)
-const emptySchema = z.object({ instance_id: instanceIdSchema }).strict()
+const instanceIndexSchema = z.number().int().min(0).optional().describe(INSTANCE_INDEX_DESCRIPTION)
+const emptySchema = z.object({ instance_index: instanceIndexSchema }).strict()
 const cardIdSchema = z
   .union([z.string().min(1), z.number().int()])
   .describe("Card ID from game state.")
 const cardIdInputSchema = z
-  .object({ card_id: cardIdSchema, instance_id: instanceIdSchema })
+  .object({ card_id: cardIdSchema, instance_index: instanceIndexSchema })
   .strict()
 const targetsSchema = z
   .array(cardIdSchema)
@@ -47,7 +53,7 @@ const targetsSchema = z
   .optional()
   .describe("Target hand card IDs; required for hand-targeting consumables.")
 const targetedCardSchema = z
-  .object({ card_id: cardIdSchema, targets: targetsSchema, instance_id: instanceIdSchema })
+  .object({ card_id: cardIdSchema, targets: targetsSchema, instance_index: instanceIndexSchema })
   .strict()
 const selectHandSchema = z
   .object({
@@ -58,13 +64,13 @@ const selectHandSchema = z
         message: "card_ids must not contain duplicates",
       })
       .describe("Hand card IDs to highlight. Empty array clears selection."),
-    instance_id: instanceIdSchema,
+    instance_index: instanceIndexSchema,
   })
   .strict()
 const sortHandSchema = z
   .object({
     order: z.enum(["rank", "suit"]).describe("Sort by rank or suit."),
-    instance_id: instanceIdSchema,
+    instance_index: instanceIndexSchema,
   })
   .strict()
 const reorderHandSchema = z
@@ -73,7 +79,7 @@ const reorderHandSchema = z
       .array(cardIdSchema)
       .max(50)
       .describe("Every current hand card ID exactly once, in the desired left-to-right order."),
-    instance_id: instanceIdSchema,
+    instance_index: instanceIndexSchema,
   })
   .strict()
 const reorderJokersSchema = z
@@ -82,7 +88,7 @@ const reorderJokersSchema = z
       .array(cardIdSchema)
       .max(50)
       .describe("Every current joker card ID exactly once, in the desired left-to-right order."),
-    instance_id: instanceIdSchema,
+    instance_index: instanceIndexSchema,
   })
   .strict()
 const buyConsumableSchema = z
@@ -90,7 +96,7 @@ const buyConsumableSchema = z
     card_id: cardIdSchema,
     use: z.boolean().describe("Apply the consumable immediately instead of storing it."),
     targets: targetsSchema.describe("Target hand card IDs; only valid together with use=true."),
-    instance_id: instanceIdSchema,
+    instance_index: instanceIndexSchema,
   })
   .strict()
 const normalRunSchema = z
@@ -98,13 +104,13 @@ const normalRunSchema = z
     deck: z.string().min(1).describe("Deck key (e.g. b_red, b_blue)."),
     stake: z.number().int().min(1).max(8).describe("Stake difficulty, 1-8."),
     seed: z.string().min(1).optional().describe("Seed for a seeded run."),
-    instance_id: instanceIdSchema,
+    instance_index: instanceIndexSchema,
   })
   .strict()
 const challengeRunSchema = z
   .object({
     challenge: z.string().min(1).describe("Challenge id (e.g. c_omelette_1)."),
-    instance_id: instanceIdSchema,
+    instance_index: instanceIndexSchema,
   })
   .strict()
 // The mod rejects a normal run without deck+stake and a challenge run carrying
@@ -118,12 +124,10 @@ const successorSchema = z
     phase: z.string(),
   })
   .strict()
-const commandOutputSchema = z.union([
-  z
-    .object({ ok: z.literal(true), data: z.unknown().optional(), next: successorSchema.optional() })
-    .strict(),
-  toolErrorSchema,
-])
+const commandSuccessSchema = z
+  .object({ ok: z.literal(true), data: z.unknown().optional(), next: successorSchema.optional() })
+  .strict()
+const commandOutputSchema = z.union([commandSuccessSchema, toolErrorSchema])
 
 const annotations = (destructive: boolean, idempotent: boolean): ToolAnnotations => ({
   readOnlyHint: false,
@@ -332,10 +336,10 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
         outputSchema: commandOutputSchema,
         annotations: tool.annotations,
       },
-      ({ instance_id }) =>
+      ({ instance_index: instanceIndex }) =>
         commandWithSuccessor(bridge, tool.command, undefined, {
           ...tool.options,
-          instanceId: instance_id,
+          instanceIndex,
         }),
     )
   }
@@ -350,13 +354,8 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
         outputSchema: commandOutputSchema,
         annotations: tool.annotations,
       },
-      ({ card_id, instance_id }) =>
-        commandWithSuccessor(
-          bridge,
-          tool.command,
-          { card_id: String(card_id) },
-          { instanceId: instance_id },
-        ),
+      ({ card_id, instance_index: instanceIndex }) =>
+        commandWithSuccessor(bridge, tool.command, { card_id: String(card_id) }, { instanceIndex }),
     )
   }
 
@@ -369,12 +368,12 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(false, true),
     },
-    ({ card_ids, instance_id }) =>
+    ({ card_ids, instance_index: instanceIndex }) =>
       commandWithSuccessor(
         bridge,
         "select_hand_cards",
         { card_ids: card_ids.map(String) },
-        { instanceId: instance_id, toMarkdown: handSelectionToMarkdown },
+        { instanceIndex, toMarkdown: handSelectionToMarkdown },
       ),
   )
 
@@ -387,8 +386,8 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(false, true),
     },
-    ({ order, instance_id }) =>
-      commandWithSuccessor(bridge, "sort_hand", { order }, { instanceId: instance_id }),
+    ({ order, instance_index: instanceIndex }) =>
+      commandWithSuccessor(bridge, "sort_hand", { order }, { instanceIndex }),
   )
 
   server.registerTool(
@@ -400,12 +399,12 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(false, true),
     },
-    ({ order, instance_id }) =>
+    ({ order, instance_index: instanceIndex }) =>
       commandWithSuccessor(
         bridge,
         "reorder_hand",
         { card_ids: order.map(String) },
-        { instanceId: instance_id },
+        { instanceIndex },
       ),
   )
 
@@ -418,12 +417,12 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(true, false),
     },
-    ({ card_id, targets, instance_id }) =>
+    ({ card_id, targets, instance_index: instanceIndex }) =>
       commandWithSuccessor(
         bridge,
         "use_consumable",
         { card_id: String(card_id), targets: targets?.map(String) },
-        { instanceId: instance_id },
+        { instanceIndex },
       ),
   )
 
@@ -436,12 +435,12 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(true, false),
     },
-    ({ card_id, use, targets, instance_id }) =>
+    ({ card_id, use, targets, instance_index: instanceIndex }) =>
       commandWithSuccessor(
         bridge,
         "buy_consumable",
         { card_id: String(card_id), use, targets: targets?.map(String) },
-        { instanceId: instance_id },
+        { instanceIndex },
       ),
   )
 
@@ -454,12 +453,12 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(true, false),
     },
-    ({ card_id, targets, instance_id }) =>
+    ({ card_id, targets, instance_index: instanceIndex }) =>
       commandWithSuccessor(
         bridge,
         "select_booster_card",
         { card_id: String(card_id), targets: targets?.map(String) },
-        { instanceId: instance_id },
+        { instanceIndex },
       ),
   )
 
@@ -472,12 +471,12 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
       outputSchema: commandOutputSchema,
       annotations: annotations(false, true),
     },
-    ({ order, instance_id }) =>
+    ({ order, instance_index: instanceIndex }) =>
       commandWithSuccessor(
         bridge,
         "reorder_jokers",
         { card_ids: order.map(String) },
-        { instanceId: instance_id },
+        { instanceIndex },
       ),
   )
 
@@ -496,7 +495,7 @@ export function registerActionTools(server: McpServer, bridge: BridgeClient): vo
           ? { challenge: args.challenge }
           : { deck: args.deck, stake: args.stake, seed: args.seed }
       return commandWithSuccessor(bridge, "new_game", params, {
-        instanceId: args.instance_id,
+        instanceIndex: args.instance_index,
       })
     },
   )

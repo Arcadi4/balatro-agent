@@ -50,13 +50,9 @@ export async function discoverBridgeInstances(
       continue
     }
   }
-  return instances.sort((left, right) => left.instance_id.localeCompare(right.instance_id))
-}
-
-export function instanceEndpoint(
-  instanceId: string,
-  platform: string = process.platform,
-  env: Record<string, string | undefined> = process.env,
-): string {
-  return resolveBridgeSocketPath(instanceId, platform, env)
+  return instances.sort(
+    (left, right) =>
+      Number.parseInt(left.instance_id, 10) - Number.parseInt(right.instance_id, 10) ||
+      left.instance_id.localeCompare(right.instance_id),
+  )
 }

@@ -16,10 +16,14 @@ overrides the endpoint prefix and `BALATRO_BRIDGE_REGISTRY` the record prefix; b
 must use the same overrides or discovery finds nothing.
 
 Live state ships as resources: `balatro://instances`,
-`balatro://instances/{instance_id}/{turn,hand,jokers,consumables,deck,shop,booster,run,ante}`,
-and the unscoped aliases `balatro://turn` … `balatro://ante`, which resolve to the selected
-instance. `connect` selects an instance; action tools take an optional `instance_id` and
-otherwise use the selected one.
+`balatro://instances/{instance_index}/{turn,hand,jokers,consumables,deck,shop,booster,run,ante}`,
+and the unscoped aliases `balatro://turn` … `balatro://ante`. Public instance indices are
+0-based, oldest-first, and recomputed on discovery; per-launch IDs stay internal to IPC.
+Tools take an optional `instance_index`; omitting it or reading an unscoped alias requires
+exactly one live discovered instance. Multiple instances produce a recoverable selection
+error before acting. Actions and live reads connect on demand; `connect` establishes IPC
+without selecting a default. Resolve once per request and pin the private identity through
+all IPC work and successor reads.
 
 ## Toolchain
 

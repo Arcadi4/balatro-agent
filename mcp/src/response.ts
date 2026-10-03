@@ -1,12 +1,12 @@
 import type { CallToolResult } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
-import { BridgeError, type BridgeClient } from "./bridge/socket-client.js"
+import { BridgeError } from "./bridge/socket-client.js"
 
 export type MarkdownFormatter = (data: Record<string, unknown>) => string
 
 export interface CommandResultOptions {
-  instanceId?: string
+  instanceIndex?: number
   toMarkdown?: MarkdownFormatter
 }
 
@@ -66,23 +66,4 @@ export async function withBridgeErrors<T>(
     if (error instanceof BridgeError) return toolError(error.code, error.message, error.details)
     throw error
   }
-}
-
-export async function commandResult(
-  bridge: BridgeClient,
-  kind: string,
-  args?: Record<string, unknown>,
-  options: CommandResultOptions = {},
-): Promise<CallToolResult> {
-  return withBridgeErrors(
-    () => bridge.command(kind, args, options.instanceId),
-    (data) => {
-      const envelope: Record<string, unknown> = { ok: true }
-      const record = asRecord(data)
-      if (record && Object.keys(record).length > 0) {
-        envelope.data = record
-      }
-      return toolResult(envelope, options.toMarkdown)
-    },
-  )
 }

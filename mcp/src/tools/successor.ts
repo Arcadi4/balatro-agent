@@ -13,7 +13,6 @@ import {
 
 export interface SuccessorOptions extends CommandResultOptions {
   settleTimeoutMs?: number
-  instanceId?: string
   pollMs?: number
 }
 
@@ -252,7 +251,7 @@ async function settleState(
   rule: SuccessorRule,
   timeoutMs: number,
   pollMs: number,
-  instanceId?: string,
+  instanceId: string,
 ): Promise<SettledState> {
   const deadline = Date.now() + timeoutMs
   let payload: Record<string, unknown>
@@ -294,6 +293,11 @@ interface SuccessorSection {
  * the next settled decision surface, and nothing when none settles in time.
  * Launching with --no-auto-context drops that read entirely: the command runs
  * with no state read before it, no settle poll after it, and no next field.
+ *
+ * The target is resolved once, before anything is sent, and its private
+ * identity then carries every read and write in the call: an instance starting
+ * or stopping mid-command cannot redirect the command, the settle poll, or the
+ * successor URI this result points at.
  */
 export async function commandWithSuccessor(
   bridge: BridgeClient,
@@ -304,7 +308,9 @@ export async function commandWithSuccessor(
   return withBridgeErrors(
     async () => {
       const rule = autoContextEnabled() ? SUCCESSOR_RULES[kind] : undefined
-      const instanceId = options.instanceId ?? bridge.getSelectedInstanceId()
+      const target = await bridge.resolveInstance(options.instanceIndex)
+      await bridge.connect(target.instance)
+      const instanceId = target.instance.instance_id
       let before: Record<string, unknown> | undefined
       if (rule?.changedField !== undefined) {
         try {
@@ -335,10 +341,9 @@ export async function commandWithSuccessor(
       }
       const uri = successorUri(rule, outcome.payload, before)
       if (uri === undefined) return { envelope, successor: undefined }
-      const scopedUri =
-        instanceId === undefined
-          ? uri
-          : uri.replace("balatro://", `balatro://instances/${encodeURIComponent(instanceId)}/`)
+      // The caller-addressable form names the index it resolved, never the
+      // private identity behind it.
+      const scopedUri = uri.replace("balatro://", `balatro://instances/${target.instance_index}/`)
       const rendered = renderSuccessor(scopedUri, outcome.payload)
       envelope.next = {
         uri: rendered.uri,

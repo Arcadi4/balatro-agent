@@ -23,6 +23,24 @@ agent never has to read it again. Pass `--no-auto-context` to turn that feed off
 action results then report only what they changed, and the client reads
 `balatro://turn` itself.
 
+## Live instances
+
+Read `balatro://instances` for live games numbered from `0`, oldest-first by launch
+timestamp. Launch timestamps have second precision; equal timestamps use a deterministic
+internal-ID tie-breaker. Discovery recomputes the indices, so an index can name a different
+game after another instance appears or exits.
+
+With one live game, omit `instance_index` on tools and read unscoped resources such as
+`balatro://turn`. With multiple games, pass `instance_index` and read
+`balatro://instances/<index>/turn` or another scoped resource. Bare requests fail before
+acting with `INSTANCE_SELECTION_REQUIRED` and the current numbered list. Retry with an
+index; if no games are available, the server returns `GAME_NOT_RUNNING`.
+
+Actions and live reads open IPC connections on demand. `connect` is optional and selects
+no default. Each request keeps its resolved game identity through the command and
+successor reads, even if discovery changes while it runs. Internal IDs and endpoint paths
+do not appear in the agent-facing instance list.
+
 ## Tool errors
 
 Tool output schemas cover success and structured errors. Error results set `isError`
