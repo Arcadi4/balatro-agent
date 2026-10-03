@@ -1,7 +1,14 @@
 #!/usr/bin/env bun
 
-import { McpServer } from "@modelcontextprotocol/server"
-import { serveStdio } from "@modelcontextprotocol/server/stdio"
+import {
+  isJSONRPCNotification,
+  isJSONRPCRequest,
+  JSONRPC_VERSION,
+  McpServer,
+  PROTOCOL_VERSION_META_KEY,
+  UnsupportedProtocolVersionError,
+} from "@modelcontextprotocol/server"
+import { StdioServerTransport, serveStdio } from "@modelcontextprotocol/server/stdio"
 
 import packageJson from "../package.json"
 import { BridgeClient } from "./bridge/socket-client.js"
@@ -15,6 +22,44 @@ import { registerPostgameResource } from "./resources/postgame.js"
 import { registerStakesResource } from "./resources/stakes.js"
 import { registerWikiResource } from "./resources/wiki.js"
 import { registerAllTools } from "./tools/index.js"
+
+// SDK v2.0.0 skips version checks after pinning stdio; its modern version list is internal.
+const SUPPORTED_MODERN_PROTOCOL_VERSIONS: readonly string[] = ["2026-07-28"]
+
+class VersionGatedStdioTransport extends StdioServerTransport {
+  override async start(): Promise<void> {
+    const onmessage = this.onmessage
+    this.onmessage = (message) => {
+      if (!isJSONRPCRequest(message) && !isJSONRPCNotification(message)) {
+        onmessage?.(message)
+        return
+      }
+      const meta: unknown = message.params?._meta
+      const claimed =
+        typeof meta === "object" && meta !== null
+          ? (meta as Record<string, unknown>)[PROTOCOL_VERSION_META_KEY]
+          : undefined
+      if (typeof claimed !== "string" || SUPPORTED_MODERN_PROTOCOL_VERSIONS.includes(claimed)) {
+        onmessage?.(message)
+        return
+      }
+      const error = new UnsupportedProtocolVersionError({
+        supported: [...SUPPORTED_MODERN_PROTOCOL_VERSIONS],
+        requested: claimed,
+      })
+      this.onerror?.(error)
+      if (!isJSONRPCRequest(message)) return
+      void this.send({
+        jsonrpc: JSONRPC_VERSION,
+        id: message.id,
+        error: { code: error.code, message: error.message, data: error.data },
+      }).catch((cause: unknown) => {
+        this.onerror?.(cause instanceof Error ? cause : new Error(String(cause)))
+      })
+    }
+    await super.start()
+  }
+}
 
 // MCP 2026-07-28 requires public cache scope because registered listings do not
 // vary by connection.
@@ -61,8 +106,13 @@ async function main(): Promise<void> {
   const bridge = new BridgeClient()
   const autoContext = autoContextEnabled()
 
+  const reportError = (error: Error): void => {
+    process.stderr.write(`[balatro-mcp] ${error.message}\n`)
+  }
+
   const handle = serveStdio(() => createServer(bridge, autoContext), {
-    onerror: (error) => process.stderr.write(`[balatro-mcp] ${error.message}\n`),
+    transport: new VersionGatedStdioTransport(),
+    onerror: reportError,
   })
 
   let closing = false

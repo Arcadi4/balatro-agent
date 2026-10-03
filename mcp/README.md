@@ -15,7 +15,7 @@ Run `npx -y balatro-mcp`. The npm package selects a native executable for macOS
 executable; users do not need to install it. Keep npm optional dependencies enabled.
 The native archives on [GitHub Releases](https://github.com/Arcadi4/balatro-agent/releases)
 can also run directly, without Node or Bun. Use the executable path as your MCP
-client's command. `balatro-mcp --version` prints its version without opening a session.
+client's command. `balatro-mcp --version` prints its version without starting the server.
 
 By default every mutating action is followed by a settled-state read, and the
 result carries a `## Next: <uri>` snapshot of the next decision surface so the
@@ -33,6 +33,11 @@ and carry `{ "error_code": "...", "message": "...", "details": { ... } }` in
 
 Resource reads report protocol errors. Missing wiki articles return `-32602` with the
 requested URI; HTTP and network failures remain internal errors.
+
+## Protocol compatibility
+
+The stdio server checks the protocol version on each request and returns `-32022` for
+unsupported versions. Legacy clients can still initialize with the 2025-era handshake.
 
 ## Development
 
