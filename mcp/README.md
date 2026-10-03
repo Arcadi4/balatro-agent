@@ -106,8 +106,9 @@ keeps the terminal attached so npm can complete its browser-based 2FA flow. If s
 interrupted, rerun it for packages that have not been trusted yet; npm permits one trust
 configuration per package.
 
-For each release, bump the mod and MCP versions together with `make bump
-VERSION=x.y.z` from the repo root, then push the matching `v<version>` tag. The
+For each release, bump the mod and MCP versions together with `make bump`
+(or `make bump minor` / `make bump major`) from the repo root, then push the
+matching `v<version>` tag. The
 workflow:
 
 1. Validates Lua and TypeScript, builds binaries, and checks each on a matching runner.
