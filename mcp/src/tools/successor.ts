@@ -1,6 +1,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/server"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
+import { autoContextEnabled } from "../flags.js"
 import { renderSuccessor } from "../resources/live.js"
 import {
   asRecord,
@@ -291,6 +292,8 @@ interface SuccessorSection {
 /**
  * Command errors propagate without a successor read; successful commands attach
  * the next settled decision surface, and nothing when none settles in time.
+ * Launching with --no-auto-context drops that read entirely: the command runs
+ * with no state read before it, no settle poll after it, and no next field.
  */
 export async function commandWithSuccessor(
   bridge: BridgeClient,
@@ -300,7 +303,7 @@ export async function commandWithSuccessor(
 ): Promise<CallToolResult> {
   return withBridgeErrors(
     async () => {
-      const rule = SUCCESSOR_RULES[kind]
+      const rule = autoContextEnabled() ? SUCCESSOR_RULES[kind] : undefined
       const instanceId = options.instanceId ?? bridge.getSelectedInstanceId()
       let before: Record<string, unknown> | undefined
       if (rule?.changedField !== undefined) {

@@ -5,6 +5,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio"
 
 import packageJson from "../package.json"
 import { BridgeClient } from "./bridge/socket-client.js"
+import { autoContextEnabled } from "./flags.js"
 import { registerHandbookPrompt } from "./prompts/handbook.js"
 import { registerCardModifiersResource } from "./resources/cardModifiers.js"
 import { registerChallengesResource } from "./resources/challenges.js"
@@ -19,7 +20,14 @@ import { registerAllTools } from "./tools/index.js"
 // vary by connection.
 const LIST_CACHE_HINT = { ttlMs: 60_000, cacheScope: "public" } as const
 
-function createServer(bridge: BridgeClient): McpServer {
+// The auto-context feed changes what an action result carries, so the client
+// instructions have to describe the mode the server actually runs in.
+const AUTO_CONTEXT_GUIDANCE =
+  "After an action the response carries a '## Next' snapshot of the next decision surface, so prefer it over re-reading."
+const NO_AUTO_CONTEXT_GUIDANCE =
+  "After an action, re-read balatro://turn for the next decision surface: no snapshot follows the response."
+
+function createServer(bridge: BridgeClient, autoContext: boolean): McpServer {
   const server = new McpServer(
     {
       name: packageJson.name,
@@ -27,8 +35,7 @@ function createServer(bridge: BridgeClient): McpServer {
       description: packageJson.description,
     },
     {
-      instructions:
-        "Read balatro://instances to see the running Balatro processes, then call connect with the instance_id you want to play. Unscoped live resources (balatro://turn, /hand, /jokers, /consumables, /deck, /shop, /booster, /run, /ante) and action tools target the selected instance unless you pass instance_id. Read balatro://turn before the first action: it carries the phase, round, legal actions, hand, jokers, and consumables. After an action the response carries a '## Next' snapshot of the next decision surface, so prefer it over re-reading. Use the balatro_play_handbook prompt for live-play strategy and balatro_wiki_search to verify rules. When a run ends, ask the user before recording an analysis with new_postgame; stored analyses are listed at postgame://.",
+      instructions: `Read balatro://instances to see the running Balatro processes, then call connect with the instance_id you want to play. Unscoped live resources (balatro://turn, /hand, /jokers, /consumables, /deck, /shop, /booster, /run, /ante) and action tools target the selected instance unless you pass instance_id. Read balatro://turn before the first action: it carries the phase, round, legal actions, hand, jokers, and consumables. ${autoContext ? AUTO_CONTEXT_GUIDANCE : NO_AUTO_CONTEXT_GUIDANCE} Use the balatro_play_handbook prompt for live-play strategy and balatro_wiki_search to verify rules. When a run ends, ask the user before recording an analysis with new_postgame; stored analyses are listed at postgame://.`,
       cacheHints: {
         "server/discover": LIST_CACHE_HINT,
         "tools/list": LIST_CACHE_HINT,
@@ -52,8 +59,9 @@ function createServer(bridge: BridgeClient): McpServer {
 
 async function main(): Promise<void> {
   const bridge = new BridgeClient()
+  const autoContext = autoContextEnabled()
 
-  const handle = serveStdio(() => createServer(bridge), {
+  const handle = serveStdio(() => createServer(bridge, autoContext), {
     onerror: (error) => process.stderr.write(`[balatro-mcp] ${error.message}\n`),
   })
 

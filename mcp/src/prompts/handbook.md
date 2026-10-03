@@ -6,13 +6,13 @@ Read `balatro://turn` before your first action and whenever you need to reorient
 
 Unscoped aliases — `balatro://turn`, `balatro://hand`, `balatro://jokers`, `balatro://consumables`, `balatro://deck`, `balatro://shop`, `balatro://booster`, `balatro://run`, `balatro://ante` — resolve to the selected instance. Use `balatro://instances/{instance_id}/...` to address one instance explicitly.
 
-## Trust the Result
+## Read After Every Action
 
-A mutating action returns a `## Next: <uri>` section holding the freshest snapshot of the surface you now need. Work from it instead of reading again.
+A mutating action reports only what it changed. When the response also carries a `## Next: <uri>` section, that section holds the freshest snapshot of the surface you now need and you can work from it instead of reading again. The server started with `--no-auto-context` never attaches one.
 
 Re-read `balatro://turn` when:
 
-- the result carries no `## Next` section, meaning no new decision surface was reached or the state returned to a surface you already hold;
+- the result carries no `## Next` section, either because no new decision surface was reached, because the state returned to a surface you already hold, or because the feed is off;
 - the action only changed your own selection, such as `balatro_select_hand_cards` or `balatro_skip_booster`.
 
 ## Verify Rules, Not Memory

@@ -17,6 +17,12 @@ The native archives on [GitHub Releases](https://github.com/Arcadi4/balatro-agen
 can also run directly, without Node or Bun. Use the executable path as your MCP
 client's command. `balatro-mcp --version` prints its version without opening a session.
 
+By default every mutating action is followed by a settled-state read, and the
+result carries a `## Next: <uri>` snapshot of the next decision surface so the
+agent never has to read it again. Pass `--no-auto-context` to turn that feed off:
+action results then report only what they changed, and the client reads
+`balatro://turn` itself.
+
 ## Development
 
 Install [Bun](https://bun.com) 1.4.2 or later, then run these commands in `mcp/`:
