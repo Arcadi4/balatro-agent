@@ -675,7 +675,8 @@ local function compute_legal_actions()
     end
   end
 
-  if (gs == states.BLIND_SELECT or gs == states.SELECTING_HAND or gs == states.ROUND_EVAL or gs == states.SHOP)
+  if (gs == states.BLIND_SELECT or gs == states.SELECTING_HAND or gs == states.ROUND_EVAL or gs == states.SHOP
+      or pack_state)
       and has_sellable_card() then
     actions[#actions + 1] = 'sell_card'
   end

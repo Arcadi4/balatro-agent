@@ -743,7 +743,9 @@ handlers.use_consumable = function(args)
 end
 
 handlers.sell_card = function(args)
-  local phase_err = check_phase({ "BLIND_SELECT", "SELECTING_HAND", "ROUND_EVAL", "SHOP" })
+  -- The game also allows selling while a booster pack is open, e.g. to free a
+  -- joker slot before taking a Buffoon pick; can_sell_card() has the final say.
+  local phase_err = check_phase({ "BLIND_SELECT", "SELECTING_HAND", "ROUND_EVAL", "SHOP", PACK_TARGETS[1] })
   if phase_err then return phase_err end
 
   local card_id = args.card_id

@@ -213,8 +213,18 @@ const SUCCESSOR_RULES: Record<string, SuccessorRule> = {
     awaitedPhases: { SHOP: true },
   },
   sell_card: {
-    awaitedPhases: { BLIND_SELECT: true, SELECTING_HAND: true, ROUND_EVAL: true, SHOP: true },
-    resolveUri: (payload) => (phaseOf(payload) === "SHOP" ? "balatro://shop" : "balatro://turn"),
+    awaitedPhases: {
+      BLIND_SELECT: true,
+      SELECTING_HAND: true,
+      ROUND_EVAL: true,
+      SHOP: true,
+      [PACK_PHASE]: true,
+    },
+    resolveUri: (payload) => {
+      if (packOpen(payload)) return "balatro://booster"
+      return phaseOf(payload) === "SHOP" ? "balatro://shop" : "balatro://turn"
+    },
+    ready: packTransitionReady,
   },
   use_consumable: {
     awaitedPhases: { SELECTING_HAND: true, SHOP: true },
