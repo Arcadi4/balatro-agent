@@ -4,6 +4,7 @@ local connect_info
 local game_events
 
 local round_eval
+local game_controls
 
 local function err(error_code, message)
   return { ok = false, error_code = error_code, error_message = message }
@@ -224,81 +225,27 @@ local function replace_requested_highlights(cards, requested)
   return selected_ids, previous
 end
 
--- Vanilla hand-targeting consumables that omit max_highlighted and enforce
--- targeting in can_use_consumeable.
-local HAND_TARGETING_OVERRIDES = {
-  ['Aura'] = { min_highlighted = 1, max_highlighted = 1 },
-}
-
-local function consumable_target_limits(card)
-  local cons = card.ability and card.ability.consumeable
-  local name = card.ability and card.ability.name
-  local override = name and HAND_TARGETING_OVERRIDES[name]
-  local max_h = (cons and cons.max_highlighted) or (override and override.max_highlighted)
-  local min_h = (cons and cons.min_highlighted) or (override and override.min_highlighted)
-  return min_h, max_h
-end
-
 local function prepare_consumable_targets(card, args, shop_context)
-  local target_card_ids = args.targets or {}
-  local min_highlighted, max_highlighted = consumable_target_limits(card)
-
-  if not max_highlighted then
-    if #target_card_ids > 0 then
-      local name = card.ability and card.ability.name or 'This consumable'
-      return err('INVALID_TARGET', "'" .. name .. "' does not target hand cards")
-    end
-    if card.can_use_consumeable and not card:can_use_consumeable() then
-      local name = card.ability and card.ability.name or 'this consumable'
-      if shop_context then
-        return err(
-          'CANNOT_USE_NOW',
-          "'" .. name .. "' cannot be applied immediately from the shop: its use conditions are not met. No money was charged."
-        )
-      end
-      return err('CANNOT_USE_NOW', "'" .. name .. "' cannot be used right now")
-    end
-    return nil
+  if not game_controls.can_accept_input() then return err('CANNOT_USE_NOW', 'Game input is not ready') end
+  local previous
+  if args.targets ~= nil then
+    local targets, requested, resolve_err = resolve_hand_cards(args.targets)
+    if resolve_err then return resolve_err end
+    if not G.hand then return err('INVALID_TARGET', 'No hand is available for targets') end
+    local _, old, selection_err = replace_requested_highlights(targets, requested)
+    if selection_err then return selection_err end
+    previous = old
   end
-
-  local targets, requested, resolve_err = resolve_hand_cards(target_card_ids)
-  if resolve_err then return resolve_err end
-
-  local _, previous, selection_err = replace_requested_highlights(targets, requested)
-  if selection_err then return selection_err end
-
-  if card.can_use_consumeable and not card:can_use_consumeable() then
-    local name = card.ability and card.ability.name or 'this consumable'
-    local use_err
+  if not game_controls.consumable_can_be_used(card) then
+    if previous then replace_highlights(previous) end
     if shop_context then
-      -- In-range targets rule out targeting as the shop-phase blocker.
-      local count = G.hand and #G.hand.highlighted or 0
-      local in_range = count >= (min_highlighted or 1) and count <= max_highlighted
-      if in_range then
-        use_err = err(
-          'CANNOT_USE_NOW',
-          "'" .. name .. "' cannot be applied immediately from the shop: hand-targeting consumables require hand selection (SELECTING_HAND) or an open booster pack. No money was charged."
-        )
-      end
+      return err('CANNOT_USE_NOW', 'The game refused immediate use of this consumable. No money was charged.')
     end
-    if not use_err then
-      local min_h = min_highlighted or 1
-      if #target_card_ids == 0 and min_h > 0 then
-        local range = min_h == max_highlighted and tostring(min_h) or (min_h .. '-' .. max_highlighted)
-        use_err = err('INVALID_TARGET', "'" .. name .. "' requires targets (" .. range
-          .. (max_highlighted == 1 and ' hand card' or ' hand cards') .. ')')
-      elseif #target_card_ids == 0 then
-        use_err = err('CANNOT_USE_NOW', "'" .. name .. "' cannot be used right now")
-      else
-        use_err = err('INVALID_TARGET', "'" .. name .. "' cannot be used with the supplied targets")
-      end
-    end
-    replace_highlights(previous)
-    return use_err
+    return err('CANNOT_USE_NOW', 'The game refused this consumable with the current hand selection')
   end
-
   return nil, previous
 end
+
 
 local function available_funds()
   if not G or not G.GAME then return 0 end
@@ -469,29 +416,13 @@ handlers.reroll_boss = function(args)
   local phase_err = check_phase({ "BLIND_SELECT" })
   if phase_err then return phase_err end
 
-  local game = G.GAME
-  local resets = game and game.round_resets
-  local vouchers = game and game.used_vouchers
-  if not resets or not resets.blind_choices or not vouchers then
-    return err("CANNOT_USE_NOW", "Boss reroll state is not ready")
-  end
-  if G.CONTROLLER and G.CONTROLLER.locks and G.CONTROLLER.locks.boss_reroll then
-    return err("CANNOT_USE_NOW", "A boss reroll is already in progress")
-  end
-  if not vouchers.v_retcon and not vouchers.v_directors_cut then
-    return err("LOCKED", "Director's Cut or Retcon is required to reroll the Boss Blind")
-  end
-  if vouchers.v_directors_cut and not vouchers.v_retcon and resets.boss_rerolled then
-    return err("LOCKED", "Director's Cut has already rerolled this Ante's Boss Blind")
-  end
-  local funds_err = check_funds(10)
-  if funds_err then return funds_err end
-  if not G.FUNCS or type(G.FUNCS.reroll_boss) ~= "function" then
-    return err("CANNOT_USE_NOW", "Boss reroll action is not ready")
+  local button = game_controls.boss_reroll_button()
+  if not game_controls.action_button_is_enabled(button, 'reroll_boss') then
+    return err('CANNOT_USE_NOW', 'The boss reroll control is not available')
   end
 
-  local previous_boss = resets.blind_choices.Boss
-  G.FUNCS.reroll_boss()
+  local previous_boss = G.GAME.round_resets.blind_choices.Boss
+  button:click()
   return anim_settle({ rerolled = true, previous_boss = previous_boss, cost = 10 })
 end
 
@@ -667,6 +598,9 @@ handlers.play_hand = function(args)
   local phase_err = check_phase({ "SELECTING_HAND" })
   if phase_err then return phase_err end
 
+  if not game_controls.hand_controls_ready() then
+    return err("CANNOT_USE_NOW", "Hand controls are not ready")
+  end
   if not G.hand or not G.hand.highlighted or #G.hand.highlighted == 0 then
     return err("INVALID_TARGET", "No cards selected to play")
   end
@@ -674,9 +608,9 @@ handlers.play_hand = function(args)
   if hands_left <= 0 then
     return err("CANNOT_USE_NOW", "No hands remaining")
   end
-
-  if G.GAME and G.GAME.blind and G.GAME.blind.block_play then
-    return err("CANNOT_USE_NOW", "Boss blind is blocking play")
+  local play_button = game_controls.play_hand_button()
+  if not game_controls.action_button_is_enabled(play_button, 'play_cards_from_highlighted') then
+    return err("CANNOT_USE_NOW", "The selected cards cannot be played right now")
   end
 
   local cards_played = #G.hand.highlighted
@@ -693,7 +627,7 @@ handlers.play_hand = function(args)
   -- from whatever survives the play animation.
   local preview = hand_preview()
 
-  G.FUNCS.play_cards_from_highlighted()
+  play_button:click()
 
   return play_hand_settle({
     cards_played = cards_played,
@@ -709,43 +643,41 @@ handlers.discard_hand = function(args)
   local phase_err = check_phase({ "SELECTING_HAND" })
   if phase_err then return phase_err end
 
+  if not game_controls.hand_controls_ready() then
+    return err("CANNOT_USE_NOW", "Hand controls are not ready")
+  end
   if not G.hand or not G.hand.highlighted or #G.hand.highlighted == 0 then
     return err("INVALID_TARGET", "No cards selected to discard")
   end
-  local discards_left = G.GAME and G.GAME.current_round and G.GAME.current_round.discards_left or 0
-  if discards_left <= 0 then
-    return err("CANNOT_USE_NOW", "No discards remaining")
+  local discard_button = game_controls.discard_hand_button()
+  if not game_controls.action_button_is_enabled(discard_button, 'discard_cards_from_highlighted') then
+    return err("CANNOT_USE_NOW", "The selected cards cannot be discarded right now")
   end
 
   local cards_discarded = #G.hand.highlighted
-  G.FUNCS.discard_cards_from_highlighted()
+  discard_button:click()
 
   return anim_settle({ cards_discarded = cards_discarded })
 end
 
 handlers.use_consumable = function(args)
-  local phase_err = check_phase({ "SELECTING_HAND", "SHOP" }, is_pack_phase() and PACK_TARGET_HINT or nil)
-  if phase_err then return phase_err end
-
-  local card_id = args.card_id
-
-  local card = find_card_in_consumables(card_id)
+  local card = find_card_in_consumables(args.card_id)
   if not card then
-    return err("INVALID_TARGET", "Consumable not found: " .. tostring(card_id))
+    return err('INVALID_TARGET', 'Consumable not found: ' .. tostring(args.card_id))
   end
-
-  local target_err = prepare_consumable_targets(card, args)
+  local target_err, previous = prepare_consumable_targets(card, args)
   if target_err then return target_err end
-
-  G.FUNCS.use_card({ config = { ref_table = card } })
-
+  local button, created, highlighted = game_controls.ensure_card_action_button(card, 'use_card')
+  if not game_controls.action_button_is_enabled(button, 'use_card') then
+    if previous then replace_highlights(previous) end
+    game_controls.remove_created_card_action_button(card, created, highlighted)
+    return err('CANNOT_USE_NOW', 'The game refused this consumable')
+  end
+  button:click()
   return anim_settle({})
 end
 
 handlers.sell_card = function(args)
-  local phase_err = check_phase({ "BLIND_SELECT", "SELECTING_HAND", "ROUND_EVAL", "SHOP" })
-  if phase_err then return phase_err end
-
   local card_id = args.card_id
 
   local card = find_card_in_jokers(card_id)
@@ -755,17 +687,22 @@ handlers.sell_card = function(args)
   if not card then
     return err("INVALID_TARGET", "Card not found in jokers or consumables: " .. tostring(card_id))
   end
-  if card_ids.hidden(G.jokers, card) and G.jokers and contains_card(G.jokers.cards, card) then
-    return err("CANNOT_USE_NOW", "Face-down Jokers cannot be sold while their identity is hidden")
-  end
 
-  if not card:can_sell_card() then
+  local allowed, reason = game_controls.card_can_be_sold(card)
+  if not allowed then
+    if reason == 'hidden' then
+      return err("CANNOT_USE_NOW", "Face-down Jokers cannot be sold while their identity is hidden")
+    end
+    if reason == 'no_run' or reason == 'no_screen' or reason == 'game_over' then
+      return err("WRONG_PHASE", "Action not allowed in phase " .. phase_name())
+    end
     return err("CANNOT_SELL", "Card cannot be sold right now")
   end
 
+  local sell_value = card.sell_cost
   G.FUNCS.sell_card({ config = { ref_table = card } })
 
-  return anim_settle({ sell_value = card.sell_cost })
+  return anim_settle({ sell_value = sell_value })
 end
 
 handlers.buy_card = function(args)
@@ -1119,19 +1056,35 @@ handlers.select_booster_card = function(args)
     return err("INVALID_TARGET", "Card not found in pack: " .. tostring(card_id))
   end
 
-  local set = card.config and card.config.center and card.config.center.set
-  if set == 'Tarot' or set == 'Planet' or set == 'Spectral'
-      or (card.ability and card.ability.consumeable) then
-    local target_err = prepare_consumable_targets(card, args)
-    if target_err then return target_err end
+  local button, created, previous = game_controls.ensure_card_action_button(card, 'use_card')
+  if not button then
+    game_controls.remove_created_card_action_button(card, created, previous)
+    return err('CANNOT_USE_NOW', 'This card has no pack selection control')
   end
 
-  if set == 'Joker' and not (card.edition and card.edition.negative)
-      and #G.jokers.cards >= G.jokers.config.card_limit then
-    return err("SLOTS_FULL", "No available joker slots")
+  local previous_highlights
+  local consumes = card.ability and card.ability.consumeable
+  local takes_card = card.selectable_from_pack and card:selectable_from_pack(pack_center())
+  if consumes and not takes_card then
+    local target_err, saved_selection = prepare_consumable_targets(card, args)
+    if target_err then
+      game_controls.remove_created_card_action_button(card, created, previous)
+      return target_err
+    end
+    previous_highlights = saved_selection
+  elseif args.targets and #args.targets > 0 then
+    game_controls.remove_created_card_action_button(card, created, previous)
+    return err('INVALID_TARGET', 'This pack choice takes a card without using hand targets')
   end
 
-  G.FUNCS.use_card({ config = { ref_table = card } })
+  if not game_controls.action_button_is_enabled(button, 'use_card') then
+    if previous_highlights then replace_highlights(previous_highlights) end
+    game_controls.remove_created_card_action_button(card, created, previous)
+    return err('CANNOT_USE_NOW', 'The game refused this pack choice')
+  end
+
+  button:click()
+  if created then card.highlighted = previous end
 
   return anim_settle({})
 end
@@ -1187,11 +1140,12 @@ handlers.reorder_jokers = function(args)
   return ok()
 end
 
-function handlers.configure(ids, eval, get_connect_info, events)
+function handlers.configure(ids, eval, get_connect_info, events, controls)
   card_ids = ids
   round_eval = eval
   connect_info = get_connect_info
   game_events = events
+  game_controls = controls
 end
 
 return handlers
