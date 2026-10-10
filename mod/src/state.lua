@@ -1,5 +1,7 @@
 local State = {}
 local card_ids
+local game_controls
+local round_eval
 
 
 local seq = 0
@@ -402,13 +404,7 @@ local function center_description(center, set)
   return trim_text(clean_description_text(table.concat(lines, ' ')))
 end
 local function can_reroll_boss()
-  local game = G and G.GAME
-  local resets = game and game.round_resets
-  local vouchers = game and game.used_vouchers
-  if not game or not resets or not vouchers then return false end
-  if (game.dollars or 0) - (game.bankrupt_at or 0) < 10 then return false end
-  if vouchers.v_retcon then return true end
-  return vouchers.v_directors_cut and not resets.boss_rerolled or false
+  return game_controls.action_button_is_enabled(game_controls.boss_reroll_button(), 'reroll_boss')
 end
 
 
@@ -495,30 +491,11 @@ local function serialize_joker(card, faced_down)
   end
   return obj
 end
--- Mirrors HAND_TARGETING_OVERRIDES in actions.lua; keep both definitions in sync.
-local HAND_TARGETING_OVERRIDES = {
-  ['Aura'] = { min_highlighted = 1, max_highlighted = 1 },
-}
-
-local function consumable_usable(card)
-  if type(card) ~= 'table' or type(card.can_use_consumeable) ~= 'function' then
-    return nil
-  end
-  local ok, usable = pcall(card.can_use_consumeable, card, nil, true)
+local function consumable_can_be_used(card)
+  if type(card) ~= 'table' or type(card.can_use_consumeable) ~= 'function' then return nil end
+  local ok, usable = pcall(card.can_use_consumeable, card)
   if not ok then return nil end
-  if usable then return true end
-
-  -- Targeted consumables need enough hand cards, but no highlight is required here.
-  local name = card.ability and card.ability.name
-  local cons = card.ability and card.ability.consumeable
-  local override = name and HAND_TARGETING_OVERRIDES[name]
-  local max_h = (cons and cons.max_highlighted) or (override and override.max_highlighted)
-  local min_h = (cons and cons.min_highlighted) or (override and override.min_highlighted)
-  if max_h and G.hand and G.hand.cards then
-    return #G.hand.cards >= (min_h or 1)
-  end
-
-  return false
+  return usable and true or false
 end
 
 local function serialize_consumable(card)
@@ -540,7 +517,7 @@ local function serialize_consumable(card)
     edition = get_card_edition(card),
     stickers = get_card_stickers(card),
     cost = card.cost,
-    usable = consumable_usable(card),
+    usable = consumable_can_be_used(card),
   }
 end
 
@@ -570,125 +547,105 @@ local function serialize_shop_card(card)
   }
 end
 
-local function compute_legal_actions()
+local function blind_select_button()
+  local blind_key = G and G.GAME and G.GAME.blind_on_deck
+  local ui = blind_key and G.blind_select_opts and G.blind_select_opts[string.lower(blind_key)]
+  return ui and ui.get_UIE_by_ID and ui:get_UIE_by_ID('select_blind_button')
+end
+
+function State.decision_surface()
+  if not G or not G.STATES then return nil end
+  if G.STATE == G.STATES.GAME_OVER then
+    local restart = game_controls.find_action_button(G.OVERLAY_MENU, 'notify_then_setup_run')
+    return game_controls.action_button_is_enabled(restart, 'notify_then_setup_run', true) and 'turn' or nil
+  end
+  if not game_controls.can_accept_input() then return nil end
+  if resolve_open_pack() then
+    local skip = game_controls.find_action_button(G.booster_pack, 'skip_booster')
+    if G.pack_cards and G.pack_cards.cards and #G.pack_cards.cards > 0
+        and game_controls.action_button_is_enabled(skip, 'skip_booster') then return 'booster' end
+  elseif game_controls.hand_controls_ready() then
+    return 'hand'
+  elseif G.STATE == G.STATES.SHOP then
+    local leave = G.shop and G.shop.get_UIE_by_ID and G.shop:get_UIE_by_ID('next_round_button')
+    if G.shop_jokers and G.shop_vouchers and G.shop_booster
+        and game_controls.action_button_is_enabled(leave, 'toggle_shop') then return 'shop' end
+  elseif G.STATE == G.STATES.BLIND_SELECT then
+    if game_controls.action_button_is_enabled(blind_select_button(), 'select_blind') then return 'ante' end
+  elseif G.STATE == G.STATES.ROUND_EVAL then
+    if game_controls.action_button_is_enabled(round_eval.cash_out_button(), 'cash_out') then return 'turn' end
+  end
+end
+
+local function compute_legal_actions(surface)
   if not G or not G.STATE then return {} end
-
   local actions = {}
-  local gs = G.STATE
-
-  local function has_sellable_card()
-    if G.jokers and G.jokers.cards then
-      for _, card in ipairs(G.jokers.cards) do
-        if card and not card_ids.hidden(G.jokers, card) and not (card.ability and card.ability.eternal) then
-          return true
-        end
-      end
-    end
-    return G.consumeables and G.consumeables.cards and #G.consumeables.cards > 0
-  end
-  local function has_saved_game()
-    if not G.SETTINGS or G.SETTINGS.profile == nil then return false end
-    return love.filesystem.getInfo(tostring(G.SETTINGS.profile) .. '/save.jkr') ~= nil
-  end
-
-  local states = G.STATES
-  local pack_state = resolve_open_pack() ~= nil
-
-  if gs == states.SELECTING_HAND then
+  if surface == 'hand' then
     actions[#actions + 1] = 'select_hand_cards'
     actions[#actions + 1] = 'sort_hand'
-    if G.hand and #G.hand.cards > 1 then
-      actions[#actions + 1] = 'reorder_hand'
+    if G.hand and #G.hand.cards > 1 then actions[#actions + 1] = 'reorder_hand' end
+    local play = game_controls.play_hand_button()
+    local hands_left = G.GAME and G.GAME.current_round and G.GAME.current_round.hands_left or 0
+    if hands_left > 0 and game_controls.action_button_is_enabled(play, 'play_cards_from_highlighted') then
+      actions[#actions + 1] = 'play_hand'
     end
-    if G.hand and #G.hand.highlighted > 0 then
-      local hands_left = G.GAME and G.GAME.current_round and G.GAME.current_round.hands_left or 0
-      if hands_left > 0 then
-        actions[#actions + 1] = 'play_hand'
+    local discard = game_controls.discard_hand_button()
+    if game_controls.action_button_is_enabled(discard, 'discard_cards_from_highlighted') then actions[#actions + 1] = 'discard_hand' end
+  elseif surface == 'ante' then
+    actions[#actions + 1] = 'select_blind'
+    local select_button = blind_select_button()
+    local skip = select_button and game_controls.find_action_button(select_button.UIBox, 'skip_blind')
+    if game_controls.action_button_is_enabled(skip, 'skip_blind') then actions[#actions + 1] = 'skip_blind' end
+    if can_reroll_boss() then actions[#actions + 1] = 'reroll_boss' end
+  elseif surface == 'shop' then
+    local has_card, has_consumable = false, false
+    for _, card in ipairs(G.shop_jokers.cards or {}) do
+      local set = card.config and card.config.center and card.config.center.set
+      if set == 'Joker' or set == 'Default' or set == 'Enhanced' then
+        has_card = true
+      elseif card.ability and card.ability.consumeable then
+        has_consumable = true
       end
     end
-    if G.hand and #G.hand.highlighted > 0 then
-      local discards_left = G.GAME and G.GAME.current_round and G.GAME.current_round.discards_left or 0
-      if discards_left > 0 then
-        actions[#actions + 1] = 'discard_hand'
-      end
+    if has_card then actions[#actions + 1] = 'buy_card' end
+    if has_consumable then actions[#actions + 1] = 'buy_consumable' end
+    if G.shop_vouchers.cards and #G.shop_vouchers.cards > 0 then actions[#actions + 1] = 'buy_voucher' end
+    if G.shop_booster.cards and #G.shop_booster.cards > 0 then actions[#actions + 1] = 'buy_booster' end
+    if game_controls.action_button_is_enabled(game_controls.find_action_button(G.shop, 'reroll_shop'), 'reroll_shop') then
+      actions[#actions + 1] = 'reroll_shop'
     end
+    actions[#actions + 1] = 'leave_shop'
+  elseif surface == 'booster' then
+    -- Targets supplied with the request can enable a card that is unusable with the current highlight.
+    actions[#actions + 1] = 'select_booster_card'
+    actions[#actions + 1] = 'skip_booster'
+  elseif surface == 'turn' and G.STATE == G.STATES.ROUND_EVAL then
+    actions[#actions + 1] = 'cash_out'
+  end
+
+  if surface == 'hand' or surface == 'shop' then
     if G.consumeables and G.consumeables.cards and #G.consumeables.cards > 0 then
       actions[#actions + 1] = 'use_consumable'
     end
-    if G.jokers and G.jokers.cards and #G.jokers.cards > 1 then
-      actions[#actions + 1] = 'reorder_jokers'
-    end
-
-  elseif gs == states.BLIND_SELECT then
-    local blind_key = G.GAME and G.GAME.blind_on_deck
-    local blind_ui = blind_key and G.blind_select_opts and G.blind_select_opts[string.lower(blind_key)]
-    local select_button = blind_ui and blind_ui.get_UIE_by_ID and blind_ui:get_UIE_by_ID('select_blind_button')
-    local round_resets = G.GAME and G.GAME.round_resets
-    if G.GAME and G.GAME.round_resets and G.GAME.round_resets.blind_choices
-        and (blind_key == 'Small' or blind_key == 'Big' or blind_key == 'Boss')
-        and G.GAME.round_resets.blind_choices[blind_key]
-        and select_button and select_button.UIBox and select_button.config and select_button.config.ref_table then
-      actions[#actions + 1] = 'select_blind'
-      local tag_key = round_resets.blind_tags and round_resets.blind_tags[blind_key]
-      local tag_container = select_button.UIBox.get_UIE_by_ID
-          and select_button.UIBox:get_UIE_by_ID('tag_container')
-      if (blind_key == 'Small' or blind_key == 'Big') and tag_key and tag_container then
-        actions[#actions + 1] = 'skip_blind'
-      end
-    end
-    if can_reroll_boss() and G.FUNCS and type(G.FUNCS.reroll_boss) == 'function'
-        and not (G.CONTROLLER and G.CONTROLLER.locks and G.CONTROLLER.locks.boss_reroll) then
-      actions[#actions + 1] = 'reroll_boss'
-    end
-  elseif gs == states.SHOP then
-    local has_card = false
-    local has_consumable = false
-    if G.shop_jokers and G.shop_jokers.cards then
-      for _, card in ipairs(G.shop_jokers.cards) do
-        local set = card and card.config and card.config.center and card.config.center.set
-        if set == 'Joker' or set == 'Default' or set == 'Enhanced' then
-          has_card = true
-        elseif set == 'Tarot' or set == 'Planet' or set == 'Spectral' then
-          has_consumable = true
-        end
-      end
-    end
-    local has_voucher = G.shop_vouchers and G.shop_vouchers.cards and #G.shop_vouchers.cards > 0
-    local has_booster = G.shop_booster and G.shop_booster.cards and #G.shop_booster.cards > 0
-
-    if has_card then actions[#actions + 1] = 'buy_card' end
-    if has_consumable then actions[#actions + 1] = 'buy_consumable' end
-    if has_voucher then actions[#actions + 1] = 'buy_voucher' end
-    if has_booster then actions[#actions + 1] = 'buy_booster' end
-    actions[#actions + 1] = 'reroll_shop'
-    actions[#actions + 1] = 'leave_shop'
-    actions[#actions + 1] = 'use_consumable'
-    actions[#actions + 1] = 'reorder_jokers'
-
-  elseif pack_state then
-    actions[#actions + 1] = 'select_booster_card'
-    actions[#actions + 1] = 'skip_booster'
-
-  elseif gs == states.ROUND_EVAL then
-    if G.round_eval then
-      actions[#actions + 1] = 'cash_out'
-    end
+    if G.jokers and G.jokers.cards and #G.jokers.cards > 1 then actions[#actions + 1] = 'reorder_jokers' end
   end
-
-  if (gs == states.BLIND_SELECT or gs == states.SELECTING_HAND or gs == states.ROUND_EVAL or gs == states.SHOP)
-      and has_sellable_card() then
-    actions[#actions + 1] = 'sell_card'
+  local sellable = false
+  for _, area in ipairs({ G.jokers, G.consumeables }) do
+    for _, card in ipairs(area.cards or {}) do
+      if surface and game_controls.card_can_be_sold(card, surface) then sellable = true; break end
+    end
+    if sellable then break end
   end
+  if sellable then actions[#actions + 1] = 'sell_card' end
 
-
-  if G.STAGE == G.STAGES.MAIN_MENU and gs == states.MENU and has_saved_game() then
-    actions[#actions + 1] = 'continue_game'
-  end
-  if G.STAGE == G.STAGES.RUN and G.GAME then
-    actions[#actions + 1] = 'restart'
-  end
-  if G.GAME then
-    actions[#actions + 1] = 'new_game'
+  if game_controls.can_accept_input() then
+    if G.STAGE == G.STAGES.MAIN_MENU and G.STATE == G.STATES.MENU and G.SETTINGS
+        and G.SETTINGS.profile ~= nil
+        and love.filesystem.getInfo(tostring(G.SETTINGS.profile) .. '/save.jkr') then
+      actions[#actions + 1] = 'continue_game'
+    end
+    if G.STAGE == G.STAGES.RUN and G.GAME then actions[#actions + 1] = 'restart' end
+    if G.GAME then actions[#actions + 1] = 'new_game' end
   end
   return actions
 end
@@ -1072,7 +1029,8 @@ local function snapshot()
   local payload = {}
 
   payload.phase = get_phase_name()
-  payload.legal_actions = compute_legal_actions()
+  payload.decision_surface = State.decision_surface()
+  payload.legal_actions = compute_legal_actions(payload.decision_surface)
 
   payload.money = G.GAME and G.GAME.dollars
   payload.bankrupt_at = G.GAME and G.GAME.bankrupt_at
@@ -1210,8 +1168,10 @@ end
 function State.connect_info()
   return { phase = get_phase_name() }
 end
-function State.configure(ids)
+function State.configure(ids, controls, eval)
   card_ids = ids
+  game_controls = controls
+  round_eval = eval
 end
 
 

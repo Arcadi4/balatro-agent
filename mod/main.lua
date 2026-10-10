@@ -22,9 +22,11 @@ local card_ids = load_module('card_ids')
 local round_eval = load_module('round_eval')
 local actions = load_module('actions')
 local state = load_module('state')
+local game_controls = load_module('game_controls')
 local instance = load_module('instance')
-actions.configure(card_ids, round_eval, state.connect_info, game_events)
-state.configure(card_ids)
+game_controls.configure(card_ids, state.decision_surface)
+actions.configure(card_ids, round_eval, state.connect_info, game_events, game_controls)
+state.configure(card_ids, game_controls, round_eval)
 local bridge_active = bridge_commands.init({
   actions = actions,
   game_events = game_events,
