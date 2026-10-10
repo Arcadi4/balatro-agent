@@ -1,6 +1,6 @@
 {
   "name": "balatro-mcp",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "description": "MCP server connecting AI agents to play Balatro",
   "keywords": [
