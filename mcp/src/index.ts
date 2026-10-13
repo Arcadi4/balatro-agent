@@ -83,7 +83,11 @@ const INSTANCE_TARGETING_GUIDANCE =
   "With no live instances, requests return GAME_NOT_RUNNING. Read the target's turn resource before the first action " +
   "for its phase, round, legal actions, hand, jokers, and consumables. "
 
-function createServer(bridge: BridgeClient, autoContext: boolean, resourceTools = false): McpServer {
+function createServer(
+  bridge: BridgeClient,
+  autoContext: boolean,
+  resourceTools = false,
+): McpServer {
   const server = new McpServer(
     {
       name: packageJson.name,

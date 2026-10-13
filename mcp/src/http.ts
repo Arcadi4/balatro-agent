@@ -103,7 +103,6 @@ export async function startHttpServer(options: HttpServerOptions): Promise<Runni
       void dispatch(request, response).catch(options.onerror)
     })
     await listen(server, options.port)
-    await options.bridge.connect()
     await writeStatus(options.statusFile, "ready")
     const runningHandler = handler
     const runningServer = server
