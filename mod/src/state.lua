@@ -427,6 +427,8 @@ local function serialize_playing_card(card, faced_down)
     edition = get_card_edition(card),
     seal = card.seal,
     debuffed = card.debuff or nil,
+    -- Cerulean Bell keeps this card highlighted; every play and discard must include it.
+    forced_selection = card.ability and card.ability.forced_selection or nil,
     stickers = get_card_stickers(card),
   }
 end
