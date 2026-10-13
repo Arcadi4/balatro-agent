@@ -835,9 +835,28 @@ handlers.reroll_shop = function(args)
   return anim_settle({ rerolled = true })
 end
 
+-- The shop's slide-in event chain keeps dereferencing G.shop until the box
+-- reaches its slot (vanilla checks |T.y - VT.y| < 3, then fires 0.2 s later),
+-- so the shop counts as open only once that position has held for a moment.
+local shop_ready_since
+local function shop_settled()
+  if not (G.shop and G.shop.T and G.STATE == G.STATES.SHOP and G.STATE_COMPLETE)
+      or math.abs(G.shop.T.y - G.shop.VT.y) >= 3 then
+    shop_ready_since = nil
+    return false
+  end
+  local now = love.timer.getTime()
+  shop_ready_since = shop_ready_since or now
+  return now - shop_ready_since >= 0.6
+end
+
 handlers.leave_shop = function(args)
   local phase_err = check_phase({ "SHOP" })
   if phase_err then return phase_err end
+  -- Leaving before the slide-in finishes crashes vanilla (game.lua: G.shop is nil).
+  if not shop_settled() then
+    return err("CANNOT_USE_NOW", "Shop is still opening; retry shortly")
+  end
 
   G.FUNCS.toggle_shop()
 
@@ -866,7 +885,8 @@ local function cash_out_settle(pressed)
         if not G or not G.STATES then
           return err("WRONG_PHASE", "Game state is not available")
         end
-        if G.STATE == G.STATES.SHOP and G.STATE_COMPLETE then
+        -- Resolve once the shop is interactive so an immediate leave_shop is safe.
+        if shop_settled() then
           return ok({ cashed_out = true })
         end
         if not pressed and G.STATE == G.STATES.ROUND_EVAL then
