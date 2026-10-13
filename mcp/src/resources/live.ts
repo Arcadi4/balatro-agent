@@ -460,7 +460,10 @@ function appendHandEntries(lines: string[], payload: Record<string, unknown>): v
   for (const entry of hand) {
     const card = asRecord(entry)
     if (!card) continue
-    const marker = selected.has(String(card.card_id ?? "?")) ? " *(selected)*" : ""
+    const flags: string[] = []
+    if (selected.has(String(card.card_id ?? "?"))) flags.push("selected")
+    if (card.forced_selection !== undefined) flags.push("forced")
+    const marker = flags.length > 0 ? ` *(${flags.join(", ")})*` : ""
     lines.push(`- ${displayHandCardLine(card)}${marker}`)
   }
   lines.push("")
