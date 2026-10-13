@@ -95,7 +95,6 @@ export function registerWikiResource(server: McpServer): void {
         ],
       }
     },
-    },
   )
 }
 

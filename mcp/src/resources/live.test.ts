@@ -9,6 +9,7 @@ test("registers unscoped live resources and the instance template without tools"
   const registeredResources: Array<{ name: string; uri: string }> = []
   const tools: string[] = []
   const server = {
+    server: { onclose: undefined },
     registerResource(name: string, uri: string) {
       registeredResources.push({ name, uri })
       return { enable() {}, disable() {} }
@@ -32,7 +33,7 @@ test("registers unscoped live resources and the instance template without tools"
     "run",
     "ante",
   ]) {
-    expect(names).toContain(`${section}-selected`)
+    expect(names).toContain(`${section}-single`)
   }
   expect(names).toContain("instances")
   expect(names).toContain("live")
