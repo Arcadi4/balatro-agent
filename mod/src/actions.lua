@@ -197,30 +197,28 @@ local function replace_highlights(cards)
   end
 end
 
+-- Cerulean Bell pins a card to the selection and vanilla refuses to drop it,
+-- so a request that omits it succeeds with the card still held. Only a card
+-- the game refused outright is an error; vanilla silently discards a card
+-- added past the highlight limit, so completeness is verified by membership.
 local function replace_requested_highlights(cards, requested)
   local previous = copy_highlights()
-  for _, card in ipairs(previous) do
-    if card.ability and card.ability.forced_selection and not requested[tostring(card_id(card))] then
-      return nil, nil, err(
-        "INVALID_TARGET",
-        "Forced hand card " .. tostring(card_ids.public(G.hand, card)) .. " must remain selected; include it in the requested IDs"
-      )
+  replace_highlights(cards)
+
+  local selected = {}
+  for _, card in ipairs(G.hand.highlighted) do
+    selected[tostring(card_id(card))] = true
+  end
+  for key in pairs(requested) do
+    if not selected[key] then
+      replace_highlights(previous)
+      return nil, nil, err("INVALID_TARGET", "Balatro did not accept the complete hand selection")
     end
   end
 
-  replace_highlights(cards)
   local selected_ids = {}
   for _, card in ipairs(G.hand.highlighted) do
-    local key = tostring(card_id(card))
-    if not requested[key] then
-      replace_highlights(previous)
-      return nil, nil, err("INVALID_TARGET", "Balatro retained an unrequested hand card: " .. tostring(card_ids.public(G.hand, card)))
-    end
     selected_ids[#selected_ids + 1] = card_ids.public(G.hand, card)
-  end
-  if #selected_ids ~= #cards then
-    replace_highlights(previous)
-    return nil, nil, err("INVALID_TARGET", "Balatro did not accept the complete hand selection")
   end
   return selected_ids, previous
 end
