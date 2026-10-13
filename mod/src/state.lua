@@ -568,10 +568,8 @@ function State.decision_surface()
         and game_controls.action_button_is_enabled(skip, 'skip_booster') then return 'booster' end
   elseif game_controls.hand_controls_ready() then
     return 'hand'
-  elseif G.STATE == G.STATES.SHOP then
-    local leave = G.shop and G.shop.get_UIE_by_ID and G.shop:get_UIE_by_ID('next_round_button')
-    if G.shop_jokers and G.shop_vouchers and G.shop_booster
-        and game_controls.action_button_is_enabled(leave, 'toggle_shop') then return 'shop' end
+  elseif game_controls.shop_ready() then
+    return 'shop'
   elseif G.STATE == G.STATES.BLIND_SELECT then
     if game_controls.action_button_is_enabled(blind_select_button(), 'select_blind') then return 'ante' end
   elseif G.STATE == G.STATES.ROUND_EVAL then

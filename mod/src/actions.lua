@@ -835,34 +835,13 @@ handlers.reroll_shop = function(args)
   return anim_settle({ rerolled = true })
 end
 
--- The shop's slide-in event chain keeps dereferencing G.shop until the box
--- reaches its slot (vanilla checks |T.y - VT.y| < 3, then fires 0.2 s later),
--- so the shop counts as open only once that position has held for a moment.
--- The latch is per G.shop instance: later moves of the same box (use_card in
--- the shop, packs) do not re-run the slide-in event.
-local shop_ready_since, shop_arrived
-local function shop_settled()
-  if not (G.shop and G.shop.T and G.STATE == G.STATES.SHOP and G.STATE_COMPLETE) then
-    shop_ready_since = nil
-    return false
-  end
-  if shop_arrived == G.shop then return true end
-  if math.abs(G.shop.T.y - G.shop.VT.y) >= 3 then
-    shop_ready_since = nil
-    return false
-  end
-  local now = love.timer.getTime()
-  shop_ready_since = shop_ready_since or now
-  if now - shop_ready_since < 0.6 then return false end
-  shop_arrived = G.shop
-  return true
-end
 
 handlers.leave_shop = function(args)
   local phase_err = check_phase({ "SHOP" })
   if phase_err then return phase_err end
-  -- Leaving before the slide-in finishes crashes vanilla (game.lua: G.shop is nil).
-  if not shop_settled() then
+  -- Leaving before the shop box lands crashes vanilla, which still holds a
+  -- pending event dereferencing G.shop.
+  if not game_controls.shop_ready() then
     return err("CANNOT_USE_NOW", "Shop is still opening; retry shortly")
   end
 
@@ -893,8 +872,10 @@ local function cash_out_settle(pressed)
         if not G or not G.STATES then
           return err("WRONG_PHASE", "Game state is not available")
         end
-        -- Resolve once the shop is interactive so an immediate leave_shop is safe.
-        if shop_settled() then
+        -- Cash-out settles on the state transition itself; leave_shop
+        -- independently refuses until the shop is ready, so neither waits
+        -- on the other.
+        if G.STATE == G.STATES.SHOP and G.STATE_COMPLETE then
           return ok({ cashed_out = true })
         end
         if not pressed and G.STATE == G.STATES.ROUND_EVAL then

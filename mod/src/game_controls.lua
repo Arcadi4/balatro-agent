@@ -104,6 +104,18 @@ function GameControls.hand_controls_ready()
     and control_is_interactable(GameControls.discard_hand_button())
 end
 
+-- Leaving the shop is only safe once the box has reached its slot: vanilla
+-- queues a non-cancellable event that dereferences G.shop on a timer until it
+-- lands, and teardown before then crashes the game. Both the leave gate and
+-- the advertised legal actions read this so they cannot disagree.
+function GameControls.shop_ready()
+  if not G or not G.STATES or G.STATE ~= G.STATES.SHOP then return false end
+  local shop = G.shop
+  if not (shop and shop.T and shop.VT) then return false end
+  if math.abs(shop.T.y - shop.VT.y) >= 3 then return false end
+  return GameControls.action_button_is_enabled(GameControls.find_action_button(shop, 'toggle_shop'), 'toggle_shop')
+end
+
 function GameControls.boss_reroll_button()
   if not G or not G.STATES or G.STATE ~= G.STATES.BLIND_SELECT or not G.blind_prompt_box then return nil end
   return GameControls.find_action_button(G.blind_prompt_box, 'reroll_boss')
