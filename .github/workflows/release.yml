@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload to Nexus Mods
         if: ${{ env.NEXUSMODS_API_KEY != '' }}
-        uses: Nexus-Mods/upload-action@v1.0.0-beta.10
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.11
         with:
           api_key: ${{ env.NEXUSMODS_API_KEY }}
           file_id: ${{ steps.nexus_meta.outputs.file_id }}
