@@ -21,7 +21,14 @@ By default every mutating action is followed by a settled-state read, and the
 result carries a `## Next: <uri>` snapshot of the next decision surface so the
 agent never has to read it again. Pass `--no-auto-context` to turn that feed off:
 action results then report only what they changed, and the client reads
-`balatro://turn` itself.
+`balatro://turn` itself. Prefer the flag with code-mode clients (OpenCode's MCP code
+mode, Codex, and similar): they chain action calls and resource reads inside one
+program, so each snapshot spends context on state they can read at the moment they
+need it.
+
+```sh
+npx -y balatro-mcp --no-auto-context
+```
 
 ## Live instances
 

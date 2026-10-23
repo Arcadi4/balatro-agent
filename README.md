@@ -72,6 +72,27 @@ The whole command on one line:
 npx -y balatro-mcp
 ```
 
+### Code-mode clients
+
+By default every action result ends with a `## Next: <uri>` snapshot of the surface
+you now need, which saves a separate read for chat-style agents limited to one tool
+call per turn. Code-mode clients (OpenCode's MCP code mode, Codex, and similar) chain
+action calls and resource reads inside one program, so they can read `balatro://turn`
+exactly when they need it. Start the server with `--no-auto-context` to skip the
+follow-up read: actions return only what they changed, and your code reads the state
+itself.
+
+```json
+{
+  "mcpServers": {
+    "balatro": {
+      "command": "npx",
+      "args": ["-y", "balatro-mcp", "--no-auto-context"]
+    }
+  }
+}
+```
+
 ## Start Playing
 
 1. Start Balatro with the mod enabled.

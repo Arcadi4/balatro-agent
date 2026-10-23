@@ -72,6 +72,21 @@
 npx -y balatro-mcp
 ```
 
+### Code mode 客户端
+
+默认情况下，每个操作结果末尾都会附带 `## Next: <uri>` 快照，指明接下来要看的界面，从而替每轮只能调用一次工具的对话式智能体省下一次读取。Code mode 客户端（OpenCode 的 MCP code mode、Codex 等）可以在同一个程序里连续调用工具并读取资源，需要时直接读取 `balatro://turn` 即可。启动时加上 `--no-auto-context` 可跳过这次附带读取：操作结果只报告改动内容，状态由代码自行读取。
+
+```json
+{
+  "mcpServers": {
+    "balatro": {
+      "command": "npx",
+      "args": ["-y", "balatro-mcp", "--no-auto-context"]
+    }
+  }
+}
+```
+
 ## 开始游玩
 
 1. 启用 Mod 并启动 Balatro。
