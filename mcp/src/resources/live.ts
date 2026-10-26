@@ -23,14 +23,21 @@ function unavailable(uri: string, phase: string, message: string): ProtocolError
   })
 }
 
-function markdownContents(
-  uri: URL,
-  markdown: string,
-): { contents: Array<{ uri: string; mimeType: string; text: string }> } {
+/**
+ * A game snapshot plus the instance it was taken from, so a batch of live
+ * reads reuses one bridge round-trip without ever serving another
+ * instance's state under the wrong URI.
+ */
+export interface CachedLiveState {
+  instanceId: string
+  payload: Record<string, unknown>
+}
+
+function markdownContents(uri: URL, markdown: string) {
   return { contents: [{ uri: uri.toString(), mimeType: "text/markdown", text: markdown }] }
 }
 
-async function readLiveResource(
+export async function readLiveResource(
   bridge: BridgeClient,
   uri: URL,
   instanceIndex: number | undefined,
@@ -56,7 +63,6 @@ async function readLiveResource(
     }
     throw error
   }
-
   const phase = phaseOf(payload)
   if (MENU_PHASES.has(phase)) {
     throw unavailable(
@@ -66,6 +72,80 @@ async function readLiveResource(
     )
   }
   return markdownContents(uri, render(payload, uriString))
+}
+
+export interface CachedLiveState {
+  instanceId: string
+  payload: Record<string, unknown>
+}
+
+export async function readLiveResourceUri(
+  bridge: BridgeClient,
+  uri: string,
+  cachedState?: CachedLiveState,
+): Promise<
+  { uri: string; markdown: string; state: Record<string, unknown>; instanceId: string } | undefined
+> {
+  const scoped = SCOPED_SECTION.exec(uri)
+  const section = scoped?.[2] ?? UNSCOPED_SECTION.exec(uri)?.[1]
+  const definition = liveResourceFor(section)
+  if (!definition) return undefined
+
+  const scopedInstance = scoped?.[1]
+  let instanceId: string
+  if (scopedInstance !== undefined && Number.isSafeInteger(Number(scopedInstance))) {
+    const index = Number(scopedInstance)
+    if (typeof bridge.resolveInstance === "function") {
+      const target = await bridge.resolveInstance(index)
+      if (typeof bridge.connect === "function") await bridge.connect(target.instance)
+      instanceId = target.instance.instance_id
+    } else {
+      instanceId = scopedInstance
+    }
+  } else if (scopedInstance !== undefined) {
+    instanceId = scopedInstance
+  } else if (cachedState?.instanceId !== undefined) {
+    instanceId = cachedState.instanceId
+  } else if (typeof bridge.resolveInstance === "function") {
+    const target = await bridge.resolveInstance(undefined)
+    if (typeof bridge.connect === "function") await bridge.connect(target.instance)
+    instanceId = target.instance.instance_id
+  } else {
+    const selected = legacySelectedInstanceId(bridge)
+    if (selected !== undefined) {
+      instanceId = selected
+    } else {
+      instanceId = "0"
+    }
+  }
+
+  let payload: Record<string, unknown>
+  if (cachedState?.instanceId === instanceId) {
+    payload = cachedState.payload
+  } else {
+    try {
+      payload = await bridge.getState(STATE_TIMEOUT_MS, instanceId)
+    } catch (error) {
+      if (error instanceof BridgeError) {
+        throw new ProtocolError(ProtocolErrorCode.InternalError, error.message, {
+          error_code: error.code,
+          uri,
+          instance_id: instanceId,
+        })
+      }
+      throw error
+    }
+  }
+
+  const phase = phaseOf(payload)
+  if (MENU_PHASES.has(phase)) {
+    throw unavailable(
+      uri,
+      phase,
+      "Balatro is not in a run; start or continue a game to read this resource.",
+    )
+  }
+  return { uri, markdown: definition.render(payload, uri), state: payload, instanceId }
 }
 
 const EDITION_NAMES: Record<string, string> = {
@@ -1031,4 +1111,11 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
       return readLiveResource(bridge, uri, Number(instanceIndex), definition.render)
     },
   )
+}
+
+function legacySelectedInstanceId(bridge: BridgeClient): string | undefined {
+  const legacy = bridge as unknown as { getSelectedInstanceId?: () => string | undefined }
+  return typeof legacy.getSelectedInstanceId === "function"
+    ? legacy.getSelectedInstanceId()
+    : undefined
 }
