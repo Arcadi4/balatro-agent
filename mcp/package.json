@@ -41,20 +41,20 @@
     "release:setup": "bun run scripts/setup-release.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.3.1",
+    "@modelcontextprotocol/server": "^2.4.0",
     "rehype-parse": "^9.0.1",
     "rehype-remark": "^10.0.1",
     "remark-gfm": "^4.0.1",
     "remark-stringify": "^11.0.0",
     "unified": "^11.0.5",
-    "unist-util-visit": "^5.1.0",
+    "unist-util-visit": "^5.2.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.3",
+    "@types/bun": "^1.4.4",
     "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
-    "oxfmt": "^0.74.0",
+    "oxfmt": "^0.75.0",
     "typescript": "^7.0.2"
   },
   "engines": {
