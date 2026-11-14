@@ -236,7 +236,8 @@ export class BridgeClient {
   }): Promise<number> {
     const session = this.requireSession(options.instanceId)
     const id = ++this.commandSeq
-    const pending = this.createPendingRequest(session, id)
+    // Registers the slot that awaitResponse resolves later; the handle itself is unused here.
+    this.createPendingRequest(session, id)
     const request: JsonRpcRequest = {
       jsonrpc: "2.0",
       id,
