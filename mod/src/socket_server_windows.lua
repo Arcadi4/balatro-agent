@@ -37,10 +37,15 @@ local ERROR_PIPE_LISTENING = 536
 local BUFFER_SIZE = 65536
 local INVALID_HANDLE_VALUE = ffi.cast('HANDLE', -1)
 
-local listener
+local STOPPED = 'stopped'
+local LISTENING = 'listening'
+local AWAITING_LISTENER = 'awaiting-listener'
+local CLIENT_OPEN = 'open'
+local CLIENT_CLOSED = 'closed'
+
+local server = { state = STOPPED }
 local clients = {}
 local pipe_name
-local instance
 local on_disconnect
 local request_handler
 local socket_codec_factory
@@ -67,18 +72,39 @@ local function create_pipe()
   )
 end
 
+local function is_active()
+  return server.state == LISTENING or server.state == AWAITING_LISTENER
+end
+
+local function create_listener(failure_message)
+  local handle = create_pipe()
+  if handle == INVALID_HANDLE_VALUE then
+    log(failure_message .. ' (error ' .. tonumber(kernel32.GetLastError()) .. ')')
+    return false
+  end
+  server.state = LISTENING
+  server.handle = handle
+  return true
+end
+
+local function is_open(client)
+  return client ~= nil and client.state == CLIENT_OPEN and clients[client.pipe] == client
+end
+
 local function close_client(client, reason)
-  if not client or not clients[client.pipe] then return end
-  clients[client.pipe] = nil
+  if client == nil or client.state ~= CLIENT_OPEN then return false end
+  client.state = CLIENT_CLOSED
+  if clients[client.pipe] == client then clients[client.pipe] = nil end
   kernel32.DisconnectNamedPipe(client.pipe)
   kernel32.CloseHandle(client.pipe)
   client.codec.reset()
   on_disconnect(client)
   log(reason and ('Named-pipe client closed: ' .. reason) or 'Named-pipe client disconnected')
+  return true
 end
 
 local function send_response(client, response)
-  if not client or not clients[client.pipe] then return false end
+  if not is_open(client) then return false end
   local queued, encode_error = client.codec.queue(response)
   if not queued then
     close_client(client, encode_error)
@@ -87,10 +113,14 @@ local function send_response(client, response)
   return flush_client(client)
 end
 
-local function register_connected_listener()
+local function adopt_client(handle)
+  server.state = AWAITING_LISTENER
+  server.handle = nil
+
   local client
   client = {
-    pipe = listener,
+    state = CLIENT_OPEN,
+    pipe = handle,
     buffer = ffi.new('char[?]', BUFFER_SIZE),
     codec = socket_codec_factory.new(function(request)
       request_handler(request, function(response)
@@ -98,40 +128,36 @@ local function register_connected_listener()
       end, client)
     end, log),
   }
-  clients[listener] = client
-  listener = create_pipe()
-  if listener == INVALID_HANDLE_VALUE then
-    listener = nil
-    log('Named-pipe listener creation failed (error ' .. tonumber(kernel32.GetLastError()) .. ')')
-    return
-  end
+  clients[handle] = client
   log('Named-pipe client connected')
+
+  create_listener('Named-pipe listener creation failed')
 end
 
 local function accept_client()
-  if not listener then return end
-  local accepted = kernel32.ConnectNamedPipe(listener, nil)
+  if server.state ~= LISTENING then return end
+  local handle = server.handle
+  local accepted = kernel32.ConnectNamedPipe(handle, nil)
   if accepted ~= 0 then
-    register_connected_listener()
+    adopt_client(handle)
     return
   end
 
   local error_code = tonumber(kernel32.GetLastError())
   if error_code == ERROR_PIPE_CONNECTED then
-    register_connected_listener()
+    adopt_client(handle)
   elseif error_code == ERROR_NO_DATA then
-    kernel32.CloseHandle(listener)
-    listener = create_pipe()
-    if listener == INVALID_HANDLE_VALUE then
-      listener = nil
-      log('Named-pipe listener creation failed (error ' .. tonumber(kernel32.GetLastError()) .. ')')
-    end
+    kernel32.CloseHandle(handle)
+    server.state = AWAITING_LISTENER
+    server.handle = nil
+    create_listener('Named-pipe listener creation failed')
   elseif error_code ~= ERROR_PIPE_LISTENING then
     log('Named-pipe accept failed (error ' .. error_code .. ')')
   end
 end
 
 local function read_client(client)
+  if not is_open(client) then return end
   bytes_read[0] = 0
   local read = kernel32.ReadFile(client.pipe, client.buffer, BUFFER_SIZE, bytes_read, nil)
   local count = tonumber(bytes_read[0])
@@ -152,7 +178,7 @@ local function read_client(client)
 end
 
 flush_client = function(client)
-  if not clients[client.pipe] then return false end
+  if not is_open(client) then return false end
   local payload = client.codec.pending()
   if payload == '' then return true end
 
@@ -172,22 +198,32 @@ flush_client = function(client)
   return false
 end
 
+local function stop_server(reason)
+  if not is_active() then return false end
+  local handle = server.handle
+  local owner = server.instance
+  server = { state = STOPPED }
+  for _, client in pairs(clients) do close_client(client, 'bridge shutdown') end
+  if handle then kernel32.CloseHandle(handle) end
+  owner.remove()
+  log(reason)
+  return true
+end
+
 function SocketServer.init(on_request, socket_codec, disconnect_callback, bridge_instance)
-  if listener then return true end
-  instance = bridge_instance
+  if is_active() then return true end
   request_handler = on_request
   socket_codec_factory = socket_codec
   on_disconnect = disconnect_callback
-  pipe_name = instance.endpoint()
-  listener = create_pipe()
-  if listener == INVALID_HANDLE_VALUE then
-    log('Named-pipe creation failed (error ' .. tonumber(kernel32.GetLastError()) .. ')')
-    listener = nil
+  pipe_name = bridge_instance.endpoint()
+
+  if not create_listener('Named-pipe creation failed') then
     return false
   end
-  if not instance.publish() then
+  server.instance = bridge_instance
+  if not bridge_instance.publish() then
     log('Instance registry publication failed')
-    SocketServer.close()
+    stop_server('Named-pipe server closed')
     return false
   end
   log('Named-pipe server listening on ' .. pipe_name)
@@ -195,20 +231,19 @@ function SocketServer.init(on_request, socket_codec, disconnect_callback, bridge
 end
 
 function SocketServer.update()
-  if not listener then
-    listener = create_pipe()
-    if listener == INVALID_HANDLE_VALUE then
-      listener = nil
-      log('Named-pipe listener creation failed (error ' .. tonumber(kernel32.GetLastError()) .. ')')
-    end
+  if not is_active() then return end
+  if server.state == AWAITING_LISTENER then
+    create_listener('Named-pipe listener creation failed')
   end
-  if listener then accept_client() end
+  if server.state == LISTENING then accept_client() end
   for _, client in pairs(clients) do
     flush_client(client)
-    read_client(client)
-    flush_client(client)
+    if client.state == CLIENT_OPEN then
+      read_client(client)
+      flush_client(client)
+    end
   end
-  instance.touch()
+  server.instance.touch()
 end
 
 function SocketServer.send_response(response)
@@ -216,13 +251,7 @@ function SocketServer.send_response(response)
 end
 
 function SocketServer.close()
-  for _, client in pairs(clients) do close_client(client, 'bridge shutdown') end
-  if listener then
-    kernel32.CloseHandle(listener)
-    listener = nil
-  end
-  if instance then instance.remove() end
-  log('Named-pipe server closed')
+  stop_server('Named-pipe server closed')
 end
 
 return SocketServer
