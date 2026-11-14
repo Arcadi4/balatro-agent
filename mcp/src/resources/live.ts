@@ -923,32 +923,39 @@ export function renderSuccessor(
 
 export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
   let previousInstances: string | undefined
+  // onclose may close while a tick awaits, so the promise callbacks re-read this state.
+  let discoveryState: "idle" | "refreshing" | "closed" = "idle"
   const discover = async () => {
     const instances = await bridge.listInstances()
     const signature = instances.map(({ instance_id }) => instance_id).join("\n")
-    if (previousInstances !== undefined && previousInstances !== signature) {
-      server.sendResourceListChanged()
+    if (discoveryState !== "closed") {
+      if (previousInstances !== undefined && previousInstances !== signature) {
+        server.sendResourceListChanged()
+      }
+      previousInstances = signature
     }
-    previousInstances = signature
     return instances
   }
-  let polling = false
   const refresh = async () => {
-    if (polling) return
-    polling = true
-    try {
-      await discover()
-    } catch (error) {
-      server.server.onerror?.(error instanceof Error ? error : new Error(String(error)))
-    } finally {
-      polling = false
-    }
+    if (discoveryState !== "idle") return
+    discoveryState = "refreshing"
+    await discover()
+      .catch((error: unknown) => {
+        if (discoveryState !== "closed") {
+          server.server.onerror?.(error instanceof Error ? error : new Error(String(error)))
+        }
+      })
+      .finally(() => {
+        if (discoveryState === "refreshing") discoveryState = "idle"
+      })
   }
   // Registry heartbeats and expiry change template listings without SDK registrations.
   const discoveryTimer = setInterval(() => void refresh(), 1_000)
   discoveryTimer.unref()
   const onclose = server.server.onclose
   server.server.onclose = () => {
+    if (discoveryState === "closed") return
+    discoveryState = "closed"
     clearInterval(discoveryTimer)
     onclose?.()
   }
