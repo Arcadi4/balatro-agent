@@ -324,7 +324,7 @@ export async function htmlToMarkdown(html: string): Promise<string> {
 }
 
 async function callApi(params: Record<string, string>): Promise<unknown> {
-  const query = new URLSearchParams(params)
+  const query = new URLSearchParams(params).toString()
   const response = await fetch(`${WIKI_API_URL}?${query}`, {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     headers: { accept: "application/json" },
