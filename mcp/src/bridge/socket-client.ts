@@ -14,12 +14,27 @@ const RESPONSE_TIMEOUT_MS = 10_000
 const STATE_TIMEOUT_MS = 5_000
 const HANDSHAKE_TIMEOUT_MS = 10_000
 
+type PendingOutcome =
+  | { readonly kind: "response"; readonly response: JsonRpcResponse }
+  | { readonly kind: "error"; readonly error: Error }
+
+// A response, timeout, or transport error settles the request once. A settled
+// entry stays in the client map until its caller consumes it, so a response that
+// lands before awaitResponse is still observed; session close drops the entries.
 interface PendingRequest {
-  promise: Promise<JsonRpcResponse>
-  resolve: (response: JsonRpcResponse) => void
-  reject: (error: Error) => void
-  timeout?: Timer
+  readonly session: BridgeSession
+  readonly completion: Promise<JsonRpcResponse>
+  state: PendingState
 }
+
+type PendingState =
+  | {
+      readonly phase: "awaiting"
+      readonly resolve: (response: JsonRpcResponse) => void
+      readonly reject: (error: Error) => void
+      timeout?: Timer
+    }
+  | { readonly phase: "settled" }
 
 export interface StateEnvelope {
   seq: number
@@ -77,8 +92,6 @@ type SessionState =
 interface BridgeSession {
   readonly instanceId: string
   state: SessionState
-  // The pending map stays session-owned until the request lifecycle is split out.
-  pendingRequests: Map<number, PendingRequest>
   writeQueue: Promise<void>
 }
 
@@ -134,7 +147,7 @@ function toError(error: unknown): Error {
 
 export class BridgeClient {
   private readonly sessions = new Map<string, BridgeSession>()
-  private readonly pendingRequestSessions = new Map<number, BridgeSession>()
+  private readonly pendingRequests = new Map<number, PendingRequest>()
   private commandSeq = 0
   private disposed = false
 
@@ -205,7 +218,9 @@ export class BridgeClient {
     instanceId: string,
   ): Promise<Record<string, unknown> | StateEnvelope> {
     const timeoutMs = typeof timeoutOrOptions === "number" ? timeoutOrOptions : STATE_TIMEOUT_MS
-    const result = asRecord(await this.request("get_state", undefined, timeoutMs, instanceId))
+    const result = asRecord(
+      await this.request(this.requireReady(instanceId), "get_state", undefined, timeoutMs),
+    )
     if (!result) throw new BridgeError("PROTOCOL_MISMATCH", "State response is not an object")
     if (typeof timeoutOrOptions === "object") {
       if (!asRecord(result.payload))
@@ -225,7 +240,9 @@ export class BridgeClient {
     // Game commands complete when the game completes them; a response deadline
     // here can only truncate a legitimate long-running action. Dead bridges
     // reject pending requests when the socket closes.
-    const result = asRecord(await this.request(kind, args ?? {}, undefined, instanceId))
+    const result = asRecord(
+      await this.request(this.requireReady(instanceId), kind, args ?? {}, undefined),
+    )
     if (!result || result.ok !== true)
       throw new BridgeError("PROTOCOL_MISMATCH", `Command ${kind} returned an invalid result`)
     return result.data
@@ -251,7 +268,7 @@ export class BridgeClient {
       return id
     } catch (cause) {
       const error = this.normalizeRequestError(session, cause)
-      this.rejectAndDeletePending(session, id, error)
+      this.rejectPending(id, error)
       throw error
     }
   }
@@ -261,17 +278,13 @@ export class BridgeClient {
     options: { timeoutMs?: number; instanceId?: string } = {},
   ): Promise<ResponseEnvelope> {
     const session =
-      options.instanceId === undefined
-        ? this.pendingRequestSessions.get(seq)
-        : this.requireReady(options.instanceId)
-    if (session === undefined || this.pendingRequestSessions.get(seq) !== session) {
+      options.instanceId === undefined ? undefined : this.requireReady(options.instanceId)
+    const pending = this.pendingRequests.get(seq)
+    if (pending === undefined || (session !== undefined && pending.session !== session)) {
       throw new BridgeError("INTERNAL_ERROR", `No pending bridge request ${seq}`)
     }
-    const pending = session.pendingRequests.get(seq)
-    if (!pending) throw new BridgeError("INTERNAL_ERROR", `No pending bridge request ${seq}`)
     try {
       const response = await this.awaitJsonRpcResponse(
-        session,
         seq,
         pending,
         options.timeoutMs ?? RESPONSE_TIMEOUT_MS,
@@ -291,7 +304,7 @@ export class BridgeClient {
           typeof result.applied_state_seq === "number" ? result.applied_state_seq : undefined,
       }
     } catch (cause) {
-      throw this.normalizeRequestError(session, cause)
+      throw this.normalizeRequestError(pending.session, cause)
     }
   }
 
@@ -307,7 +320,7 @@ export class BridgeClient {
     const state = session.state
     if (state.phase === "closed") return
     session.state = { phase: "closed", error }
-    this.rejectAllPending(session, error)
+    this.rejectPendingForSession(session, error)
     if (this.sessions.get(session.instanceId) === session) this.sessions.delete(session.instanceId)
     state.connection.socket.destroy()
     if (!this.disposed && state.phase === "ready") {
@@ -333,7 +346,6 @@ export class BridgeClient {
     const session: BridgeSession = {
       instanceId: instance.instance_id,
       state: { phase: "dialing", connection, establishment },
-      pendingRequests: new Map(),
       writeQueue: Promise.resolve(),
     }
     this.sessions.set(session.instanceId, session)
@@ -366,9 +378,7 @@ export class BridgeClient {
     session.state = { phase: "handshaking", connection, establishment }
     let data: Record<string, unknown> | undefined
     try {
-      data = asRecord(
-        await this.requestOnSession(session, "connect", undefined, HANDSHAKE_TIMEOUT_MS),
-      )
+      data = asRecord(await this.request(session, "connect", undefined, HANDSHAKE_TIMEOUT_MS))
     } catch (cause) {
       if (cause instanceof BridgeError && cause.code === "UNKNOWN_METHOD") {
         throw new BridgeError(
@@ -444,17 +454,6 @@ export class BridgeClient {
   }
 
   private async request(
-    method: string,
-    params: Record<string, unknown> | undefined,
-    timeoutMs: number | undefined,
-    instanceId: string,
-  ): Promise<unknown> {
-    return await this.requestOnSession(this.requireReady(instanceId), method, params, timeoutMs)
-  }
-
-  // The connect handshake runs while its session is still handshaking, so the
-  // request path takes the session directly instead of looking one up as ready.
-  private async requestOnSession(
     session: BridgeSession,
     method: string,
     params: Record<string, unknown> | undefined,
@@ -470,13 +469,13 @@ export class BridgeClient {
     }
     try {
       await this.writeFrame(session, request)
-      const response = await this.awaitJsonRpcResponse(session, id, pending)
+      const response = await this.awaitJsonRpcResponse(id, pending)
       if (response.error)
         throw new BridgeError(bridgeErrorCode(response.error), response.error.message)
       return response.result
     } catch (cause) {
       const error = this.normalizeRequestError(session, cause)
-      this.rejectAndDeletePending(session, id, error)
+      this.rejectPending(id, error)
       throw error
     }
   }
@@ -496,7 +495,10 @@ export class BridgeClient {
     const parsed = parseFrames(connection.buffer + chunk)
     connection.buffer = parsed.remainder
     for (const message of parsed.messages) {
-      if (isJsonRpcResponse(message)) session.pendingRequests.get(message.id)?.resolve(message)
+      if (!isJsonRpcResponse(message)) continue
+      const pending = this.pendingRequests.get(message.id)
+      if (pending?.session !== session) continue
+      this.settlePending(pending, { kind: "response", response: message })
     }
   }
 
@@ -538,57 +540,68 @@ export class BridgeClient {
   ): PendingRequest {
     const { promise, resolve, reject } = Promise.withResolvers<JsonRpcResponse>()
     void promise.catch(() => undefined)
-    const pending: PendingRequest = { promise, resolve, reject }
-    session.pendingRequests.set(id, pending)
-    this.pendingRequestSessions.set(id, session)
-    if (timeoutMs !== undefined) {
-      pending.timeout = setTimeout(() => {
-        session.pendingRequests.delete(id)
-        this.pendingRequestSessions.delete(id)
-        pending.reject(new BridgeError("BRIDGE_TIMEOUT", "No bridge response before the timeout"))
-      }, timeoutMs)
+    const pending: PendingRequest = {
+      session,
+      completion: promise,
+      state: { phase: "awaiting", resolve, reject },
     }
+    this.pendingRequests.set(id, pending)
+    if (timeoutMs !== undefined) this.armPendingTimeout(pending, timeoutMs)
     return pending
   }
 
+  private armPendingTimeout(pending: PendingRequest, timeoutMs: number): void {
+    const state = pending.state
+    if (state.phase === "settled" || state.timeout !== undefined) return
+    state.timeout = setTimeout(() => {
+      this.settlePending(pending, {
+        kind: "error",
+        error: new BridgeError("BRIDGE_TIMEOUT", "No bridge response before the timeout"),
+      })
+    }, timeoutMs)
+  }
+
+  private settlePending(pending: PendingRequest, outcome: PendingOutcome): void {
+    const state = pending.state
+    if (state.phase === "settled") return
+    pending.state = { phase: "settled" }
+    clearTimeout(state.timeout)
+    if (outcome.kind === "error") state.reject(outcome.error)
+    else state.resolve(outcome.response)
+  }
+
+  private consumePending(id: number, pending: PendingRequest): void {
+    const state = pending.state
+    if (state.phase === "awaiting") clearTimeout(state.timeout)
+    if (this.pendingRequests.get(id) === pending) this.pendingRequests.delete(id)
+  }
+
+  private rejectPending(id: number, error: Error): void {
+    const pending = this.pendingRequests.get(id)
+    if (pending === undefined) return
+    this.settlePending(pending, { kind: "error", error })
+    this.consumePending(id, pending)
+  }
+
+  private rejectPendingForSession(session: BridgeSession, error: Error): void {
+    for (const [id, pending] of this.pendingRequests) {
+      if (pending.session !== session) continue
+      this.settlePending(pending, { kind: "error", error })
+      this.consumePending(id, pending)
+    }
+  }
+
   private async awaitJsonRpcResponse(
-    session: BridgeSession,
     id: number,
     pending: PendingRequest,
     timeoutMs?: number,
   ): Promise<JsonRpcResponse> {
-    if (timeoutMs !== undefined) {
-      pending.timeout = setTimeout(() => {
-        session.pendingRequests.delete(id)
-        this.pendingRequestSessions.delete(id)
-        pending.reject(new BridgeError("BRIDGE_TIMEOUT", "No bridge response before the timeout"))
-      }, timeoutMs)
-    }
+    if (timeoutMs !== undefined) this.armPendingTimeout(pending, timeoutMs)
     try {
-      return await pending.promise
+      return await pending.completion
     } finally {
-      clearTimeout(pending.timeout)
-      session.pendingRequests.delete(id)
-      this.pendingRequestSessions.delete(id)
+      this.consumePending(id, pending)
     }
-  }
-
-  private rejectAndDeletePending(session: BridgeSession, id: number, error: Error): void {
-    const pending = session.pendingRequests.get(id)
-    if (!pending) return
-    clearTimeout(pending.timeout)
-    pending.reject(error)
-    session.pendingRequests.delete(id)
-    if (this.pendingRequestSessions.get(id) === session) this.pendingRequestSessions.delete(id)
-  }
-
-  private rejectAllPending(session: BridgeSession, error: Error): void {
-    for (const [id, pending] of session.pendingRequests) {
-      clearTimeout(pending.timeout)
-      pending.reject(error)
-      if (this.pendingRequestSessions.get(id) === session) this.pendingRequestSessions.delete(id)
-    }
-    session.pendingRequests.clear()
   }
 
   private requireReady(instanceId: string): BridgeSession {
