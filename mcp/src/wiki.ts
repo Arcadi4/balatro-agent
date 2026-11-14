@@ -159,15 +159,6 @@ function strong(text: string): Element {
   }
 }
 
-function em(text: string): Element {
-  return {
-    type: "element",
-    tagName: "em",
-    properties: {},
-    children: [{ type: "text", value: text }],
-  }
-}
-
 function findByClass(node: Element | HastRoot, name: string, depth = 0): Element | undefined {
   if (depth > 20) return undefined
   for (const child of node.children) {
@@ -205,13 +196,6 @@ function topLevelGroups(node: Element | HastRoot): Element[] {
   return out
 }
 
-function containsNode(haystack: Element, needle: Element): boolean {
-  for (const child of haystack.children) {
-    if (child.type !== "element") continue
-    if (child === needle || containsNode(child, needle)) return true
-  }
-  return false
-}
 function rowLine(label: string, value: string): Element {
   return {
     type: "element",
