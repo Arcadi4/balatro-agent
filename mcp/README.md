@@ -89,6 +89,34 @@ exclusive creation so concurrent server processes cannot overwrite an analysis. 
 hashes use `Bun.CryptoHasher`; the wiki uses its own HTML-to-Markdown pipeline because Bun's
 Markdown API converts in the opposite direction.
 
+### Runtime lifecycles
+
+`src/bridge/socket-client.ts` owns each connection:
+
+```mermaid
+stateDiagram-v2
+  [*] --> dialing
+  dialing --> handshaking: transport connected
+  handshaking --> ready: handshake accepted
+  dialing --> closed: failure or cancellation
+  handshaking --> closed: failure or cancellation
+  ready --> closed: disconnect or disposal
+```
+
+Concurrent callers share establishment. Closed sessions cannot be revived by stale
+callbacks; reconnect creates a fresh session. Requests settle once, retain early
+responses until consumed, and release their timers on settlement.
+
+The mod's `commands.lua` owns deferred response completion and owner-scoped cancellation.
+Settlement stages in `actions.lua` observe the game's own states: queued work must
+drain before phase matching, scoring samples the first positive chip total, and
+cash-out presses once before waiting for the shop. Completion and failure are terminal.
+
+Transport clients close once. Windows distinguishes an active server awaiting a
+replacement listener from a stopped server, so existing clients survive listener
+creation failures without reopening after shutdown. The resource observer's terminal
+`closed` state suppresses late notifications; process shutdown shares one cleanup.
+
 ## Releases
 
 `bun run build:release` creates five platform packages and the `balatro-mcp` launcher
