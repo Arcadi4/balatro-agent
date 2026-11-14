@@ -14,12 +14,27 @@ const RESPONSE_TIMEOUT_MS = 10_000
 const STATE_TIMEOUT_MS = 5_000
 const HANDSHAKE_TIMEOUT_MS = 10_000
 
+type PendingOutcome =
+  | { readonly kind: "response"; readonly response: JsonRpcResponse }
+  | { readonly kind: "error"; readonly error: Error }
+
+// A response, timeout, or transport error settles the request once. A settled
+// entry stays in the client map until its caller consumes it, so a response that
+// lands before awaitResponse is still observed; session close drops the entries.
 interface PendingRequest {
-  promise: Promise<JsonRpcResponse>
-  resolve: (response: JsonRpcResponse) => void
-  reject: (error: Error) => void
-  timeout?: Timer
+  readonly session: BridgeSession
+  readonly completion: Promise<JsonRpcResponse>
+  state: PendingState
 }
+
+type PendingState =
+  | {
+      readonly phase: "awaiting"
+      readonly resolve: (response: JsonRpcResponse) => void
+      readonly reject: (error: Error) => void
+      timeout?: Timer
+    }
+  | { readonly phase: "settled" }
 
 export interface StateEnvelope {
   seq: number
@@ -47,20 +62,36 @@ export interface ResolvedInstance {
   instance: BridgeInstance
 }
 
-interface BridgeSession {
-  instanceId: string
-  socketPath: string
-  socket?: Socket
-  decoder: TextDecoder
-  bytesRead: number
-  connectionGeneration: number
-  connected: boolean
-  handshaked: boolean
+// One socket and its framing state. Handlers compare this identity so a stale
+// connection cannot feed data or errors into a newer session.
+interface BridgeConnection {
+  readonly socket: Socket
+  readonly decoder: TextDecoder
   buffer: string
-  connectInfo?: ConnectInfo
-  lastDisconnectError?: BridgeError
   socketError?: Error
-  pendingRequests: Map<number, PendingRequest>
+}
+
+interface EstablishingSession {
+  readonly connection: BridgeConnection
+  readonly establishment: Promise<ConnectInfo>
+}
+
+// A session owns exactly one connection: dialing, then handshaking, then ready.
+// Closed is terminal for the session object, so a late socket event or handshake
+// continuation finds a state that no longer matches and cannot revive it.
+type SessionState =
+  | ({ readonly phase: "dialing" } & EstablishingSession)
+  | ({ readonly phase: "handshaking" } & EstablishingSession)
+  | {
+      readonly phase: "ready"
+      readonly connection: BridgeConnection
+      readonly connectInfo: ConnectInfo
+    }
+  | { readonly phase: "closed"; readonly error: BridgeError }
+
+interface BridgeSession {
+  readonly instanceId: string
+  state: SessionState
   writeQueue: Promise<void>
 }
 
@@ -116,18 +147,22 @@ function toError(error: unknown): Error {
 
 export class BridgeClient {
   private readonly sessions = new Map<string, BridgeSession>()
-  private readonly connectPromises = new Map<string, Promise<ConnectInfo>>()
-  private readonly pendingRequestSessions = new Map<number, BridgeSession>()
+  private readonly pendingRequests = new Map<number, PendingRequest>()
   private commandSeq = 0
   private disposed = false
 
   isConnected(instanceId: string): boolean {
-    return this.sessions.get(instanceId)?.handshaked ?? false
+    return this.sessions.get(instanceId)?.state.phase === "ready"
   }
 
   disconnect(instanceId: string): void {
-    const session = this.requireSession(instanceId)
-    this.detachSession(
+    const session = this.sessions.get(instanceId)
+    if (session === undefined) {
+      throw new BridgeError("INSTANCE_NOT_CONNECTED", "The Balatro instance is not connected")
+    }
+    // Closes a dial or handshake in flight too, so a later response or connect
+    // event cannot bring the session back.
+    this.closeSession(
       session,
       new BridgeError("INSTANCE_NOT_CONNECTED", "Disconnected from Balatro"),
     )
@@ -165,35 +200,15 @@ export class BridgeClient {
 
   async connect(instance: BridgeInstance): Promise<ConnectInfo> {
     if (this.disposed) throw gameNotRunning("BridgeClient has been disposed")
-    const instanceId = instance.instance_id
-    const existing = this.sessions.get(instanceId)
-    if (existing?.connectInfo !== undefined) return existing.connectInfo
-    const pending = this.connectPromises.get(instanceId)
-    if (pending !== undefined) return await pending
-
-    const session: BridgeSession = {
-      instanceId,
-      socketPath: instance.endpoint,
-      decoder: new TextDecoder(),
-      bytesRead: 0,
-      connectionGeneration: 0,
-      connected: false,
-      handshaked: false,
-      buffer: "",
-      pendingRequests: new Map(),
-      writeQueue: Promise.resolve(),
+    const existing = this.sessions.get(instance.instance_id)
+    if (existing !== undefined) {
+      const state = existing.state
+      if (state.phase === "ready") return state.connectInfo
+      // Concurrent callers share the one establishment for this session.
+      if (state.phase === "dialing" || state.phase === "handshaking")
+        return await state.establishment
     }
-    this.sessions.set(instanceId, session)
-    const promise = this.establish(session)
-    this.connectPromises.set(instanceId, promise)
-    try {
-      return await promise
-    } catch (error) {
-      this.detachFailedSession(session, error)
-      throw error
-    } finally {
-      if (this.connectPromises.get(instanceId) === promise) this.connectPromises.delete(instanceId)
-    }
+    return await this.openSession(instance)
   }
 
   async getState(timeoutMs: number, instanceId: string): Promise<Record<string, unknown>>
@@ -203,7 +218,9 @@ export class BridgeClient {
     instanceId: string,
   ): Promise<Record<string, unknown> | StateEnvelope> {
     const timeoutMs = typeof timeoutOrOptions === "number" ? timeoutOrOptions : STATE_TIMEOUT_MS
-    const result = asRecord(await this.request("get_state", undefined, timeoutMs, instanceId))
+    const result = asRecord(
+      await this.request(this.requireReady(instanceId), "get_state", undefined, timeoutMs),
+    )
     if (!result) throw new BridgeError("PROTOCOL_MISMATCH", "State response is not an object")
     if (typeof timeoutOrOptions === "object") {
       if (!asRecord(result.payload))
@@ -223,7 +240,9 @@ export class BridgeClient {
     // Game commands complete when the game completes them; a response deadline
     // here can only truncate a legitimate long-running action. Dead bridges
     // reject pending requests when the socket closes.
-    const result = asRecord(await this.request(kind, args ?? {}, undefined, instanceId))
+    const result = asRecord(
+      await this.request(this.requireReady(instanceId), kind, args ?? {}, undefined),
+    )
     if (!result || result.ok !== true)
       throw new BridgeError("PROTOCOL_MISMATCH", `Command ${kind} returned an invalid result`)
     return result.data
@@ -234,9 +253,10 @@ export class BridgeClient {
     args?: Record<string, unknown>
     instanceId: string
   }): Promise<number> {
-    const session = this.requireSession(options.instanceId)
+    const session = this.requireReady(options.instanceId)
     const id = ++this.commandSeq
-    const pending = this.createPendingRequest(session, id)
+    // Registers the slot that awaitResponse resolves later; the handle itself is unused here.
+    this.createPendingRequest(session, id)
     const request: JsonRpcRequest = {
       jsonrpc: "2.0",
       id,
@@ -248,7 +268,7 @@ export class BridgeClient {
       return id
     } catch (cause) {
       const error = this.normalizeRequestError(session, cause)
-      this.rejectAndDeletePending(session, id, error)
+      this.rejectPending(id, error)
       throw error
     }
   }
@@ -258,17 +278,13 @@ export class BridgeClient {
     options: { timeoutMs?: number; instanceId?: string } = {},
   ): Promise<ResponseEnvelope> {
     const session =
-      options.instanceId === undefined
-        ? this.pendingRequestSessions.get(seq)
-        : this.requireSession(options.instanceId)
-    if (session === undefined || this.pendingRequestSessions.get(seq) !== session) {
+      options.instanceId === undefined ? undefined : this.requireReady(options.instanceId)
+    const pending = this.pendingRequests.get(seq)
+    if (pending === undefined || (session !== undefined && pending.session !== session)) {
       throw new BridgeError("INTERNAL_ERROR", `No pending bridge request ${seq}`)
     }
-    const pending = session.pendingRequests.get(seq)
-    if (!pending) throw new BridgeError("INTERNAL_ERROR", `No pending bridge request ${seq}`)
     try {
       const response = await this.awaitJsonRpcResponse(
-        session,
         seq,
         pending,
         options.timeoutMs ?? RESPONSE_TIMEOUT_MS,
@@ -288,60 +304,81 @@ export class BridgeClient {
           typeof result.applied_state_seq === "number" ? result.applied_state_seq : undefined,
       }
     } catch (cause) {
-      throw this.normalizeRequestError(session, cause)
+      throw this.normalizeRequestError(pending.session, cause)
     }
   }
 
   async dispose(): Promise<void> {
     this.disposed = true
     for (const session of this.sessions.values()) {
-      this.rejectAllPending(session, gameNotRunning())
-      session.connected = false
-      session.handshaked = false
-      session.connectInfo = undefined
-      session.buffer = ""
-      session.bytesRead = 0
-      session.connectionGeneration += 1
-      session.socket?.destroy()
-      session.socket = undefined
+      this.closeSession(session, gameNotRunning())
     }
     this.sessions.clear()
   }
 
-  private detachSession(session: BridgeSession, error: BridgeError): void {
-    const established = session.handshaked
-    const socket = session.socket
-    session.connectionGeneration += 1
-    session.socket = undefined
-    session.connected = false
-    session.handshaked = false
-    session.connectInfo = undefined
-    session.buffer = ""
-    session.bytesRead = 0
-    session.socketError = undefined
-    session.lastDisconnectError = error
-    this.rejectAllPending(session, error)
+  private closeSession(session: BridgeSession, error: BridgeError): void {
+    const state = session.state
+    if (state.phase === "closed") return
+    session.state = { phase: "closed", error }
+    this.rejectPendingForSession(session, error)
     if (this.sessions.get(session.instanceId) === session) this.sessions.delete(session.instanceId)
-    socket?.destroy()
-    if (established) {
+    state.connection.socket.destroy()
+    if (!this.disposed && state.phase === "ready") {
       process.stderr.write(
         `[balatro-mcp] bridge ${session.instanceId} disconnected: ${error.message}\n`,
       )
     }
   }
 
-  private detachFailedSession(session: BridgeSession, cause: unknown): void {
-    const error = cause instanceof BridgeError ? cause : gameNotRunning()
-    this.detachSession(session, error)
+  private openSession(instance: BridgeInstance): Promise<ConnectInfo> {
+    const { promise: establishment, resolve, reject } = Promise.withResolvers<ConnectInfo>()
+    let socket: Socket
+    try {
+      socket = createConnection(instance.endpoint)
+    } catch (cause) {
+      return Promise.reject(cause instanceof BridgeError ? cause : gameNotRunning())
+    }
+    const connection: BridgeConnection = {
+      socket,
+      decoder: new TextDecoder(),
+      buffer: "",
+    }
+    const session: BridgeSession = {
+      instanceId: instance.instance_id,
+      state: { phase: "dialing", connection, establishment },
+      writeQueue: Promise.resolve(),
+    }
+    this.sessions.set(session.instanceId, session)
+    this.attachSocketHandlers(session, connection)
+    void this.establish(session, connection, establishment).then(resolve, (cause: unknown) => {
+      const error = cause instanceof BridgeError ? cause : gameNotRunning()
+      this.closeSession(session, error)
+      reject(error)
+    })
+    return establishment
   }
 
-  private async establish(session: BridgeSession): Promise<ConnectInfo> {
-    await this.dial(session)
+  // Post-await continuations read through this getter: an asynchronous close can
+  // land while a callback is paused, so a fresh function return re-exposes the
+  // whole union instead of the state narrowed at the assignment site.
+  private readSessionState(session: BridgeSession): SessionState {
+    return session.state
+  }
+
+  private async establish(
+    session: BridgeSession,
+    connection: BridgeConnection,
+    establishment: Promise<ConnectInfo>,
+  ): Promise<ConnectInfo> {
+    await this.dial(session, connection)
+    const dialed = session.state
+    if (dialed.phase !== "dialing" || dialed.connection !== connection) {
+      throw dialed.phase === "closed" ? dialed.error : bridgeDisconnected()
+    }
+    session.state = { phase: "handshaking", connection, establishment }
     let data: Record<string, unknown> | undefined
     try {
-      data = asRecord(
-        await this.request("connect", undefined, HANDSHAKE_TIMEOUT_MS, session.instanceId),
-      )
+      data = asRecord(await this.request(session, "connect", undefined, HANDSHAKE_TIMEOUT_MS))
     } catch (cause) {
       if (cause instanceof BridgeError && cause.code === "UNKNOWN_METHOD") {
         throw new BridgeError(
@@ -351,86 +388,77 @@ export class BridgeClient {
       }
       throw cause
     }
-    session.handshaked = true
-    session.connectInfo = {
+    // A close can land after the handshake response but before this continuation;
+    // ready is only reachable while this exact connection is still handshaking,
+    // so this fresh read decides whether the session survived the handshake.
+    const handshaking = this.readSessionState(session)
+    if (handshaking.phase !== "handshaking" || handshaking.connection !== connection) {
+      throw handshaking.phase === "closed" ? handshaking.error : bridgeDisconnected()
+    }
+    const connectInfo: ConnectInfo = {
       instance_id: session.instanceId,
       ...(typeof data?.phase === "string" ? { phase: data.phase } : {}),
     }
-    return session.connectInfo
+    session.state = { phase: "ready", connection, connectInfo }
+    return connectInfo
   }
 
-  private dial(session: BridgeSession): Promise<void> {
+  private dial(session: BridgeSession, connection: BridgeConnection): Promise<void> {
     const { promise, resolve, reject } = Promise.withResolvers<void>()
-    session.decoder = new TextDecoder()
-    const socket = createConnection(session.socketPath)
-    session.socket = socket
-    this.attachSocketHandlers(session, socket)
+    const socket = connection.socket
     const onConnect = (): void => {
       socket.off("close", onClose)
       resolve()
     }
     const onClose = (): void => {
       socket.off("connect", onConnect)
-      reject(
-        this.disposed
-          ? gameNotRunning()
-          : (session.lastDisconnectError ?? this.connectionError(session)),
-      )
+      const state = session.state
+      reject(state.phase === "closed" ? state.error : this.connectionError(connection))
     }
     socket.once("connect", onConnect)
     socket.once("close", onClose)
     return promise
   }
 
-  private attachSocketHandlers(session: BridgeSession, socket: Socket): void {
-    socket.once("connect", () => {
-      if (this.disposed || session.socket !== socket) {
-        socket.destroy()
-        return
-      }
-      session.connectionGeneration += 1
-      session.connected = true
-      session.lastDisconnectError = undefined
-    })
+  private attachSocketHandlers(session: BridgeSession, connection: BridgeConnection): void {
+    const socket = connection.socket
     socket.on("data", (data) => {
-      if (session.socket !== socket) return
-      if (typeof data === "string") {
-        session.bytesRead += data.length
-        this.handleData(session, data)
-        return
-      }
-      session.bytesRead += data.byteLength
-      this.handleData(session, session.decoder.decode(data, { stream: true }))
+      if (!this.isActiveConnection(session, connection)) return
+      this.handleData(
+        session,
+        connection,
+        typeof data === "string" ? data : connection.decoder.decode(data, { stream: true }),
+      )
     })
     socket.on("error", (error) => {
-      if (session.socket === socket) session.socketError = error
+      connection.socketError = error
     })
     socket.on("end", () => {
-      if (session.socket === socket) socket.destroy()
+      if (this.isActiveConnection(session, connection)) socket.destroy()
     })
     socket.once("close", () => {
-      if (session.socket === socket) this.handleSocketClose(session, session.socketError)
+      if (this.isActiveConnection(session, connection))
+        this.closeSession(session, this.connectionError(connection))
     })
   }
 
-  private connectionError(session: BridgeSession, cause?: Error): BridgeError {
-    if (cause instanceof BridgeError) return cause
-    if (errnoCode(cause) === "EBUSY")
+  private isActiveConnection(session: BridgeSession, connection: BridgeConnection): boolean {
+    const state = session.state
+    return state.phase !== "closed" && state.connection === connection
+  }
+
+  private connectionError(connection: BridgeConnection): BridgeError {
+    if (errnoCode(connection.socketError) === "EBUSY")
       return new BridgeError("INSTANCE_BUSY", "Balatro bridge is busy or held by another client")
     return gameNotRunning()
   }
 
-  private handleSocketClose(session: BridgeSession, closeCause?: Error): void {
-    this.detachSession(session, this.connectionError(session, closeCause))
-  }
-
   private async request(
+    session: BridgeSession,
     method: string,
     params: Record<string, unknown> | undefined,
     timeoutMs: number | undefined,
-    instanceId: string,
   ): Promise<unknown> {
-    const session = this.requireSession(instanceId)
     const id = ++this.commandSeq
     const pending = this.createPendingRequest(session, id, timeoutMs)
     const request: JsonRpcRequest = {
@@ -441,13 +469,13 @@ export class BridgeClient {
     }
     try {
       await this.writeFrame(session, request)
-      const response = await this.awaitJsonRpcResponse(session, id, pending)
+      const response = await this.awaitJsonRpcResponse(id, pending)
       if (response.error)
         throw new BridgeError(bridgeErrorCode(response.error), response.error.message)
       return response.result
     } catch (cause) {
       const error = this.normalizeRequestError(session, cause)
-      this.rejectAndDeletePending(session, id, error)
+      this.rejectPending(id, error)
       throw error
     }
   }
@@ -456,53 +484,50 @@ export class BridgeClient {
     const error = toError(cause)
     if (error instanceof BridgeError) return error
     if (isConnectionUnavailable(error)) return gameNotRunning()
-    if (isConnectionSevered(error)) return this.connectionError(session)
+    if (isConnectionSevered(error)) {
+      const state = session.state
+      return state.phase === "closed" ? state.error : gameNotRunning()
+    }
     return error
   }
 
-  private handleData(session: BridgeSession, chunk: string): void {
-    const parsed = parseFrames(session.buffer + chunk)
-    session.buffer = parsed.remainder
+  private handleData(session: BridgeSession, connection: BridgeConnection, chunk: string): void {
+    const parsed = parseFrames(connection.buffer + chunk)
+    connection.buffer = parsed.remainder
     for (const message of parsed.messages) {
-      if (isJsonRpcResponse(message)) session.pendingRequests.get(message.id)?.resolve(message)
+      if (!isJsonRpcResponse(message)) continue
+      const pending = this.pendingRequests.get(message.id)
+      if (pending?.session !== session) continue
+      this.settlePending(pending, { kind: "response", response: message })
     }
   }
 
   private writeFrame(session: BridgeSession, request: JsonRpcRequest): Promise<void> {
-    const generation = session.connectionGeneration
-    const write = session.writeQueue.then(() => this.writeFrameNow(session, request, generation))
+    const write = session.writeQueue.then(() => this.writeFrameNow(session, request))
     session.writeQueue = write.catch(() => undefined)
     return write
   }
 
-  private async writeFrameNow(
-    session: BridgeSession,
-    request: JsonRpcRequest,
-    generation: number,
-  ): Promise<void> {
-    const socket = session.socket
-    if (
-      !session.connected ||
-      !socket ||
-      session.socket !== socket ||
-      session.connectionGeneration !== generation ||
-      socket.destroyed ||
-      !socket.writable
-    ) {
-      throw session.lastDisconnectError ?? bridgeDisconnected()
-    }
+  private async writeFrameNow(session: BridgeSession, request: JsonRpcRequest): Promise<void> {
+    const state = session.state
+    if (state.phase === "closed") throw state.error
+    if (state.phase === "dialing") throw bridgeDisconnected()
+    const connection = state.connection
+    const socket = connection.socket
+    if (socket.destroyed || !socket.writable) throw bridgeDisconnected()
     const { promise, resolve, reject } = Promise.withResolvers<void>()
+    const connectionGone = (fallback: BridgeError): BridgeError => {
+      const current = session.state
+      return current.phase === "closed" ? current.error : fallback
+    }
     const onClose = () =>
-      reject(
-        session.lastDisconnectError ??
-          bridgeDisconnected("Bridge connection closed before the write"),
-      )
+      reject(connectionGone(bridgeDisconnected("Bridge connection closed before the write")))
     socket.once("close", onClose)
     socket.write(serializeFrame(request), (error) => {
       socket.removeListener("close", onClose)
       if (error) reject(error)
-      else if (session.socket !== socket || session.connectionGeneration !== generation)
-        reject(bridgeDisconnected("Bridge connection changed mid-write"))
+      else if (!this.isActiveConnection(session, connection))
+        reject(connectionGone(bridgeDisconnected("Bridge connection changed mid-write")))
       else resolve()
     })
     await promise
@@ -515,62 +540,73 @@ export class BridgeClient {
   ): PendingRequest {
     const { promise, resolve, reject } = Promise.withResolvers<JsonRpcResponse>()
     void promise.catch(() => undefined)
-    const pending: PendingRequest = { promise, resolve, reject }
-    session.pendingRequests.set(id, pending)
-    this.pendingRequestSessions.set(id, session)
-    if (timeoutMs !== undefined) {
-      pending.timeout = setTimeout(() => {
-        session.pendingRequests.delete(id)
-        this.pendingRequestSessions.delete(id)
-        pending.reject(new BridgeError("BRIDGE_TIMEOUT", "No bridge response before the timeout"))
-      }, timeoutMs)
+    const pending: PendingRequest = {
+      session,
+      completion: promise,
+      state: { phase: "awaiting", resolve, reject },
     }
+    this.pendingRequests.set(id, pending)
+    if (timeoutMs !== undefined) this.armPendingTimeout(pending, timeoutMs)
     return pending
   }
 
+  private armPendingTimeout(pending: PendingRequest, timeoutMs: number): void {
+    const state = pending.state
+    if (state.phase === "settled" || state.timeout !== undefined) return
+    state.timeout = setTimeout(() => {
+      this.settlePending(pending, {
+        kind: "error",
+        error: new BridgeError("BRIDGE_TIMEOUT", "No bridge response before the timeout"),
+      })
+    }, timeoutMs)
+  }
+
+  private settlePending(pending: PendingRequest, outcome: PendingOutcome): void {
+    const state = pending.state
+    if (state.phase === "settled") return
+    pending.state = { phase: "settled" }
+    clearTimeout(state.timeout)
+    if (outcome.kind === "error") state.reject(outcome.error)
+    else state.resolve(outcome.response)
+  }
+
+  private consumePending(id: number, pending: PendingRequest): void {
+    const state = pending.state
+    if (state.phase === "awaiting") clearTimeout(state.timeout)
+    if (this.pendingRequests.get(id) === pending) this.pendingRequests.delete(id)
+  }
+
+  private rejectPending(id: number, error: Error): void {
+    const pending = this.pendingRequests.get(id)
+    if (pending === undefined) return
+    this.settlePending(pending, { kind: "error", error })
+    this.consumePending(id, pending)
+  }
+
+  private rejectPendingForSession(session: BridgeSession, error: Error): void {
+    for (const [id, pending] of this.pendingRequests) {
+      if (pending.session !== session) continue
+      this.settlePending(pending, { kind: "error", error })
+      this.consumePending(id, pending)
+    }
+  }
+
   private async awaitJsonRpcResponse(
-    session: BridgeSession,
     id: number,
     pending: PendingRequest,
     timeoutMs?: number,
   ): Promise<JsonRpcResponse> {
-    if (timeoutMs !== undefined) {
-      pending.timeout = setTimeout(() => {
-        session.pendingRequests.delete(id)
-        this.pendingRequestSessions.delete(id)
-        pending.reject(new BridgeError("BRIDGE_TIMEOUT", "No bridge response before the timeout"))
-      }, timeoutMs)
-    }
+    if (timeoutMs !== undefined) this.armPendingTimeout(pending, timeoutMs)
     try {
-      return await pending.promise
+      return await pending.completion
     } finally {
-      clearTimeout(pending.timeout)
-      session.pendingRequests.delete(id)
-      this.pendingRequestSessions.delete(id)
+      this.consumePending(id, pending)
     }
   }
 
-  private rejectAndDeletePending(session: BridgeSession, id: number, error: Error): void {
-    const pending = session.pendingRequests.get(id)
-    if (!pending) return
-    clearTimeout(pending.timeout)
-    pending.reject(error)
-    session.pendingRequests.delete(id)
-    if (this.pendingRequestSessions.get(id) === session) this.pendingRequestSessions.delete(id)
-  }
-
-  private rejectAllPending(session: BridgeSession, error: Error): void {
-    for (const [id, pending] of session.pendingRequests) {
-      clearTimeout(pending.timeout)
-      pending.reject(error)
-      if (this.pendingRequestSessions.get(id) === session) this.pendingRequestSessions.delete(id)
-    }
-    session.pendingRequests.clear()
-  }
-
-  private requireSession(instanceId: string): BridgeSession {
+  private requireReady(instanceId: string): BridgeSession {
     const session = this.sessions.get(instanceId)
-    if (session === undefined || !session.connected) {
+    if (session === undefined || session.state.phase !== "ready") {
       throw new BridgeError("INSTANCE_NOT_CONNECTED", "The Balatro instance is not connected")
     }
     return session

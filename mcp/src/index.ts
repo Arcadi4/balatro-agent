@@ -131,16 +131,37 @@ async function main(): Promise<void> {
     onerror: reportError,
   })
 
-  let closing = false
-  const shutdown = async (signal?: string): Promise<void> => {
-    if (closing) return
-    closing = true
-    if (signal) process.stderr.write(`[balatro-mcp] received ${signal}\n`)
+  // Shutdown is one-way: a trigger closes or joins the single cleanup, and never restarts it.
+  let lifecycle: "running" | "closing" | "closed" = "running"
+  let cleanup: Promise<void> | undefined
+
+  const closeServer = async (): Promise<void> => {
     try {
       await handle.close()
     } finally {
-      await bridge.dispose()
+      // A failed transport close still releases bridge sessions; close is terminal either way.
+      try {
+        await bridge.dispose()
+      } finally {
+        lifecycle = "closed"
+      }
     }
+  }
+
+  // Signals and stdin EOF can race; every trigger joins the one cleanup and never closes twice.
+  const shutdown = (signal?: string): Promise<void> => {
+    switch (lifecycle) {
+      case "closed":
+        return Promise.resolve()
+      case "closing":
+        return cleanup ?? Promise.resolve()
+      case "running":
+        break
+    }
+    lifecycle = "closing"
+    if (signal) process.stderr.write(`[balatro-mcp] received ${signal}\n`)
+    cleanup = closeServer()
+    return cleanup
   }
 
   process.once("SIGINT", () => void shutdown("SIGINT"))

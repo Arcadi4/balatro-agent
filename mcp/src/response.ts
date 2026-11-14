@@ -3,7 +3,9 @@ import { z } from "zod"
 
 import { BridgeError } from "./bridge/socket-client.js"
 
-export type MarkdownFormatter = (data: Record<string, unknown>) => string
+export type MarkdownFormatter<T extends Record<string, unknown> = Record<string, unknown>> = (
+  data: T,
+) => string
 
 export interface CommandResultOptions {
   instanceIndex?: number
@@ -29,9 +31,18 @@ export function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
-export function toolResult(
-  data: Record<string, unknown>,
-  toMarkdown: MarkdownFormatter = defaultMarkdown,
+// Live payloads are Lua tables: mostly scalars, occasionally nested tables the
+// mod happened to include. Rendering must never emit "[object Object]".
+export function asText(value: unknown): string {
+  if (value === undefined || value === null) return ""
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  return JSON.stringify(value) ?? ""
+}
+
+export function toolResult<T extends Record<string, unknown>>(
+  data: T,
+  toMarkdown: MarkdownFormatter<T> = defaultMarkdown,
 ): CallToolResult {
   return {
     content: [{ type: "text", text: toMarkdown(data) }],

@@ -10,21 +10,9 @@ Use this MCP server with the [game mod](https://www.nexusmods.com/games/balatro/
 
 [GitHub](https://github.com/Arcadi4/balatro-agent)
 
-Run `npx -y balatro-mcp`. The npm package selects a native executable for macOS
-(arm64/x64), Linux (glibc, arm64/x64), or Windows (x64). Bun is embedded in the
-executable; users do not need to install it. Keep npm optional dependencies enabled.
-The native archives on [GitHub Releases](https://github.com/Arcadi4/balatro-agent/releases)
-can also run directly, without Node or Bun. Use the executable path as your MCP
-client's command. `balatro-mcp --version` prints its version without starting the server.
+Run `npx -y balatro-mcp`. The npm package selects a native executable for macOS (arm64/x64), Linux (glibc, arm64/x64), or Windows (x64). Bun is embedded in the executable; users do not need to install it. Keep npm optional dependencies enabled. The native archives on [GitHub Releases](https://github.com/Arcadi4/balatro-agent/releases) can also run directly, without Node or Bun: use the executable path as your MCP client's command. `balatro-mcp --version` prints its version without starting the server.
 
-By default every mutating action is followed by a settled-state read, and the
-result carries a `## Next: <uri>` snapshot of the next decision surface so the
-agent never has to read it again. Pass `--no-auto-context` to turn that feed off:
-action results then report only what they changed, and the client reads
-`balatro://turn` itself. Prefer the flag with code-mode clients (OpenCode's MCP code
-mode, Codex, and similar): they chain action calls and resource reads inside one
-program, so each snapshot spends context on state they can read at the moment they
-need it.
+By default every mutating action is followed by a settled-state read, and the result carries a `## Next: <uri>` snapshot of the next decision surface so the agent never has to read it again. Pass `--no-auto-context` to turn that feed off: action results then report only what they changed, and the client reads `balatro://turn` itself. Prefer the flag with code-mode clients (OpenCode's MCP code mode, Codex, and similar): they chain action calls and resource reads inside one program, so each snapshot spends context on state they can read at the moment they need it.
 
 ```sh
 npx -y balatro-mcp --no-auto-context
@@ -32,40 +20,23 @@ npx -y balatro-mcp --no-auto-context
 
 ## Live instances
 
-Read `balatro://instances` for live games numbered from `0`, oldest-first by launch
-timestamp. Launch timestamps have second precision; equal timestamps use a deterministic
-internal-ID tie-breaker. Discovery recomputes the indices, so an index can name a different
-game after another instance appears or exits.
+Read `balatro://instances` for live games numbered from `0`, oldest-first by launch time. Discovery recomputes the indices, so an index can name a different game after another instance appears or exits.
 
-With one live game, omit `instance_index` on tools and read unscoped resources such as
-`balatro://turn`. With multiple games, pass `instance_index` and read
-`balatro://instances/<index>/turn` or another scoped resource. Bare requests fail before
-acting with `INSTANCE_SELECTION_REQUIRED` and the current numbered list. Retry with an
-index; if no games are available, the server returns `GAME_NOT_RUNNING`.
+With one live game, omit `instance_index` on tools and read unscoped resources such as `balatro://turn`. With multiple games, pass `instance_index` and read `balatro://instances/<index>/turn` or another scoped resource. Bare requests fail before acting with `INSTANCE_SELECTION_REQUIRED` and the current numbered list; retry with an index. With no live games, requests return `GAME_NOT_RUNNING`.
 
-Actions and live reads open IPC connections on demand. `connect` is optional and selects
-no default. Each request keeps its resolved game identity through the command and
-successor reads, even if discovery changes while it runs. Internal IDs and endpoint paths
-do not appear in the agent-facing instance list.
-
-The server checks discovery records on requests and once per second for resource-list
-change notifications. Records expire after ten seconds without a mod heartbeat.
+Actions and live reads open IPC connections on demand. `connect` is optional and selects no default. Each request keeps its resolved game through the command and its successor reads, even if discovery changes while it runs.
 
 ## Tool errors
 
-Tool output schemas cover success and structured errors. Error results set `isError`
-and carry `{ "error_code": "...", "message": "...", "details": { ... } }` in
-`structuredContent`; `details` is optional.
+Error results set `isError` and carry `{ "error_code": "...", "message": "...", "details": { ... } }` in `structuredContent`; `details` is optional.
 
 ## Wiki resources
 
-Resource reads report protocol errors. Missing wiki articles return `-32602` with the
-requested URI; HTTP and network failures remain internal errors.
+Missing wiki articles return `-32602` with the requested URI; HTTP and network failures remain internal errors.
 
 ## Protocol compatibility
 
-The stdio server checks the protocol version on each request and returns `-32022` for
-unsupported versions. Legacy clients can still initialize with the 2025-era handshake.
+The stdio server returns `-32022` for unsupported protocol versions. Legacy clients can still initialize with the 2025-era handshake.
 
 ## Development
 
@@ -79,24 +50,11 @@ bun run dev
 bun run build
 ```
 
-The local build produces `dist/balatro-mcp` (`dist/balatro-mcp.exe` on Windows). Node is not
-required: `bunfig.toml` forces package executables to use Bun and selects Bun's cross-platform
-shell, and the `node:net`, `node:path`, and `node:os` imports use Bun's built-in compatibility
-APIs, including Windows named pipes. The MCP SDK owns stdio.
-
-Postgame files use Bun globbing, file reads, and YAML. Writes allocate numbered files with
-exclusive creation so concurrent server processes cannot overwrite an analysis. Reference
-hashes use `Bun.CryptoHasher`; the wiki uses its own HTML-to-Markdown pipeline because Bun's
-Markdown API converts in the opposite direction.
+The build produces `dist/balatro-mcp` (`dist/balatro-mcp.exe` on Windows) and requires no Node runtime.
 
 ## Releases
 
-`bun run build:release` creates five platform packages and the `balatro-mcp` launcher
-under `dist/npm/`. It downloads Bun's cross-compilation runtimes on first use.
-The source package is private to prevent accidentally publishing it; only generated
-packages are published. Each launcher dependency is pinned to the exact release
-version. The launcher uses Node supplied by npx solely to start the native server,
-inherit stdio, forward signals, and return its exit status.
+`bun run build:release` creates five platform packages and the `balatro-mcp` launcher under `dist/npm/`, downloading Bun's cross-compilation runtimes on first use. The source package is private; only generated packages are published, and each launcher dependency is pinned to the exact release version.
 
 After registering the `@balatro-mcp` npm organization, run once from `mcp/`:
 
@@ -104,29 +62,15 @@ After registering the `@balatro-mcp` npm organization, run once from `mcp/`:
 bun run release:setup
 ```
 
-Sign in as an npm organization owner. When npm asks for 2FA, select the option to
-skip further verification for five minutes. The command creates any missing binary
-packages as `0.0.0` under a `bootstrap` tag, then configures their GitHub OIDC trusted
-publishers. It uses your native npm executable for the interactive login and trust flow
-when one is installed, falling back to npm through Bun otherwise. Each trust command
-keeps the terminal attached so npm can complete its browser-based 2FA flow. If setup is
-interrupted, rerun it for packages that have not been trusted yet; npm permits one trust
-configuration per package.
+Sign in as an npm organization owner. When npm asks for 2FA, select the option to skip further verification for five minutes. The command creates any missing binary packages as `0.0.0` under a `bootstrap` tag, then configures their GitHub OIDC trusted publishers. If setup is interrupted, rerun it for packages that have not been trusted yet; npm permits one trust configuration per package.
 
-For each release, bump the mod and MCP versions together with `make bump`
-(or `make bump minor` / `make bump major`) from the repo root, then push the
-matching `v<version>` tag. The
-workflow:
+For each release, bump the mod and MCP versions together with `make bump` (or `make bump minor` / `make bump major`) from the repo root, then push the matching `v<version>` tag. The workflow:
 
 1. Validates Lua and TypeScript, builds binaries, and checks each on a matching runner.
-2. Publishes `@balatro-mcp/{os}-{cpu}` automatically with provenance. Already published
-   versions are skipped on retries.
+2. Publishes `@balatro-mcp/{os}-{cpu}` automatically with provenance; already published versions are skipped on retries.
 3. Stages only `balatro-mcp` for your usual npm approval, after all binaries exist.
 4. Uploads the mod and native archives to GitHub Releases.
 
-You manage one version and approve one launcher package per release. No individual
-binary package approvals or expiring publish tokens are required; Node/npm are used
-only for registry operations.
+You manage one version and approve one launcher package per release. No individual binary package approvals or expiring publish tokens are required.
 
-See [npm bulk trusted-publisher setup](https://docs.npmjs.com/cli/v11/commands/npm-trust/#bulk-usage)
-for the shared 2FA session behavior.
+See [npm bulk trusted-publisher setup](https://docs.npmjs.com/cli/v11/commands/npm-trust/#bulk-usage) for the shared 2FA session behavior.

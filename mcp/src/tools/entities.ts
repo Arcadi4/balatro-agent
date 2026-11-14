@@ -2,7 +2,7 @@ import type { CallToolResult, McpServer, ToolAnnotations } from "@modelcontextpr
 import { z } from "zod"
 
 import { toolError, toolErrorSchema, toolResult } from "../response.js"
-import { searchWiki } from "../wiki.js"
+import { searchWiki, type WikiSearchHit } from "../wiki.js"
 import WIKI_SEARCH_DESCRIPTION from "./descriptions/wiki-search.txt" with { type: "text" }
 
 const wikiSearchInputSchema = z
@@ -39,15 +39,10 @@ const WIKI_ANNOTATIONS = {
   openWorldHint: true,
 } as const satisfies ToolAnnotations
 
-function wikiSearchToMarkdown(data: object): string {
-  const d = data as Record<string, unknown>
-  const results = (d.results ?? []) as Array<Record<string, unknown>>
+function wikiSearchToMarkdown({ results }: { results: WikiSearchHit[] }): string {
   if (results.length === 0) return "No matching Balatro Wiki pages found."
   const lines = ["# Wiki Search Results", ""]
-  for (const result of results) {
-    const title = String(result.title ?? "")
-    const url = String(result.url ?? "")
-    const snippet = String(result.snippet ?? "")
+  for (const { title, url, snippet } of results) {
     lines.push(`- [${title}](${url})`)
     if (snippet) lines.push(`  ${snippet}`)
   }

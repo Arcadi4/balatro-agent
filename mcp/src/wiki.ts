@@ -159,15 +159,6 @@ function strong(text: string): Element {
   }
 }
 
-function em(text: string): Element {
-  return {
-    type: "element",
-    tagName: "em",
-    properties: {},
-    children: [{ type: "text", value: text }],
-  }
-}
-
 function findByClass(node: Element | HastRoot, name: string, depth = 0): Element | undefined {
   if (depth > 20) return undefined
   for (const child of node.children) {
@@ -205,13 +196,6 @@ function topLevelGroups(node: Element | HastRoot): Element[] {
   return out
 }
 
-function containsNode(haystack: Element, needle: Element): boolean {
-  for (const child of haystack.children) {
-    if (child.type !== "element") continue
-    if (child === needle || containsNode(child, needle)) return true
-  }
-  return false
-}
 function rowLine(label: string, value: string): Element {
   return {
     type: "element",
@@ -325,6 +309,8 @@ function mathText(node: Element): string {
   return out
 }
 
+// `Bun.markdown` renders Markdown to HTML; wiki pages arrive as HTML, so this is the
+// reverse pipeline and cannot use it.
 const processor = unified()
   .use(rehypeParse, { fragment: true })
   .use(rehypeRemark, { newlines: true })
@@ -340,7 +326,7 @@ export async function htmlToMarkdown(html: string): Promise<string> {
 }
 
 async function callApi(params: Record<string, string>): Promise<unknown> {
-  const query = new URLSearchParams(params)
+  const query = new URLSearchParams(params).toString()
   const response = await fetch(`${WIKI_API_URL}?${query}`, {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     headers: { accept: "application/json" },

@@ -50,6 +50,8 @@ export async function discoverBridgeInstances(
       continue
     }
   }
+  // Instance IDs start with the launch time in seconds; the numeric prefix orders launches
+  // and the full-string comparison breaks same-second ties the same way on every scan.
   return instances.sort(
     (left, right) =>
       Number.parseInt(left.instance_id, 10) - Number.parseInt(right.instance_id, 10) ||

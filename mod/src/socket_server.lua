@@ -50,10 +50,13 @@ local POLLHUP = 0x0010
 local POLLERR = 0x0008
 local EAGAIN = ffi.os == 'OSX' and 35 or 11
 
-local server_fd = -1
+local STOPPED = 'stopped'
+local RUNNING = 'running'
+local CLIENT_OPEN = 'open'
+local CLIENT_CLOSED = 'closed'
+
+local server = { state = STOPPED }
 local clients = {}
-local socket_path
-local instance
 local on_disconnect
 local request_handler
 local socket_codec_factory
@@ -99,17 +102,23 @@ local function poll_readable(fd)
   return bit.band(revents, POLLIN) ~= 0, false
 end
 
+local function is_open(client)
+  return client ~= nil and client.state == CLIENT_OPEN and clients[client.fd] == client
+end
+
 local function close_client(client, reason)
-  if not client or not clients[client.fd] then return end
-  clients[client.fd] = nil
+  if client == nil or client.state ~= CLIENT_OPEN then return false end
+  client.state = CLIENT_CLOSED
+  if clients[client.fd] == client then clients[client.fd] = nil end
   C.close(client.fd)
   client.codec.reset()
   on_disconnect(client)
   log(reason and ('Socket client closed: ' .. reason) or 'Socket client disconnected')
+  return true
 end
 
 local function send_response(client, response)
-  if not client or not clients[client.fd] then return false end
+  if not is_open(client) then return false end
   local queued, encode_error = client.codec.queue(response)
   if not queued then
     close_client(client, encode_error)
@@ -119,15 +128,15 @@ local function send_response(client, response)
 end
 
 local function accept_client()
-  if server_fd < 0 then return end
-  local readable, failed, errno = poll_readable(server_fd)
+  if server.state ~= RUNNING then return end
+  local readable, failed, errno = poll_readable(server.fd)
   if failed then
     log('Socket accept poll failed' .. (errno and (' (errno ' .. errno .. ')') or ''))
     return
   end
   if not readable then return end
 
-  local accepted_fd = C.accept(server_fd, nil, nil)
+  local accepted_fd = C.accept(server.fd, nil, nil)
   if accepted_fd < 0 then
     local accept_errno = ffi.errno()
     if accept_errno ~= EAGAIN then log('Socket accept failed (errno ' .. accept_errno .. ')') end
@@ -143,6 +152,7 @@ local function accept_client()
 
   local client
   client = {
+    state = CLIENT_OPEN,
     fd = accepted_fd,
     buffer = ffi.new('char[?]', READ_BUFFER_SIZE),
     codec = socket_codec_factory.new(function(request)
@@ -156,6 +166,7 @@ local function accept_client()
 end
 
 local function read_client(client)
+  if not is_open(client) then return end
   local readable, failed, errno = poll_readable(client.fd)
   if failed then
     close_client(client, 'poll failed' .. (errno and (' (errno ' .. errno .. ')') or ''))
@@ -175,7 +186,7 @@ local function read_client(client)
 end
 
 flush_client = function(client)
-  if not clients[client.fd] then return false end
+  if not is_open(client) then return false end
   local payload = client.codec.pending()
   if payload == '' then return true end
 
@@ -189,14 +200,25 @@ flush_client = function(client)
   return true
 end
 
+local function stop_server(reason)
+  if server.state ~= RUNNING then return false end
+  local fd, path, owner = server.fd, server.path, server.instance
+  server = { state = STOPPED }
+  for _, client in pairs(clients) do close_client(client, 'bridge shutdown') end
+  C.close(fd)
+  os.remove(path)
+  owner.remove()
+  log(reason)
+  return true
+end
+
 function SocketServer.init(on_request, socket_codec, disconnect_callback, bridge_instance)
-  if server_fd >= 0 then return true end
-  instance = bridge_instance
+  if server.state == RUNNING then return true end
   request_handler = on_request
   socket_codec_factory = socket_codec
-  socket_path = instance.endpoint()
   on_disconnect = disconnect_callback
 
+  local path = bridge_instance.endpoint()
   local fd = C.socket(AF_UNIX, SOCK_STREAM, 0)
   if fd < 0 then
     log(errno_message('Socket creation failed'))
@@ -212,16 +234,16 @@ function SocketServer.init(on_request, socket_codec, disconnect_callback, bridge
 
   local address_type = ffi.os == 'OSX' and 'sockaddr_un_macos' or 'sockaddr_un_linux'
   local address = ffi.new(address_type)
-  if #socket_path >= ffi.sizeof(address.sun_path) then
+  if #path >= ffi.sizeof(address.sun_path) then
     C.close(fd)
-    log('Socket path is too long: ' .. socket_path)
+    log('Socket path is too long: ' .. path)
     return false
   end
   if ffi.os == 'OSX' then address.sun_len = ffi.sizeof(address) end
   address.sun_family = AF_UNIX
-  ffi.copy(address.sun_path, socket_path, #socket_path)
+  ffi.copy(address.sun_path, path, #path)
 
-  os.remove(socket_path)
+  os.remove(path)
   if C.bind(fd, ffi.cast('const struct sockaddr *', address), ffi.sizeof(address)) < 0 then
     log(errno_message('Socket bind failed'))
     C.close(fd)
@@ -230,29 +252,36 @@ function SocketServer.init(on_request, socket_codec, disconnect_callback, bridge
   if C.listen(fd, 16) < 0 then
     log(errno_message('Socket listen failed'))
     C.close(fd)
-    os.remove(socket_path)
+    os.remove(path)
     return false
   end
 
-  server_fd = fd
-  if not instance.publish() then
+  server = {
+    state = RUNNING,
+    fd = fd,
+    path = path,
+    instance = bridge_instance,
+  }
+  if not bridge_instance.publish() then
     log('Instance registry publication failed')
-    SocketServer.close()
+    stop_server('Socket server closed')
     return false
   end
-  log('Socket server listening on ' .. socket_path)
+  log('Socket server listening on ' .. path)
   return true
 end
 
 function SocketServer.update()
-  if server_fd < 0 then return end
+  if server.state ~= RUNNING then return end
   accept_client()
   for _, client in pairs(clients) do
     flush_client(client)
-    read_client(client)
-    flush_client(client)
+    if client.state == CLIENT_OPEN then
+      read_client(client)
+      flush_client(client)
+    end
   end
-  instance.touch()
+  server.instance.touch()
 end
 
 function SocketServer.send_response(response)
@@ -260,14 +289,7 @@ function SocketServer.send_response(response)
 end
 
 function SocketServer.close()
-  for _, client in pairs(clients) do close_client(client, 'bridge shutdown') end
-  if server_fd >= 0 then
-    C.close(server_fd)
-    server_fd = -1
-  end
-  if socket_path then os.remove(socket_path) end
-  if instance then instance.remove() end
-  log('Socket server closed')
+  stop_server('Socket server closed')
 end
 
 return SocketServer
