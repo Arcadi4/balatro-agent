@@ -73,6 +73,8 @@ local function create_pipe()
 end
 
 local function is_active()
+  -- A failed listener leaves the server AWAITING_LISTENER instead of STOPPED: accepted
+  -- clients must keep being read and flushed, and only `stop_server` ends them.
   return server.state == LISTENING or server.state == AWAITING_LISTENER
 end
 

@@ -309,6 +309,8 @@ function mathText(node: Element): string {
   return out
 }
 
+// `Bun.markdown` renders Markdown to HTML; wiki pages arrive as HTML, so this is the
+// reverse pipeline and cannot use it.
 const processor = unified()
   .use(rehypeParse, { fragment: true })
   .use(rehypeRemark, { newlines: true })
