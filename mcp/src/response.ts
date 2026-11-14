@@ -29,6 +29,15 @@ export function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
+// Live payloads are Lua tables: mostly scalars, occasionally nested tables the
+// mod happened to include. Rendering must never emit "[object Object]".
+export function asText(value: unknown): string {
+  if (value === undefined || value === null) return ""
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  return JSON.stringify(value) ?? ""
+}
+
 export function toolResult(
   data: Record<string, unknown>,
   toMarkdown: MarkdownFormatter = defaultMarkdown,

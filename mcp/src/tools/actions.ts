@@ -2,7 +2,7 @@ import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import { asRecord, toolErrorSchema, type CommandResultOptions } from "../response.js"
+import { asRecord, asText, toolErrorSchema, type CommandResultOptions } from "../response.js"
 import BUY_BOOSTER_DESCRIPTION from "./descriptions/buy-booster.txt" with { type: "text" }
 import BUY_CARD_DESCRIPTION from "./descriptions/buy-card.txt" with { type: "text" }
 import BUY_CONSUMABLE_DESCRIPTION from "./descriptions/buy-consumable.txt" with { type: "text" }
@@ -141,11 +141,11 @@ function playHandToMarkdown(result: Record<string, unknown>): string {
   const lines = [
     "# Hand Played",
     "",
-    `- **Cards played:** ${String(data.cards_played ?? "unknown")}`,
+    `- **Cards played:** ${asText(data.cards_played ?? "unknown")}`,
   ]
   if (data.hand_name !== undefined) {
-    const level = data.hand_level !== undefined ? ` (level ${String(data.hand_level)})` : ""
-    lines.push(`- **Hand:** ${String(data.hand_name)}${level}`)
+    const level = data.hand_level !== undefined ? ` (level ${asText(data.hand_level)})` : ""
+    lines.push(`- **Hand:** ${asText(data.hand_name)}${level}`)
   }
   if (Array.isArray(data.played_cards) && data.played_cards.length > 0) {
     lines.push("- **Played cards:**")
@@ -160,29 +160,29 @@ function playHandToMarkdown(result: Record<string, unknown>): string {
         (modifier): modifier is string => modifier !== undefined,
       )
       const suffix = modifiers.length > 0 ? ` (${modifiers.join(", ")})` : ""
-      lines.push(`  - ${String(card.rank ?? "?")} of ${String(card.suit ?? "?")}${suffix}`)
+      lines.push(`  - ${asText(card.rank ?? "?")} of ${asText(card.suit ?? "?")}${suffix}`)
     }
   }
   if (data.hand_chips !== undefined || data.hand_mult !== undefined) {
-    const chips = data.hand_chips !== undefined ? `${String(data.hand_chips)} chips` : "?"
-    const mult = data.hand_mult !== undefined ? `${String(data.hand_mult)} mult` : "?"
+    const chips = data.hand_chips !== undefined ? `${asText(data.hand_chips)} chips` : "?"
+    const mult = data.hand_mult !== undefined ? `${asText(data.hand_mult)} mult` : "?"
     lines.push(`- **Hand scoring:** ${chips} x ${mult}`)
   }
   if (data.chip_total !== undefined) {
-    lines.push(`- **Hand score:** ${String(data.chip_total)}`)
+    lines.push(`- **Hand score:** ${asText(data.chip_total)}`)
   }
   if (data.points_gained !== undefined)
-    lines.push(`- **Points gained:** ${String(data.points_gained)}`)
+    lines.push(`- **Points gained:** ${asText(data.points_gained)}`)
   if (data.score_before !== undefined && data.score_after !== undefined) {
-    lines.push(`- **Score:** ${String(data.score_before)} -> ${String(data.score_after)}`)
+    lines.push(`- **Score:** ${asText(data.score_before)} -> ${asText(data.score_after)}`)
   }
-  if (data.blind_chips !== undefined) lines.push(`- **Blind target:** ${String(data.blind_chips)}`)
+  if (data.blind_chips !== undefined) lines.push(`- **Blind target:** ${asText(data.blind_chips)}`)
   if (data.blind_defeated !== undefined) {
-    lines.push(`- **Blind defeated:** ${String(data.blind_defeated)}`)
+    lines.push(`- **Blind defeated:** ${asText(data.blind_defeated)}`)
   }
   if (data.hands_played_before !== undefined && data.hands_played_after !== undefined) {
     lines.push(
-      `- **Hands played:** ${String(data.hands_played_before)} -> ${String(data.hands_played_after)}`,
+      `- **Hands played:** ${asText(data.hands_played_before)} -> ${asText(data.hands_played_after)}`,
     )
   }
   return lines.join("\n")
@@ -194,11 +194,11 @@ function handSelectionToMarkdown(result: Record<string, unknown>): string {
   const data = asRecord(result.data) ?? {}
   const name = data.hand_name
   if (name === undefined) return "Cards selected."
-  const level = data.hand_level !== undefined ? ` (level ${String(data.hand_level)})` : ""
-  const lines = [`Selected ${String(data.selected ?? "?")} cards as ${String(name)}${level}.`]
+  const level = data.hand_level !== undefined ? ` (level ${asText(data.hand_level)})` : ""
+  const lines = [`Selected ${asText(data.selected ?? "?")} cards as ${asText(name)}${level}.`]
   if (data.hand_chips !== undefined || data.hand_mult !== undefined) {
-    const chips = data.hand_chips !== undefined ? `${String(data.hand_chips)} chips` : "?"
-    const mult = data.hand_mult !== undefined ? `${String(data.hand_mult)} mult` : "?"
+    const chips = data.hand_chips !== undefined ? `${asText(data.hand_chips)} chips` : "?"
+    const mult = data.hand_mult !== undefined ? `${asText(data.hand_mult)} mult` : "?"
     lines.push(`Base scoring: ${chips} x ${mult}, before card chips, jokers and blind effects.`)
   }
   return lines.join("\n")

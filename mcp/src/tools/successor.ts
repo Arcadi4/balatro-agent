@@ -5,6 +5,7 @@ import { autoContextEnabled } from "../flags.js"
 import { renderSuccessor } from "../resources/live.js"
 import {
   asRecord,
+  asText,
   defaultMarkdown,
   toolResult,
   withBridgeErrors,
@@ -49,7 +50,7 @@ function changedCards(
   return beforeCards.some((value, index) => {
     const beforeCard = asRecord(value)
     const afterCard = asRecord(afterCards[index])
-    return String(beforeCard?.card_id ?? "") !== String(afterCard?.card_id ?? "")
+    return asText(beforeCard?.card_id ?? "") !== asText(afterCard?.card_id ?? "")
   })
 }
 

@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/server"
 import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server"
 
 import { BridgeError, type BridgeClient } from "../bridge/socket-client.js"
-import { asRecord } from "../response.js"
+import { asRecord, asText } from "../response.js"
 
 type LiveRenderer = (payload: Record<string, unknown>, uri: string) => string
 
@@ -77,7 +77,7 @@ const EDITION_NAMES: Record<string, string> = {
 }
 
 function displayCardRank(value: unknown): string {
-  const rank = String(value ?? "?")
+  const rank = asText(value ?? "?")
   const ranks: Record<string, string> = {
     Ace: "A",
     King: "K",
@@ -88,7 +88,7 @@ function displayCardRank(value: unknown): string {
 }
 
 function displayCardSuit(value: unknown): string {
-  const suit = String(value ?? "").toLowerCase()
+  const suit = asText(value ?? "").toLowerCase()
   const suits: Record<string, string> = {
     spades: "♠",
     hearts: "♥",
@@ -100,8 +100,8 @@ function displayCardSuit(value: unknown): string {
 
 function displayCardModifier(value: unknown, names: Record<string, string>): string | undefined {
   if (value === undefined || value === null) return undefined
-  const key = String(value).toLowerCase()
-  return names[key] ?? String(value)
+  const key = asText(value).toLowerCase()
+  return names[key] ?? asText(value)
 }
 
 function displayHandCard(card: Record<string, unknown>): string {
@@ -137,11 +137,11 @@ function displayHandCard(card: Record<string, unknown>): string {
 }
 
 function displayHandCardLine(card: Record<string, unknown>): string {
-  return `[${String(card.card_id ?? "?")}] ${displayHandCard(card)}`
+  return `[${asText(card.card_id ?? "?")}] ${displayHandCard(card)}`
 }
 
 function displayJokerName(card: Record<string, unknown>): string {
-  return String(card.name ?? card.entity_id ?? card.card_id ?? "Unknown Joker")
+  return asText(card.name ?? card.entity_id ?? card.card_id ?? "Unknown Joker")
 }
 
 const RARITY_LABELS: Record<string, string> = {
@@ -157,20 +157,20 @@ const RARITY_LABELS: Record<string, string> = {
 
 function displayJokerRarity(value: unknown): string {
   if (value === undefined || value === null) return ""
-  return RARITY_LABELS[String(value).toLowerCase()] ?? ""
+  return RARITY_LABELS[asText(value).toLowerCase()] ?? ""
 }
 
 function displayCardPrice(card: Record<string, unknown>): string | undefined {
   if (card.cost === undefined && card.sell_value === undefined) return undefined
-  const buy = card.cost === undefined ? "?" : String(card.cost)
-  const sell = card.sell_value === undefined ? "?" : String(card.sell_value)
+  const buy = card.cost === undefined ? "?" : asText(card.cost)
+  const sell = card.sell_value === undefined ? "?" : asText(card.sell_value)
   return `Buy $${buy} / Sell $${sell}`
 }
 
 // A buy price is only truthful in the shop, the one place a purchase can happen.
 function displaySellPrice(card: Record<string, unknown>): string | undefined {
   if (card.sell_value === undefined) return undefined
-  return `Sell $${String(card.sell_value)}`
+  return `Sell $${asText(card.sell_value)}`
 }
 
 function displayJokerLine(
@@ -179,7 +179,7 @@ function displayJokerLine(
   price: string | undefined = displaySellPrice(card),
 ): string {
   if (card.faced_down === true) {
-    return `${index}. [${String(card.card_id ?? "?")}] Face-down Joker`
+    return `${index}. [${asText(card.card_id ?? "?")}] Face-down Joker`
   }
   const rarity = displayJokerRarity(card.rarity)
   const edition = displayCardModifier(card.edition, EDITION_NAMES)
@@ -190,7 +190,7 @@ function displayJokerLine(
     card.active === true ? "(active)" : undefined,
   ].filter((value): value is string => value !== undefined)
   const name = [displayJokerName(card), rarity].filter((part) => part.length > 0).join(" ")
-  const parts = [`${index}. [${String(card.card_id ?? "?")}]`, name, price, ...status].filter(
+  const parts = [`${index}. [${asText(card.card_id ?? "?")}]`, name, price, ...status].filter(
     (value): value is string => value !== undefined,
   )
   return parts.join(" ")
@@ -206,7 +206,7 @@ function displayStickers(value: unknown): string[] {
   const entries = Array.isArray(value) ? value : typeof value === "string" ? [value] : []
   const labels: string[] = []
   for (const entry of entries) {
-    const name = STICKER_LABELS[String(entry).toLowerCase()]
+    const name = STICKER_LABELS[asText(entry).toLowerCase()]
     if (name !== undefined) labels.push(`[${name}]`)
   }
   return labels
@@ -217,15 +217,15 @@ function appendLiveDescription(lines: string[], card: Record<string, unknown>): 
   if (description === undefined || description === null) return
   if (Array.isArray(description)) {
     for (const line of description) {
-      if (line !== undefined && line !== null) lines.push(`   ${String(line)}`)
+      if (line !== undefined && line !== null) lines.push(`   ${asText(line)}`)
     }
     return
   }
-  lines.push(`   ${String(description)}`)
+  lines.push(`   ${asText(description)}`)
 }
 
 function displayConsumableType(value: unknown): string {
-  const kind = String(value ?? "").toLowerCase()
+  const kind = asText(value ?? "").toLowerCase()
   const kinds: Record<string, string> = {
     tarot: "Tarot",
     planet: "Planet",
@@ -245,8 +245,8 @@ function displayConsumableLine(
     card.usable === false ? "(unusable)" : undefined,
   ].filter((value): value is string => value !== undefined)
   const parts = [
-    `${index}. [${String(card.card_id ?? "?")}]`,
-    `${displayConsumableType(card.kind)} ${String(card.name ?? card.entity_id ?? "Unknown Consumable")}`,
+    `${index}. [${asText(card.card_id ?? "?")}]`,
+    `${displayConsumableType(card.kind)} ${asText(card.name ?? card.entity_id ?? "Unknown Consumable")}`,
     price,
     ...displayStickers(card.stickers),
     ...status,
@@ -268,7 +268,7 @@ function displayShopCardLine(card: Record<string, unknown>): string {
   if (isJokerCard(card)) return displayJokerLine(card, 1, displayCardPrice(card))
   if (isConsumableCard(card)) return displayConsumableLine(card, 1, displayCardPrice(card))
   if (card.kind === "playing_card") {
-    const cost = card.cost !== undefined ? ` — $${String(card.cost)}` : ""
+    const cost = card.cost !== undefined ? ` — $${asText(card.cost)}` : ""
     return `${displayHandCardLine(card)}${cost}`
   }
 
@@ -277,8 +277,8 @@ function displayShopCardLine(card: Record<string, unknown>): string {
     (value): value is string => value !== undefined,
   )
   const suffix = details.length > 0 ? ` (${details.join(", ")})` : ""
-  const cost = card.cost !== undefined ? ` — $${String(card.cost)}` : ""
-  return `[${String(card.card_id ?? "?")}] ${String(label)}${suffix}${cost}`
+  const cost = card.cost !== undefined ? ` — $${asText(card.cost)}` : ""
+  return `[${asText(card.card_id ?? "?")}] ${asText(label)}${suffix}${cost}`
 }
 
 function displayPackCardLine(card: Record<string, unknown>): string {
@@ -291,7 +291,7 @@ function displayPackCardLine(card: Record<string, unknown>): string {
     (value): value is string => value !== undefined,
   )
   const suffix = details.length > 0 ? ` (${details.join(", ")})` : ""
-  return `[${String(card.card_id ?? "?")}] ${String(label)}${suffix}`
+  return `[${asText(card.card_id ?? "?")}] ${asText(label)}${suffix}`
 }
 
 function appendCompactCardLine(
@@ -365,7 +365,7 @@ function appendPackSection(lines: string[], pack: Record<string, unknown>): void
 }
 
 function appendField(lines: string[], label: string, value: unknown): void {
-  if (value !== undefined) lines.push(`- **${label}:** ${String(value)}`)
+  if (value !== undefined) lines.push(`- **${label}:** ${asText(value)}`)
 }
 
 function appendRoundSection(lines: string[], round: Record<string, unknown>): void {
@@ -375,11 +375,11 @@ function appendRoundSection(lines: string[], round: Record<string, unknown>): vo
   if (blind) {
     const scored =
       round.chips_scored !== undefined && blind.chips !== undefined
-        ? `${String(round.chips_scored)} / `
+        ? `${asText(round.chips_scored)} / `
         : ""
-    const target = blind.chips !== undefined ? ` — ${scored}${String(blind.chips)} chips` : ""
-    lines.push(`- **Blind:** ${String(blind.name ?? "?")}${target}`)
-    if (blind.description !== undefined) lines.push(`  - ${String(blind.description)}`)
+    const target = blind.chips !== undefined ? ` — ${scored}${asText(blind.chips)} chips` : ""
+    lines.push(`- **Blind:** ${asText(blind.name ?? "?")}${target}`)
+    if (blind.description !== undefined) lines.push(`  - ${asText(blind.description)}`)
   }
   appendField(lines, "Hands Left", round.hands_left)
   appendField(lines, "Discards Left", round.discards_left)
@@ -388,9 +388,9 @@ function appendRoundSection(lines: string[], round: Record<string, unknown>): vo
 }
 
 function displaySkipReward(reward: Record<string, unknown>): string {
-  const name = String(reward.name ?? reward.entity_id ?? "?")
-  if (reward.dollars !== undefined) return `${name} (+$${String(reward.dollars)})`
-  if (reward.poker_hand !== undefined) return `${name} (upgrade ${String(reward.poker_hand)})`
+  const name = asText(reward.name ?? reward.entity_id ?? "?")
+  if (reward.dollars !== undefined) return `${name} (+$${asText(reward.dollars)})`
+  if (reward.poker_hand !== undefined) return `${name} (upgrade ${asText(reward.poker_hand)})`
   return name
 }
 
@@ -405,7 +405,7 @@ function appendBlindSelectSection(
     for (const entry of selection.blinds) {
       const blind = asRecord(entry)
       if (!blind) continue
-      const chips = blind.chips !== undefined ? ` — ${String(blind.chips)} chips` : ""
+      const chips = blind.chips !== undefined ? ` — ${asText(blind.chips)} chips` : ""
       const markers: string[] = []
       if (typeof blind.state === "string" && blind.state !== "Select") {
         markers.push(blind.state.toLowerCase())
@@ -417,20 +417,20 @@ function appendBlindSelectSection(
       const reward = asRecord(blind.skip_reward)
       const skip = reward ? ` — skip: ${displaySkipReward(reward)}` : ""
       lines.push(
-        `- **${String(blind.name ?? blind.blind_id ?? "?")}** (${String(blind.slot ?? "?")})${chips}${skip}${markerText}`,
+        `- **${asText(blind.name ?? blind.blind_id ?? "?")}** (${asText(blind.slot ?? "?")})${chips}${skip}${markerText}`,
       )
-      if (blind.description !== undefined) lines.push(`  - ${String(blind.description)}`)
+      if (blind.description !== undefined) lines.push(`  - ${asText(blind.description)}`)
     }
   }
   if (selection.boss_reroll_cost !== undefined) {
-    lines.push(`\n- **Boss reroll:** $${String(selection.boss_reroll_cost)}`)
+    lines.push(`\n- **Boss reroll:** $${asText(selection.boss_reroll_cost)}`)
   }
 
   if (Array.isArray(tags) && tags.length > 0) {
     lines.push("\n### Queued Tags\n")
     for (const entry of tags) {
       const tag = asRecord(entry)
-      if (tag) lines.push(`- ${String(tag.name ?? tag.entity_id ?? "?")}`)
+      if (tag) lines.push(`- ${asText(tag.name ?? tag.entity_id ?? "?")}`)
     }
   }
   lines.push("")
@@ -438,13 +438,13 @@ function appendBlindSelectSection(
 
 function slotLabel(items: unknown, slots: unknown): string {
   const count = Array.isArray(items) ? items.length : 0
-  return slots === undefined ? "" : ` (${count}/${String(slots)})`
+  return slots === undefined ? "" : ` (${count}/${asText(slots)})`
 }
 
 function selectedCardIds(payload: Record<string, unknown>): Set<string> {
   const ids = new Set<string>()
   if (Array.isArray(payload.selected_hand_card_ids)) {
-    for (const id of payload.selected_hand_card_ids) ids.add(String(id))
+    for (const id of payload.selected_hand_card_ids) ids.add(asText(id))
   }
   return ids
 }
@@ -461,7 +461,7 @@ function appendHandEntries(lines: string[], payload: Record<string, unknown>): v
     const card = asRecord(entry)
     if (!card) continue
     const flags: string[] = []
-    if (selected.has(String(card.card_id ?? "?"))) flags.push("selected")
+    if (selected.has(asText(card.card_id ?? "?"))) flags.push("selected")
     if (card.forced_selection !== undefined) flags.push("forced")
     const marker = flags.length > 0 ? ` *(${flags.join(", ")})*` : ""
     lines.push(`- ${displayHandCardLine(card)}${marker}`)
@@ -491,9 +491,9 @@ function turnToMarkdown(payload: Record<string, unknown>, _uri: string): string 
 
   lines.push("# Turn\n")
 
-  if (payload.phase !== undefined) lines.push(`**Phase:** ${String(payload.phase)}  `)
-  if (payload.ante !== undefined) lines.push(`**Ante:** ${String(payload.ante)}  `)
-  if (payload.money !== undefined) lines.push(`**Money:** $${String(payload.money)}  `)
+  if (payload.phase !== undefined) lines.push(`**Phase:** ${asText(payload.phase)}  `)
+  if (payload.ante !== undefined) lines.push(`**Ante:** ${asText(payload.ante)}  `)
+  if (payload.money !== undefined) lines.push(`**Money:** $${asText(payload.money)}  `)
   lines.push("")
 
   const round = asRecord(payload.round)
@@ -502,7 +502,7 @@ function turnToMarkdown(payload: Record<string, unknown>, _uri: string): string 
   if (Array.isArray(payload.legal_actions) && payload.legal_actions.length > 0) {
     lines.push("## Legal Actions\n")
     for (const action of payload.legal_actions) {
-      lines.push(`- \`${String(action)}\``)
+      lines.push(`- \`${asText(action)}\``)
     }
     lines.push("")
   }
@@ -524,7 +524,7 @@ function handToMarkdown(payload: Record<string, unknown>, _uri: string): string 
 
   appendField(lines, "Hand Size", payload.hand_size)
   if (Array.isArray(payload.selected_hand_card_ids) && payload.selected_hand_card_ids.length > 0) {
-    const ids = payload.selected_hand_card_ids.map((id) => `\`${String(id)}\``).join(", ")
+    const ids = payload.selected_hand_card_ids.map((id) => `\`${asText(id)}\``).join(", ")
     lines.push(`- **Selected:** ${ids}`)
   }
   lines.push("")
@@ -593,12 +593,12 @@ function boosterToMarkdown(payload: Record<string, unknown>, uri: string): strin
 
 function displayVoucher(entry: unknown): string {
   const voucher = asRecord(entry)
-  if (!voucher) return String(entry)
+  if (!voucher) return asText(entry)
   const name = voucher.name ?? voucher.key
-  const label = name === undefined ? String(entry) : `**${String(name)}**`
+  const label = name === undefined ? asText(entry) : `**${asText(name)}**`
   const description = voucher.description
   if (description === undefined || description === null || description === "") return label
-  return `${label} — ${String(description)}`
+  return `${label} — ${asText(description)}`
 }
 
 function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
@@ -607,7 +607,7 @@ function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
   lines.push("# Run\n")
 
   appendField(lines, "Ante", payload.ante)
-  if (payload.money !== undefined) lines.push(`- **Money:** $${String(payload.money)}`)
+  if (payload.money !== undefined) lines.push(`- **Money:** $${asText(payload.money)}`)
   const deck = asRecord(payload.deck)
   if (deck) appendField(lines, "Deck", deck.name ?? deck.key)
   const stake = asRecord(payload.stake)
@@ -616,7 +616,7 @@ function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
     lines.push(`- **Active Challenge:** ${payload.active_challenge}`)
   }
   if (Array.isArray(payload.disabled_entities) && payload.disabled_entities.length > 0) {
-    const names = payload.disabled_entities.map((entry) => String(entry)).join(", ")
+    const names = payload.disabled_entities.map((entry) => asText(entry)).join(", ")
     lines.push(`- **Disabled Entities:** ${names}`)
   }
   if (payload.endless_mode === true) lines.push("- **Endless Mode:** true")
@@ -629,9 +629,9 @@ function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
   if (handLevels.length > 0) {
     lines.push("## Hand Levels\n")
     for (const level of handLevels) {
-      const played = Number(level.played) > 0 ? ` — played ${String(level.played)}x` : ""
+      const played = Number(level.played) > 0 ? ` — played ${asText(level.played)}x` : ""
       lines.push(
-        `- **${String(level.name ?? "?")}**: Lv.${String(level.level ?? "?")} — ${String(level.chips ?? "?")} chips × ${String(level.mult ?? "?")} mult${played}`,
+        `- **${asText(level.name ?? "?")}**: Lv.${asText(level.level ?? "?")} — ${asText(level.chips ?? "?")} chips × ${asText(level.mult ?? "?")} mult${played}`,
       )
     }
     lines.push("")
@@ -647,14 +647,14 @@ function runToMarkdown(payload: Record<string, unknown>, _uri: string): string {
     lines.push("## Tags\n")
     for (const entry of payload.tags) {
       const tag = asRecord(entry)
-      if (tag) lines.push(`- ${String(tag.name ?? tag.entity_id ?? "?")}`)
+      if (tag) lines.push(`- ${asText(tag.name ?? tag.entity_id ?? "?")}`)
     }
     lines.push("")
   }
 
   const discard = asRecord(payload.discard_summary)
   if (discard) {
-    lines.push(`## Discard Pile (${String(discard.count ?? 0)})\n`)
+    lines.push(`## Discard Pile (${asText(discard.count ?? 0)})\n`)
     if (Array.isArray(discard.cards) && discard.cards.length > 0) {
       for (const card of discard.cards) {
         const record = asRecord(card)
@@ -693,9 +693,9 @@ function anteToMarkdown(payload: Record<string, unknown>, uri: string): string {
 function displayTally(value: unknown): string {
   const tally = asRecord(value)
   if (!tally) return "0"
-  const base = String(tally.base ?? 0)
+  const base = asText(tally.base ?? 0)
   return tally.effective !== undefined && tally.effective !== tally.base
-    ? `${base}/${String(tally.effective)}`
+    ? `${base}/${asText(tally.effective)}`
     : base
 }
 
@@ -739,7 +739,7 @@ function appendDeckCards(lines: string[], cards: unknown[], remainingOnly: boole
       unknown += 1
       continue
     }
-    const suit = String(card.suit ?? "Other")
+    const suit = asText(card.suit ?? "Other")
     const label = displayHandCard(card).replace(displayCardSuit(card.suit), "")
     const group = groups[suit] ?? []
     group.push(label)
@@ -759,17 +759,17 @@ function appendDeckView(lines: string[], title: string, value: unknown): void {
   const unknownCount = typeof view.unknown_count === "number" ? view.unknown_count : 0
   const drawPile =
     title === "Remaining" && view.draw_pile_count !== undefined
-      ? ` (${String(view.draw_pile_count)} deck`
+      ? ` (${asText(view.draw_pile_count)} deck`
       : ""
   const unknown = unknownCount > 0 ? `${drawPile ? " + " : " ("}?${unknownCount}` : ""
   const suffix = drawPile || unknown ? `${drawPile}${unknown})` : ""
-  lines.push(`## ${title} — ${String(view.count ?? 0)}${suffix}\n`)
+  lines.push(`## ${title} — ${asText(view.count ?? 0)}${suffix}\n`)
 
   const tallies = asRecord(view.tallies)
   if (tallies) {
     const categories = asRecord(tallies.categories)
     if (categories) {
-      const stones = String(tallies.stone_cards ?? 0)
+      const stones = asText(tallies.stone_cards ?? 0)
       lines.push(
         `- **Types:** A ${displayTally(categories.aces)} · F ${displayTally(categories.face_cards)} · # ${displayTally(categories.numbered_cards)} · Stone ${stones}`,
       )
