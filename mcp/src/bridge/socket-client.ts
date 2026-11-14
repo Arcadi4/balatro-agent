@@ -310,7 +310,7 @@ export class BridgeClient {
 
   async dispose(): Promise<void> {
     this.disposed = true
-    for (const session of [...this.sessions.values()]) {
+    for (const session of this.sessions.values()) {
       this.closeSession(session, gameNotRunning())
     }
     this.sessions.clear()
