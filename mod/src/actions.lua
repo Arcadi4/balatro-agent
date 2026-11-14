@@ -306,23 +306,33 @@ local function target_settled(target)
   return G.STATE == G.STATES[target] and G.STATE_COMPLETE and true or false
 end
 
--- Complete after queued work drains and the game rests in a target phase.
 -- Screen wipes hide run transitions and keep the controller input-locked.
+local PHASE_STAGE = {
+  QUEUED_WORK = 'queued_work',
+  AWAITING_TARGET = 'awaiting_target',
+  COMPLETED = 'completed',
+}
+
 local function phase_settle(target_phases, data)
-  local armed = false
+  local stage = PHASE_STAGE.QUEUED_WORK
   return {
     ok = true,
     settle = {
       on_game_update = function(work_mark)
+        if stage == PHASE_STAGE.COMPLETED then return nil end
         if not G then return nil end
-        if not armed then
-          -- Do not count the pre-action phase until the action's queued work drains.
-          if game_events.work_settled(work_mark) then armed = true end
+        if stage == PHASE_STAGE.QUEUED_WORK then
+          -- The pre-action phase still matches until the queued work drains,
+          -- so a target phase only counts from a later update.
+          if game_events.work_settled(work_mark) then stage = PHASE_STAGE.AWAITING_TARGET end
           return nil
         end
         if G.screenwipe then return nil end
         for _, target in ipairs(target_phases) do
-          if target_settled(target) then return ok(data) end
+          if target_settled(target) then
+            stage = PHASE_STAGE.COMPLETED
+            return ok(data)
+          end
         end
         return nil
       end,
@@ -531,8 +541,16 @@ end
 -- Scoring plays out across many frames of HAND_PLAYED, and the game credits
 -- G.GAME.chips through a queued ease that only runs after it, so every score
 -- field is only meaningful once the state leaves HAND_PLAYED.
+local HAND_STAGE = {
+  AWAITING_HAND_PLAYED = 'awaiting_hand_played',
+  RESOLVING = 'resolving',
+  COMPLETED = 'completed',
+}
+
 local function play_hand_settle(seed)
-  local saw_hand_played = false
+  -- The game is still in SELECTING_HAND until the click takes effect, so the
+  -- wait only completes after HAND_PLAYED has been observed and left.
+  local stage = HAND_STAGE.AWAITING_HAND_PLAYED
   -- The game zeroes current_hand as the hand resolves, so the final chip
   -- total has to be sampled while the hand is still on the table.
   local chip_total_sampled
@@ -572,22 +590,25 @@ local function play_hand_settle(seed)
 
   return { ok = true, settle = {
     on_game_update = function()
-      if G and G.STATES then
-        if G.STATE == G.STATES.HAND_PLAYED then
-          saw_hand_played = true
-          local round = G.GAME and G.GAME.current_round
-          local total = round and round.current_hand and round.current_hand.chip_total
-          -- Latch the first positive total: the game eases chip_total back to
-          -- zero once the hand resolves, so later frames would overwrite the
-          -- real value with the post-ease zero.
-          if chip_total_sampled == nil and type(total) == 'number' and total > 0 then
-            chip_total_sampled = total
-          end
-        elseif saw_hand_played then
-          return scoring_result()
-        end
+      if stage == HAND_STAGE.COMPLETED then return nil end
+      if not G or not G.STATES then return nil end
+      if stage == HAND_STAGE.AWAITING_HAND_PLAYED then
+        if G.STATE ~= G.STATES.HAND_PLAYED then return nil end
+        stage = HAND_STAGE.RESOLVING
       end
-      return nil
+      if G.STATE == G.STATES.HAND_PLAYED then
+        local round = G.GAME and G.GAME.current_round
+        local total = round and round.current_hand and round.current_hand.chip_total
+        -- Latch the first positive total: the game eases chip_total back to
+        -- zero once the hand resolves, so later frames would overwrite the
+        -- real value with the post-ease zero.
+        if chip_total_sampled == nil and type(total) == 'number' and total > 0 then
+          chip_total_sampled = total
+        end
+        return nil
+      end
+      stage = HAND_STAGE.COMPLETED
+      return scoring_result()
     end,
   } }
 end
@@ -861,35 +882,49 @@ end
 -- frames), presses it once, then holds until the shop settles. The deadline
 -- is a stall watchdog: if another mod breaks the round-eval UI the button may
 -- never render, and that must surface as an error rather than a hanging call.
-local function cash_out_settle(pressed)
+local CASH_OUT_STAGE = {
+  AWAITING_BUTTON = 'awaiting_button',
+  AWAITING_SHOP = 'awaiting_shop',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+}
+
+local function cash_out_settle(stage)
   return {
     ok = true,
     settle = {
       timeout_seconds = 15,
       on_game_update = function()
+        if stage == CASH_OUT_STAGE.COMPLETED or stage == CASH_OUT_STAGE.FAILED then return nil end
         if not G or not G.STATES then
+          stage = CASH_OUT_STAGE.FAILED
           return err("WRONG_PHASE", "Game state is not available")
         end
         -- Cash-out settles on the state transition itself; leave_shop
         -- independently refuses until the shop is ready, so neither waits
         -- on the other.
         if G.STATE == G.STATES.SHOP and G.STATE_COMPLETE then
+          stage = CASH_OUT_STAGE.COMPLETED
           return ok({ cashed_out = true })
         end
-        if not pressed and G.STATE == G.STATES.ROUND_EVAL then
-          local button = round_eval and round_eval.cash_out_button()
-          if button then
-            G.FUNCS.cash_out(button)
-            release_cash_out_ui(button)
-            pressed = true
+        if stage == CASH_OUT_STAGE.AWAITING_BUTTON then
+          if G.STATE ~= G.STATES.ROUND_EVAL then
+            stage = CASH_OUT_STAGE.FAILED
+            return err("WRONG_PHASE", "Round evaluation ended before cash-out")
           end
-          return nil
+          local button = round_eval and round_eval.cash_out_button()
+          if not button then return nil end
+          G.FUNCS.cash_out(button)
+          release_cash_out_ui(button)
+          stage = CASH_OUT_STAGE.AWAITING_SHOP
         end
-        if pressed then return nil end
-        return err("WRONG_PHASE", "Round evaluation ended before cash-out")
+        return nil
       end,
       on_timeout = function()
-        if pressed then
+        if stage == CASH_OUT_STAGE.COMPLETED or stage == CASH_OUT_STAGE.FAILED then return nil end
+        local stalled_at = stage
+        stage = CASH_OUT_STAGE.FAILED
+        if stalled_at == CASH_OUT_STAGE.AWAITING_SHOP then
           return err("CANNOT_USE_NOW", "Cash-out did not reach the shop")
         end
         return err("CANNOT_USE_NOW", "Cash-out button did not become ready")
@@ -906,10 +941,10 @@ handlers.cash_out = function(args)
   if button then
     G.FUNCS.cash_out(button)
     release_cash_out_ui(button)
-    return cash_out_settle(true)
+    return cash_out_settle(CASH_OUT_STAGE.AWAITING_SHOP)
   end
 
-  return cash_out_settle(false)
+  return cash_out_settle(CASH_OUT_STAGE.AWAITING_BUTTON)
 end
 
 handlers.restart = function(args)
