@@ -36,7 +36,7 @@
     "dev": "bun --watch run src/index.ts",
     "typecheck": "bun --bun tsc --noEmit -p .",
     "test": "bun test",
-    "format": "bun --bun oxfmt package.json src scripts",
+    "format": "bun --bun vp fmt package.json vite.config.ts src scripts",
     "build:release": "bun run scripts/build.ts --release",
     "release:setup": "bun run scripts/setup-release.ts"
   },
