@@ -174,6 +174,8 @@ balatro repl [--instance <index>]
 
 `repl` accepts the same command words without the leading `balatro`: `read balatro://turn`, `play-hand`, `wiki search "Blue Deck"`, and so on. Arguments are split with shell-style quoting, so single quotes, double quotes, and backslash escapes work; quote any value containing spaces. Leave with `exit` or EOF (`Ctrl-D`).
 
+The shell reports failures and continues accepting commands. On `exit` or EOF, it returns the first nonzero status from the session, even if later commands succeed. If nothing failed, it returns 0.
+
 `--instance <index>` on `repl` sets the default instance for game commands and `connect` / `disconnect` in that process. A game command can pass its own `-i, --instance <index>` to override the default for that invocation. Reads never consult the default: a read resolves exactly its URI, so `read balatro://instances/1/turn` selects a game independently of the REPL default.
 
 The shell keeps one connection per instance and reuses it across commands, including commands that resolve to the same game through different indices. `connect` and `disconnect` therefore have lasting effect inside the shell.

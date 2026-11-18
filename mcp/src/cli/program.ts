@@ -359,11 +359,12 @@ function addReplCommand(program: Command, context: ProgramContext): void {
   command.action(async function (this: Command): Promise<void> {
     const json = context.json(this)
     const defaultInstance = context.instance(this)
-    await runRepl(
-      (args) => runCli(context.bridge, args, { json, defaultInstance, repl: false }),
-      json,
+    context.setStatus(
+      await runRepl(
+        (args) => runCli(context.bridge, args, { json, defaultInstance, repl: false }),
+        json,
+      ),
     )
-    context.setStatus(0)
   })
 }
 

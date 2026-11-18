@@ -13,11 +13,16 @@ const PROMPT = "balatro> "
  * time; nothing is expanded or executed by a child shell. A failing command or
  * an unterminated quote is reported and the session continues. Piped input and
  * --json never see a prompt; an interactive human terminal gets one.
+ * The first failure determines the session's exit status.
  */
 export async function runRepl(
   runLine: (args: string[]) => Promise<number>,
   json: boolean,
-): Promise<void> {
+): Promise<number> {
+  let status = 0
+  const remember = (code: number): void => {
+    status ||= code
+  }
   const interactive = !json && process.stdin.isTTY === true && process.stdout.isTTY === true
   const rl = createInterface({
     input: process.stdin,
@@ -25,7 +30,7 @@ export async function runRepl(
     terminal: interactive,
   })
   rl.on("error", (error: unknown) => {
-    printCliError(error, json)
+    remember(printCliError(error, json))
   })
   if (interactive) {
     rl.setPrompt(PROMPT)
@@ -43,27 +48,30 @@ export async function runRepl(
       try {
         args = split(line)
       } catch (error) {
-        printCliError(
-          {
-            error_code: "USAGE_ERROR",
-            message: error instanceof Error ? error.message : String(error),
-          },
-          json,
+        remember(
+          printCliError(
+            {
+              error_code: "USAGE_ERROR",
+              message: error instanceof Error ? error.message : String(error),
+            },
+            json,
+          ),
         )
         if (interactive) rl.prompt()
         continue
       }
       if (args.length === 1 && args[0] === "exit") break
       try {
-        await runLine(args)
+        remember(await runLine(args))
       } catch (error) {
-        printCliError(error, json)
+        remember(printCliError(error, json))
       }
       if (interactive) rl.prompt()
     }
   } catch (error) {
-    printCliError(error, json)
+    remember(printCliError(error, json))
   } finally {
     rl.close()
   }
+  return status
 }
