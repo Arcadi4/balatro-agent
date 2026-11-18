@@ -17,7 +17,6 @@
     "test": "bun --cwd=mcp run test",
     "format": "bun --bun vp fmt scripts package.json tsconfig.json && bun --cwd=mcp run format",
     "build:release": "bun --cwd=mcp run build:release",
-    "release:setup": "bun --cwd=mcp run release:setup",
     "ci:nexus": "vpx ./scripts/ci/nexus-metadata.ts"
   },
   "devDependencies": {

@@ -9,7 +9,6 @@ const commands: Record<string, string> = {
   test: "Run MCP tests",
   format: "Format the MCP package",
   "build:release": "Build release binaries and npm packages",
-  "release:setup": "Bootstrap npm binary packages and trusted publishers",
 };
 
 console.log("Balatro Agent development commands\n");
