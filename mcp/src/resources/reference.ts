@@ -5,6 +5,7 @@ import enhancementsMarkdown from "../../data/card_modifiers/enhancements.md" wit
 import indexMarkdown from "../../data/card_modifiers/index.md" with { type: "text" }
 import sealsMarkdown from "../../data/card_modifiers/seals.md" with { type: "text" }
 import stickersMarkdown from "../../data/card_modifiers/stickers.md" with { type: "text" }
+import usageMarkdown from "../../data/cli/usage.md" with { type: "text" }
 import challengesMarkdown from "../../data/reference/challenges.md" with { type: "text" }
 import decksMarkdown from "../../data/reference/decks.md" with { type: "text" }
 import stakesMarkdown from "../../data/reference/stakes.md" with { type: "text" }
@@ -134,5 +135,13 @@ export const referenceResources: readonly ResourceDefinition[] = [
     description:
       "Balatro stake reference: stake difficulties 1-8 and modifier summaries for balatro_new_game.",
     markdown: stakesMarkdown,
+  }),
+  markdownResource({
+    name: "cli",
+    uri: "balatro://cli",
+    title: "Balatro CLI",
+    description:
+      "Full balatro CLI reference: resource reads, game commands, tool-backed commands, output, and exit codes.",
+    markdown: usageMarkdown,
   }),
 ]
