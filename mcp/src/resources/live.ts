@@ -2,8 +2,10 @@ import { ResourceTemplate } from "@modelcontextprotocol/server"
 import type { McpServer } from "@modelcontextprotocol/server"
 import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server"
 
+import type { BridgeInstance } from "../bridge/registry.js"
 import { BridgeError, type BridgeClient } from "../bridge/socket-client.js"
 import { asRecord, asText } from "../response.js"
+import type { ResourceDefinition } from "./catalog.js"
 
 type LiveRenderer = (payload: Record<string, unknown>, uri: string) => string
 
@@ -921,11 +923,100 @@ export function renderSuccessor(
   }
 }
 
-export function registerLiveResources(server: McpServer, bridge: BridgeClient): void {
+export type DiscoverInstances = () => Promise<BridgeInstance[]>
+
+/** Builds the live resource definitions without registering or observing them. */
+export function liveResources(
+  bridge: BridgeClient,
+  discover: DiscoverInstances = () => bridge.listInstances(),
+): ResourceDefinition[] {
+  const template = new ResourceTemplate("balatro://instances/{instance_index}/{section}", {
+    list: async () => ({
+      resources: (await discover()).flatMap((_instance, instanceIndex) =>
+        LIVE_RESOURCES.map((definition) => ({
+          uri: instanceResourceUri(instanceIndex, definition.name),
+          name: `${definition.name}-${instanceIndex}`,
+          title: `${definition.title} — ${instanceIndex}`,
+          description: definition.description,
+          mimeType: "text/markdown",
+        })),
+      ),
+    }),
+  })
+
+  return [
+    ...LIVE_RESOURCES.map((definition) => ({
+      name: `${definition.name}-single`,
+      uri: `balatro://${definition.name}`,
+      metadata: {
+        title: definition.title,
+        description: `${definition.description} Requires exactly one live Balatro instance.`,
+        mimeType: "text/markdown",
+      },
+      read: (uri: URL) => readLiveResource(bridge, uri, undefined, definition.render),
+    })),
+    {
+      name: "instances",
+      uri: "balatro://instances",
+      metadata: {
+        title: "Balatro Instances",
+        description:
+          "Live Balatro instances numbered oldest-first from 0, with connected instances marked. Indices are recomputed on discovery.",
+        mimeType: "text/markdown",
+      },
+      read: async (uri: URL) =>
+        markdownContents(
+          uri,
+          instancesToMarkdown(
+            (await discover()).map((instance, instance_index) => ({
+              instance_index,
+              connected: bridge.isConnected(instance.instance_id),
+            })),
+          ),
+        ),
+    },
+    {
+      name: "live",
+      uri: template,
+      metadata: {
+        title: "Live Balatro State",
+        description: "Live state for a discovery-relative, 0-based Balatro instance index.",
+        mimeType: "text/markdown",
+      },
+      read: (uri, variables) => {
+        const instanceIndex = variables.instance_index
+        const section = variables.section
+        if (
+          typeof instanceIndex !== "string" ||
+          !/^(0|[1-9]\d*)$/.test(instanceIndex) ||
+          !Number.isSafeInteger(Number(instanceIndex)) ||
+          typeof section !== "string"
+        ) {
+          throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
+            "A nonnegative integer instance index and a section are required",
+          )
+        }
+        const definition = liveResourceFor(section)
+        if (definition === undefined) {
+          throw new ProtocolError(ProtocolErrorCode.InvalidParams, "Unknown live resource section")
+        }
+        return readLiveResource(bridge, uri, Number(instanceIndex), definition.render)
+      },
+    },
+  ]
+}
+
+/**
+ * Opts the MCP server into live discovery: polls the registry and emits
+ * `resources/list_changed` when the instance set changes. Standalone readers
+ * use the returned discover function without any polling or notifications.
+ */
+export function observeLiveInstances(server: McpServer, bridge: BridgeClient): DiscoverInstances {
   let previousInstances: string | undefined
   // onclose may close while a tick awaits, so the promise callbacks re-read this state.
   let discoveryState: "idle" | "refreshing" | "closed" = "idle"
-  const discover = async () => {
+  const discover: DiscoverInstances = async () => {
     const instances = await bridge.listInstances()
     const signature = instances.map(({ instance_id }) => instance_id).join("\n")
     if (discoveryState !== "closed") {
@@ -960,82 +1051,5 @@ export function registerLiveResources(server: McpServer, bridge: BridgeClient): 
     onclose?.()
   }
   void refresh()
-
-  for (const definition of LIVE_RESOURCES) {
-    server.registerResource(
-      `${definition.name}-single`,
-      `balatro://${definition.name}`,
-      {
-        title: definition.title,
-        description: `${definition.description} Requires exactly one live Balatro instance.`,
-        mimeType: "text/markdown",
-      },
-      (uri) => readLiveResource(bridge, uri, undefined, definition.render),
-    )
-  }
-
-  server.registerResource(
-    "instances",
-    "balatro://instances",
-    {
-      title: "Balatro Instances",
-      description:
-        "Live Balatro instances numbered oldest-first from 0, with connected instances marked. Indices are recomputed on discovery.",
-      mimeType: "text/markdown",
-    },
-    async (uri) =>
-      markdownContents(
-        uri,
-        instancesToMarkdown(
-          (await discover()).map((instance, instance_index) => ({
-            instance_index,
-            connected: bridge.isConnected(instance.instance_id),
-          })),
-        ),
-      ),
-  )
-
-  const template = new ResourceTemplate("balatro://instances/{instance_index}/{section}", {
-    list: async () => ({
-      resources: (await discover()).flatMap((_instance, instanceIndex) =>
-        LIVE_RESOURCES.map((definition) => ({
-          uri: instanceResourceUri(instanceIndex, definition.name),
-          name: `${definition.name}-${instanceIndex}`,
-          title: `${definition.title} — ${instanceIndex}`,
-          description: definition.description,
-          mimeType: "text/markdown",
-        })),
-      ),
-    }),
-  })
-
-  server.registerResource(
-    "live",
-    template,
-    {
-      title: "Live Balatro State",
-      description: "Live state for a discovery-relative, 0-based Balatro instance index.",
-      mimeType: "text/markdown",
-    },
-    (uri, variables) => {
-      const instanceIndex = variables.instance_index
-      const section = variables.section
-      if (
-        typeof instanceIndex !== "string" ||
-        !/^(0|[1-9]\d*)$/.test(instanceIndex) ||
-        !Number.isSafeInteger(Number(instanceIndex)) ||
-        typeof section !== "string"
-      ) {
-        throw new ProtocolError(
-          ProtocolErrorCode.InvalidParams,
-          "A nonnegative integer instance index and a section are required",
-        )
-      }
-      const definition = liveResourceFor(section)
-      if (definition === undefined) {
-        throw new ProtocolError(ProtocolErrorCode.InvalidParams, "Unknown live resource section")
-      }
-      return readLiveResource(bridge, uri, Number(instanceIndex), definition.render)
-    },
-  )
+  return discover
 }
