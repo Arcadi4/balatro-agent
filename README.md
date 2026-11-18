@@ -47,7 +47,7 @@ Download and unpack the mod into Balatro's `Mods` directory:
 | Linux (Proton) | `~/.steam/steam/steamapps/compatdata/2379780/pfx/drive_c/users/steamuser/AppData/Roaming/Balatro/Mods/` |
 
 > [!TIP]
-> On macOS you can clone and run `make install-mods` from the repository root instead of copying by hand.
+> On macOS you can clone and run `bun run install:mods` from the repository root instead of copying by hand.
 
 The result should look like `.../Balatro/Mods/balatro-agent/main.lua`.
 

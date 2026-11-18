@@ -47,7 +47,7 @@
 | Linux（Proton） | `~/.steam/steam/steamapps/compatdata/2379780/pfx/drive_c/users/steamuser/AppData/Roaming/Balatro/Mods/` |
 
 > [!TIP]
-> 在 macOS 上，也可以克隆并在仓库根目录运行 `make install-mods`，不用手动复制。
+> 在 macOS 上，也可以克隆并在仓库根目录运行 `bun run install:mods`，不用手动复制。
 
 最终路径应该是 `.../Balatro/Mods/balatro-agent/main.lua`。
 

@@ -64,7 +64,7 @@ bun run release:setup
 
 Sign in as an npm organization owner. When npm asks for 2FA, select the option to skip further verification for five minutes. The command creates any missing binary packages as `0.0.0` under a `bootstrap` tag, then configures their GitHub OIDC trusted publishers. If setup is interrupted, rerun it for packages that have not been trusted yet; npm permits one trust configuration per package.
 
-For each release, bump the mod and MCP versions together with `make bump` (or `make bump minor` / `make bump major`) from the repo root, then push the matching `v<version>` tag. The workflow:
+For each release, bump the mod and MCP versions together with `bun run bump` (or `bun run bump minor` / `bun run bump major`) from the repo root, then push the matching `v<version>` tag. The workflow:
 
 1. Validates Lua and TypeScript, builds binaries, and checks each on a matching runner.
 2. Publishes `@balatro-mcp/{os}-{cpu}` automatically with provenance; already published versions are skipped on retries.
