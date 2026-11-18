@@ -65,6 +65,8 @@ The sections are `turn`, `hand`, `jokers`, `consumables`, `deck`, `shop`, `boost
 
 Read `balatro://turn` (or `balatro://instances/<index>/turn`) before acting: it carries the phase, round, legal actions, hand, jokers, and consumables for the next decision.
 
+After an action, a read may show a transition such as `DRAW_TO_HAND` or `NEW_ROUND`, or a shop that has not populated yet. Wait briefly, then read the same resource again until the expected phase or contents appear. Use a deadline in scripts, and do not repeat the action just because the first read was transitional.
+
 ### Reference
 
 ```text
@@ -131,7 +133,7 @@ Game commands map one-to-one onto the MCP action tools. Each accepts `-i, --inst
 
 Card ids are the ids shown by live resources. Pass them as separate positional arguments.
 
-- `select-hand-cards` highlights the listed hand cards. With no ids it clears the selection. Duplicates are rejected, and at most 50 cards can be selected.
+- `select-hand-cards` highlights the listed hand cards. With no ids it clears the selection. Duplicates are rejected. The game enforces the current selection limit, which is five cards in unmodded Balatro.
 - `reorder-hand` and `reorder-jokers` take every current card id exactly once, left to right. They reject a partial list, a duplicate, or an unknown id.
 - `--target` names a hand card the consumable or booster pick affects. It is repeatable, accepts at most 50 distinct ids, and is required for hand-targeting consumables.
 - `buy-consumable --use` applies the consumable immediately instead of storing it. `--target` is valid only together with `--use`.
@@ -182,9 +184,9 @@ The shell keeps one connection per instance and reuses it across commands, inclu
 
 ## Output
 
-Human mode writes the command's Markdown rendering, or the resource text for `read`, to stdout. Errors are written to stderr as `Error [<code>]: <message>`, followed by `details` as JSON when present.
+Human mode writes the command's Markdown rendering, or the resource text for `read`, to stdout. A successful tool result without a text rendering falls back to compact JSON on stdout. Errors are written to stderr as `Error [<code>]: <message>`, followed by `details` as JSON when present.
 
-`--json` writes exactly one JSON value to stdout for both success and failure, leaving stderr for unexpected diagnostics:
+`--json` writes one JSON value per command result to stdout. `--help`, `--version`, a bare invocation, and a group without a subcommand (`wiki` or `postgame`) still print plain text. These exceptions also apply inside `repl`, where `--json` suppresses the prompt and each command produces its own output. Blank lines and `exit` produce no output.
 
 - Game actions print the MCP envelope `{ "ok": true, "data": {...} }`. The CLI performs no successor read, so no `next` object follows an action.
 - `connect` prints `{ "ok": true, "instance_index": N, "phase": "..." }`; `disconnect` prints `{ "ok": true, "instance_index": N }`.
