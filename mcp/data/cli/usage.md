@@ -38,7 +38,7 @@ Every Balatro launch is a separate live instance. `read balatro://instances` lis
 - With exactly one live instance, game commands accept an omitted instance and unscoped live resource URIs resolve to it.
 - With several live instances, pass `-i, --instance <index>` to a game command, or read a scoped resource such as `balatro://instances/1/turn`. An omitted index fails before acting with `INSTANCE_SELECTION_REQUIRED` and the current numbered list.
 - With no live instance, live requests fail with `GAME_NOT_RUNNING`.
-- `-i, --instance` is accepted only by game commands and by `connect` / `disconnect`. Reads never take it: `read` resolves exactly the URI it is given, so the scoped form is how a read chooses a game.
+- `-i, --instance` is accepted by game commands, `connect`, `disconnect`, and `repl`. Reads reject the option: use the scoped URI to select a game.
 
 One-shot commands have no persistent session. Actions and live reads open IPC connections on demand, and `connect` is optional. `connect` in a one-shot invocation resolves the target, opens a session, and reports its phase before the process exits; `disconnect` in a one-shot invocation has no earlier session to preserve and can report that no session was open. Inside `repl`, both commands carry real state until the process ends.
 

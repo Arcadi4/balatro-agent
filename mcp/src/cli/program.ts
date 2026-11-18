@@ -279,12 +279,19 @@ function addConnectionCommands(program: Command, context: ProgramContext): void 
   )
 }
 
+function rejectInstance(_command: Command, action: Command): void {
+  if (action.optsWithGlobals<{ instance?: number }>().instance !== undefined) {
+    throw new InvalidArgumentError(`--instance does not apply to ${action.name()}.`)
+  }
+}
+
 function addReadCommand(program: Command, bridge: BridgeClient, context: ProgramContext): void {
   const command = program
     .command("read")
     .description("Read any exposed resource by URI.")
     .argument("<uri>", "Resource URI, such as balatro://instances/0/turn.")
     .addHelpText("after", "The URI selects the target; --instance does not apply to reads.")
+    .hook("preAction", rejectInstance)
   addDocumentationPointer(command)
   command.action(async function (this: Command): Promise<void> {
     const result = await readResource(resourceCatalog(bridge), this.args[0] ?? "")
@@ -294,6 +301,7 @@ function addReadCommand(program: Command, bridge: BridgeClient, context: Program
 
 function addWikiCommand(program: Command, context: ProgramContext): void {
   const wiki = addGroup(program, "wiki", "Search the Balatro Wiki.", context)
+  wiki.hook("preAction", rejectInstance)
   addToolCommand(
     wiki,
     "search",
@@ -323,6 +331,7 @@ function addPostgameCommand(program: Command, context: ProgramContext): void {
     "Write post-game analyses; read them with `read postgame://`.",
     context,
   )
+  postgame.hook("preAction", rejectInstance)
   addToolCommand(
     postgame,
     "new",
