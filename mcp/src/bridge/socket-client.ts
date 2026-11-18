@@ -323,11 +323,6 @@ export class BridgeClient {
     this.rejectPendingForSession(session, error)
     if (this.sessions.get(session.instanceId) === session) this.sessions.delete(session.instanceId)
     state.connection.socket.destroy()
-    if (!this.disposed && state.phase === "ready") {
-      process.stderr.write(
-        `[balatro-mcp] bridge ${session.instanceId} disconnected: ${error.message}\n`,
-      )
-    }
   }
 
   private openSession(instance: BridgeInstance): Promise<ConnectInfo> {
@@ -437,8 +432,15 @@ export class BridgeClient {
       if (this.isActiveConnection(session, connection)) socket.destroy()
     })
     socket.once("close", () => {
-      if (this.isActiveConnection(session, connection))
-        this.closeSession(session, this.connectionError(connection))
+      if (!this.isActiveConnection(session, connection)) return
+      const error = this.connectionError(connection)
+      const wasReady = session.state.phase === "ready"
+      this.closeSession(session, error)
+      if (wasReady) {
+        process.stderr.write(
+          `[balatro-mcp] bridge ${session.instanceId} disconnected: ${error.message}\n`,
+        )
+      }
     })
   }
 
