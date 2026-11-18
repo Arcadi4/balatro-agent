@@ -21,7 +21,7 @@
     "prepare": "vp config"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.19.2",
     "typescript": "^7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
