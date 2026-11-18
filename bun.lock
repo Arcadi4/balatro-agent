@@ -7,7 +7,8 @@
       "devDependencies": {
         "@types/node": "^24.0.0",
         "typescript": "^7.0.2",
-        "vite-plus": "1.7.0",
+        "vite": "catalog:",
+        "vite-plus": "catalog:",
       },
     },
     "mcp": {
@@ -28,10 +29,17 @@
         "@types/hast": "^3.0.5",
         "@types/mdast": "^4.0.4",
         "typescript": "^7.0.2",
-        "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
-        "vite-plus": "1.7.0",
+        "vite": "catalog:",
+        "vite-plus": "catalog:",
       },
     },
+  },
+  "overrides": {
+    "vite": "catalog:",
+  },
+  "catalog": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
+    "vite-plus": "1.7.0",
   },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],

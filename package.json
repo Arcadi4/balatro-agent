@@ -17,12 +17,21 @@
     "test": "bun --cwd=mcp run test",
     "format": "bun --bun vp fmt scripts package.json tsconfig.json && bun --cwd=mcp run format",
     "build:release": "bun --cwd=mcp run build:release",
-    "ci:nexus": "vpx ./scripts/ci/nexus-metadata.ts"
+    "ci:nexus": "vpx ./scripts/ci/nexus-metadata.ts",
+    "prepare": "vp config"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^7.0.2",
-    "vite-plus": "1.7.0"
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   },
-  "packageManager": "bun@1.4.4"
+  "overrides": {
+    "vite": "catalog:"
+  },
+  "packageManager": "bun@1.4.4",
+  "catalog": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
+    "vite-plus": "1.7.0"
+  }
 }

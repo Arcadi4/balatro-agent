@@ -54,8 +54,8 @@
     "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
     "typescript": "^7.0.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
-    "vite-plus": "1.7.0"
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000"
