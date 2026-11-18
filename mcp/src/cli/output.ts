@@ -87,8 +87,8 @@ function cleanDetails(
 }
 
 function printError(error: CliError, json: boolean): void {
+  const details = cleanDetails(error.error_code, error.details)
   if (json) {
-    const details = cleanDetails(error.error_code, error.details)
     writeJson({
       error_code: error.error_code,
       message: error.message,
@@ -97,6 +97,7 @@ function printError(error: CliError, json: boolean): void {
     return
   }
   writeLine(process.stderr, `Error [${error.error_code}]: ${error.message}`)
+  if (details !== undefined) writeLine(process.stderr, JSON.stringify(details))
 }
 
 function zodMessage(error: ZodError): string {
