@@ -15,7 +15,7 @@
     "build": "bun --cwd=mcp run build",
     "typecheck": "bun --bun tsc --noEmit -p . && bun --cwd=mcp run typecheck",
     "test": "bun --cwd=mcp run test",
-    "format": "bun --bun vp fmt scripts package.json tsconfig.json && bun --cwd=mcp run format",
+    "format": "bun --bun vp fmt",
     "build:release": "bun --cwd=mcp run build:release",
     "ci:nexus": "vpx ./scripts/ci/nexus-metadata.ts",
     "prepare": "vp config"

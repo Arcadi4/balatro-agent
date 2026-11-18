@@ -39,11 +39,11 @@ Download and unpack the mod into Balatro's `Mods` directory:
 - [Nexus Mods](https://www.nexusmods.com/balatro/mods/927): manual download, or use "Mod Manager Download" together with the [community Vortex extension](https://www.nexusmods.com/site/mods/1315), which also installs Lovely and Steamodded for you.
 - [GitHub Releases](https://github.com/Arcadi4/balatro-agent/releases/latest): grab `balatro-agent-vX.Y.Z.zip` from the latest release.
 
-| Platform | Mods directory |
-| --- | --- |
-| macOS | `~/Library/Application Support/Balatro/Mods/` |
-| Windows | `%AppData%\Balatro\Mods\` |
-| Linux (native) | `~/.local/share/love/Balatro/Mods/` |
+| Platform       | Mods directory                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------- |
+| macOS          | `~/Library/Application Support/Balatro/Mods/`                                                           |
+| Windows        | `%AppData%\Balatro\Mods\`                                                                               |
+| Linux (native) | `~/.local/share/love/Balatro/Mods/`                                                                     |
 | Linux (Proton) | `~/.steam/steam/steamapps/compatdata/2379780/pfx/drive_c/users/steamuser/AppData/Roaming/Balatro/Mods/` |
 
 > [!TIP]
@@ -60,7 +60,7 @@ Add the server to your MCP client configuration (Claude Code, Cursor, etc.), che
   "mcpServers": {
     "balatro": {
       "command": "npx",
-      "args": ["-y","balatro-mcp"]
+      "args": ["-y", "balatro-mcp"]
     }
   }
 }

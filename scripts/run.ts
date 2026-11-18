@@ -1,5 +1,5 @@
-import { access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
 
 import { balatroDir, loveBin, lovelyDylib } from "./lib/environment.js";
 import { installMods } from "./lib/install-mods.js";
