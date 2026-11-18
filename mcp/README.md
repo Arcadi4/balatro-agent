@@ -10,13 +10,31 @@ Use this MCP server with the [game mod](https://www.nexusmods.com/games/balatro/
 
 [GitHub](https://github.com/Arcadi4/balatro-agent)
 
-Run `npx -y balatro-mcp`. The npm package selects a native executable for macOS (arm64/x64), Linux (glibc, arm64/x64), or Windows (x64). Bun is embedded in the executable; users do not need to install it. Keep npm optional dependencies enabled. The native archives on [GitHub Releases](https://github.com/Arcadi4/balatro-agent/releases) can also run directly, without Node or Bun: use the executable path as your MCP client's command. `balatro-mcp --version` prints its version without starting the server.
+Run `npx -y balatro-mcp`. The npm package installs native executables for macOS (arm64/x64), Linux (glibc, arm64/x64), or Windows (x64). Bun is embedded in the executables; users do not need to install it. Keep npm optional dependencies enabled. The native archives on [GitHub Releases](https://github.com/Arcadi4/balatro-agent/releases) keep their existing names and contain both `balatro-mcp` and `balatro`, so they can run directly without Node or Bun: use the appropriate executable path as your MCP client's command, or run the CLI. `balatro-mcp --version` prints its version without starting the server.
 
 By default every mutating action is followed by a settled-state read, and the result carries a `## Next: <uri>` snapshot of the next decision surface so the agent never has to read it again. Pass `--no-auto-context` to turn that feed off: action results then report only what they changed, and the client reads `balatro://turn` itself. Prefer the flag with code-mode clients (OpenCode's MCP code mode, Codex, and similar): they chain action calls and resource reads inside one program, so each snapshot spends context on state they can read at the moment they need it.
 
 ```sh
 npx -y balatro-mcp --no-auto-context
 ```
+
+## CLI
+
+The package also installs `balatro`, a command-line client for the same server. It reads every MCP resource and runs the same validated game actions, wiki search, and post-game writes without an MCP client.
+
+```sh
+npm install -g balatro-mcp
+balatro --help
+balatro read balatro://instances
+```
+
+Without a global install, run it through npm:
+
+```sh
+npm exec --package=balatro-mcp -- balatro read balatro://instances
+```
+
+The npm name `balatro` belongs to an unrelated package, so plain `npx balatro` does not run this CLI. The full command reference is `balatro read balatro://cli`, which is also the `balatro://cli` MCP resource.
 
 ## Live instances
 
@@ -50,11 +68,11 @@ bun run dev
 bun run build
 ```
 
-The build produces `dist/balatro-mcp` (`dist/balatro-mcp.exe` on Windows) and requires no Node runtime.
+The build produces `dist/balatro-mcp` and `dist/balatro` (`dist/balatro-mcp.exe` and `dist/balatro.exe` on Windows) and requires no Node runtime.
 
 ## Releases
 
-`bun run build:release` creates five platform packages and the `balatro-mcp` launcher under `dist/npm/`, downloading Bun's cross-compilation runtimes on first use. The source package is private; only generated packages are published, and each launcher dependency is pinned to the exact release version.
+`bun run build:release` creates five platform packages and the `balatro-mcp` launcher under `dist/npm/`, downloading Bun's cross-compilation runtimes on first use. Each platform package carries both binaries, and the launcher exposes the `balatro-mcp` and `balatro` commands. The source package is private; only generated packages are published, and each launcher dependency is pinned to the exact release version.
 
 For each release, bump the mod and MCP versions together with `bun run bump` (or `bun run bump minor` / `bun run bump major`) from the repo root, then push the matching `v<version>` tag. The workflow:
 

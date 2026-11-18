@@ -7,32 +7,48 @@ import { targets } from "./platforms.js"
 const root = join(import.meta.dir, "..")
 const dist = join(root, "dist")
 const release = Bun.argv.includes("--release")
-const executable = process.platform === "win32" ? "balatro-mcp.exe" : "balatro-mcp"
+const executables = [
+  { entry: "src/index.ts", name: "balatro-mcp" },
+  { entry: "src/cli.ts", name: "balatro" },
+] as const
+const stubs = ["cli.cjs", "balatro.cjs"] as const
+const launcher = "launch.cjs"
+
+function executableName(name: string, os: string): string {
+  return `${name}${os === "win32" ? ".exe" : ""}`
+}
+
+async function buildExecutable(
+  entry: string,
+  outfile: string,
+  target?: (typeof targets)[number]["target"],
+): Promise<void> {
+  await Bun.build({
+    entrypoints: [join(root, entry)],
+    compile: target === undefined ? { outfile } : { target, outfile },
+    minify: true,
+    sourcemap: "linked",
+  })
+  await chmod(outfile, 0o755)
+}
 
 await rm(dist, { recursive: true, force: true })
 await mkdir(dist, { recursive: true })
 process.chdir(dist)
 
 if (!release) {
-  await Bun.build({
-    entrypoints: [join(root, "src/index.ts")],
-    compile: { outfile: join(dist, executable) },
-    minify: true,
-    sourcemap: "linked",
-  })
+  for (const { entry, name } of executables) {
+    await buildExecutable(entry, join(dist, executableName(name, process.platform)))
+  }
 } else {
   const optionalDependencies: Record<string, string> = {}
   for (const { os, cpu, target } of targets) {
     const name = `@balatro-mcp/${os}-${cpu}`
     const dir = join(dist, "npm", `${os}-${cpu}`)
-    const binary = os === "win32" ? "balatro-mcp.exe" : "balatro-mcp"
-    await Bun.build({
-      entrypoints: [join(root, "src/index.ts")],
-      compile: { target, outfile: join(dir, "bin", binary) },
-      minify: true,
-      sourcemap: "linked",
-    })
-    await chmod(join(dir, "bin", binary), 0o755)
+    for (const { entry, name: executable } of executables) {
+      const binary = executableName(executable, os)
+      await buildExecutable(entry, join(dir, "bin", binary), target)
+    }
     await Bun.write(
       join(dir, "package.json"),
       JSON.stringify(
@@ -68,8 +84,8 @@ if (!release) {
         license: metadata.license,
         author: metadata.author,
         repository: metadata.repository,
-        bin: { "balatro-mcp": "cli.cjs" },
-        files: ["cli.cjs"],
+        bin: { "balatro-mcp": "cli.cjs", balatro: "balatro.cjs" },
+        files: [...stubs, launcher],
         engines: { node: ">=20" },
         optionalDependencies,
       },
@@ -77,8 +93,12 @@ if (!release) {
       2,
     ),
   )
-  await Bun.write(join(dir, "cli.cjs"), Bun.file(join(import.meta.dir, "cli.cjs")))
-  await chmod(join(dir, "cli.cjs"), 0o755)
+  for (const file of [...stubs, launcher]) {
+    await Bun.write(join(dir, file), Bun.file(join(import.meta.dir, file)))
+  }
+  for (const stub of stubs) {
+    await chmod(join(dir, stub), 0o755)
+  }
   for (const file of ["README.md", "LICENSE"]) {
     await Bun.write(join(dir, file), Bun.file(join(root, file)))
   }
