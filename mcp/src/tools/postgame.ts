@@ -1,11 +1,11 @@
-import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
+import type { CallToolResult, McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { createPostgame } from "../postgame.js"
 import { toolError, toolErrorSchema, toolResult } from "../response.js"
 import NEW_POSTGAME_DESCRIPTION from "./descriptions/new-postgame.txt" with { type: "text" }
 
-const newPostgameInputSchema = z
+export const newPostgameInputSchema = z
   .object({
     title: z.string().min(1).describe("Short title naming the run, its strategy, and its outcome."),
     summary: z
@@ -48,6 +48,20 @@ function newPostgameToMarkdown(data: Record<string, unknown>): string {
   ].join("\n")
 }
 
+export async function writePostgame(
+  args: z.output<typeof newPostgameInputSchema>,
+): Promise<CallToolResult> {
+  try {
+    const ref = await createPostgame(args)
+    return toolResult({ ...ref }, newPostgameToMarkdown)
+  } catch (error) {
+    return toolError(
+      "POSTGAME_WRITE_FAILED",
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+}
+
 export function registerPostgameTools(server: McpServer): void {
   server.registerTool(
     "new_postgame",
@@ -58,16 +72,6 @@ export function registerPostgameTools(server: McpServer): void {
       outputSchema: newPostgameOutputSchema,
       annotations: NEW_POSTGAME_ANNOTATIONS,
     },
-    async (args) => {
-      try {
-        const ref = await createPostgame(args)
-        return toolResult({ ...ref }, newPostgameToMarkdown)
-      } catch (error) {
-        return toolError(
-          "POSTGAME_WRITE_FAILED",
-          error instanceof Error ? error.message : String(error),
-        )
-      }
-    },
+    (args) => writePostgame(args),
   )
 }

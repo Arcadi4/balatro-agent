@@ -15,6 +15,12 @@ import {
 export interface SuccessorOptions extends CommandResultOptions {
   settleTimeoutMs?: number
   pollMs?: number
+  /**
+   * Set false to skip every successor read: no pre-command snapshot for
+   * changed-card rules and no settle poll after the command. Callers that leave
+   * it unset keep the --no-auto-context flag and settle behavior.
+   */
+  successor?: boolean
 }
 
 const STATE_TIMEOUT_MS = 1_500
@@ -136,6 +142,7 @@ interface SuccessorSection {
  * the next surface the mod reports as ready, and nothing when none arrives in
  * time. Launching with --no-auto-context drops that read entirely: the command
  * runs with no state read before it, no settle poll after it, and no next field.
+ * Passing successor: false does the same for one call regardless of the flag.
  *
  * The target is resolved once, before anything is sent, and its private
  * identity then carries every read and write in the call: an instance starting
@@ -150,7 +157,12 @@ export async function commandWithSuccessor(
 ): Promise<CallToolResult> {
   return withBridgeErrors(
     async () => {
-      const rule = autoContextEnabled() ? SUCCESSOR_RULES[kind] : undefined
+      const rule =
+        options.successor === false
+          ? undefined
+          : autoContextEnabled()
+            ? SUCCESSOR_RULES[kind]
+            : undefined
       const target = await bridge.resolveInstance(options.instanceIndex)
       await bridge.connect(target.instance)
       const instanceId = target.instance.instance_id
