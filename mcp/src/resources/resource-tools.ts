@@ -1,13 +1,18 @@
 import type { CallToolResult, McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
-import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError } from "@modelcontextprotocol/server"
+import {
+  ProtocolError,
+  ProtocolErrorCode,
+  ResourceNotFoundError,
+} from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { BridgeError, type BridgeClient } from "../bridge/socket-client.js"
+import { POSTGAME_URI_SCHEME } from "../postgame.js"
 import { toolError, toolResult } from "../response.js"
 import READ_RESOURCE_DESCRIPTION from "../tools/descriptions/read-resource.txt" with { type: "text" }
 import { readResource } from "./catalog.js"
 import { type CachedLiveState, readLiveResourceUri } from "./live.js"
-import { POSTGAME_URI_SCHEME, postgameResources } from "../postgame.js"
+import { postgameResources } from "./postgame.js"
 import { referenceResources } from "./reference.js"
 import { WIKI_INDEX_URI, wikiResources } from "./wiki.js"
 

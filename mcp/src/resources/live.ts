@@ -76,7 +76,6 @@ export async function readLiveResource(
   return markdownContents(uri, render(payload, uriString))
 }
 
-
 export async function readLiveResourceUri(
   bridge: BridgeClient,
   uri: string,
