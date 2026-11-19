@@ -56,15 +56,7 @@ The build produces `dist/balatro-mcp` (`dist/balatro-mcp.exe` on Windows) and re
 
 `bun run build:release` creates five platform packages and the `balatro-mcp` launcher under `dist/npm/`, downloading Bun's cross-compilation runtimes on first use. The source package is private; only generated packages are published, and each launcher dependency is pinned to the exact release version.
 
-After registering the `@balatro-mcp` npm organization, run once from `mcp/`:
-
-```sh
-bun run release:setup
-```
-
-Sign in as an npm organization owner. When npm asks for 2FA, select the option to skip further verification for five minutes. The command creates any missing binary packages as `0.0.0` under a `bootstrap` tag, then configures their GitHub OIDC trusted publishers. If setup is interrupted, rerun it for packages that have not been trusted yet; npm permits one trust configuration per package.
-
-For each release, bump the mod and MCP versions together with `make bump` (or `make bump minor` / `make bump major`) from the repo root, then push the matching `v<version>` tag. The workflow:
+For each release, bump the mod and MCP versions together with `bun run bump` (or `bun run bump minor` / `bun run bump major`) from the repo root, then push the matching `v<version>` tag. The workflow:
 
 1. Validates Lua and TypeScript, builds binaries, and checks each on a matching runner.
 2. Publishes `@balatro-mcp/{os}-{cpu}` automatically with provenance; already published versions are skipped on retries.
@@ -72,5 +64,3 @@ For each release, bump the mod and MCP versions together with `make bump` (or `m
 4. Uploads the mod and native archives to GitHub Releases.
 
 You manage one version and approve one launcher package per release. No individual binary package approvals or expiring publish tokens are required.
-
-See [npm bulk trusted-publisher setup](https://docs.npmjs.com/cli/v11/commands/npm-trust/#bulk-usage) for the shared 2FA session behavior.

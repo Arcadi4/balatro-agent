@@ -1,23 +1,19 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "balatro-mod-dev": {
       "source": "liafonx/open-balatro",
       "sourceType": "github",
       "skillPath": "balatro-mod-dev/skills/balatro-mod-dev/SKILL.md",
-      "computedHash": "304f18757606e842ed050cb779588de4fc164d062b246ce76cc8375770bae260"
+      "computedHash": "942876f8d88e86d6488258de8cb66c44c0610b6a78861a4dc759b909c2e012c6",
+      "commit": "c694214b3e77f85e81dc95018646fc7c3d71dad4"
     },
     "mcp-builder": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "skillPath": "skills/mcp-builder/SKILL.md",
-      "computedHash": "826e46adf81e1372282e205c34e1a2ee876e72148007726e4a2512599d2fef7b"
-    },
-    "prompt-engineering-patterns": {
-      "source": "wshobson/agents",
-      "sourceType": "github",
-      "skillPath": "plugins/llm-application-dev/skills/prompt-engineering-patterns/SKILL.md",
-      "computedHash": "2bf9fca17f1ce77dbf6c037843389b19caef4e8b4ab48f9227369953312008cc"
+      "computedHash": "5a699fa929d99d7e6b1ebe10f13bf960d9ad452b70bd0733efd5d1de9524e285",
+      "commit": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba"
     }
   }
 }

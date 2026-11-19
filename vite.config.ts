@@ -1,4 +1,4 @@
-import { defineConfig } from "vite-plus"
+import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   lint: {
@@ -7,10 +7,16 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
     plugins: ["oxc", "promise", "eslint", "typescript", "import", "unicorn"],
   },
+  staged: { "*": "vp check --fix" },
   fmt: {
-    ignorePatterns: [],
-    semi: false,
+    ignorePatterns: ["mcp/dist/**"],
     sortImports: true,
     sortPackageJson: true,
+    overrides: [
+      {
+        files: ["mcp/**"],
+        options: { semi: false },
+      },
+    ],
   },
-})
+});

@@ -13,11 +13,11 @@ Live state ships as resources: `balatro://instances`, `balatro://instances/{inst
 
 ### Bun
 
-No Node-based development command and no Node in the MCP build job: `bunfig.toml` selects Bun for package executables, and Bun's built-in Node compatibility API covers the remaining `node:` imports. The GitHub Actions build job uses only Bun; Node/npm appear solely in the publishing job, and `npx` users receive a native binary. `bun run release:setup` is the one interactive npm step; `mcp/README.md` owns the release flow.
+The root `package.json` is a private Bun workspace manifest. `bun run doctor`, `bun run install:mods`, `bun run run`, and `bun run bump` replace the old Makefile targets; root scripts are TypeScript run with `vpx`, while MCP commands delegate through `bun --cwd=mcp run <name>`. `mcp/package.json` stays the published package and, with `mod/manifest.json`, the only version source.
 
-### Make
+Bun installs and runs everything. `bunfig.toml` selects Bun for package executables, and Bun's built-in Node compatibility API covers the remaining `node:` imports. No Node in the MCP build job: simple CI steps stay inline shell, while the Nexus metadata resolution runs as a `vpx` script in the publishing job, where Node/npm already exist. Shared lint and format settings live in the root `vite.config.ts`, with package differences as overrides; `mcp/README.md` owns the release flow.
 
-`make doctor` checks the local Balatro, Lovely, and SMODS paths, `make install-mods` syncs `mod/` into the Balatro `Mods` directory, and `make run` syncs and then launches Balatro with Lovely (`ARGS="..."` passes game arguments). `BALATRO_DIR` and `BALATRO_SAVE` override the macOS defaults.
+`BALATRO_DIR` and `BALATRO_SAVE` override the macOS defaults used by `doctor` and `run`.
 
 ### TypeScript conventions
 

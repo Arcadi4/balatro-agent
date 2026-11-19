@@ -14,7 +14,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
       - name: Verify release versions
         run: |
@@ -32,10 +35,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends luajit
           find mod -name '*.lua' -print0 | xargs -0 -n1 sh -c 'luajit -b "$1" /dev/null' _
 
-      - name: Build native MCP packages
-        working-directory: mcp
+      - name: Build and typecheck native MCP packages
         run: |
-          bun install --frozen-lockfile
           bun run typecheck
           bun run build:release
 
@@ -67,11 +68,17 @@ jobs:
         with:
           name: mcp-release
           path: mcp/dist
-      # Node/npm are used only for registry OIDC staging, never for development or builds.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      # Node/npm are used for registry OIDC staging and the vpx script runner.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
       - name: Publish native packages automatically
         working-directory: mcp/dist/npm
@@ -113,58 +120,11 @@ jobs:
         if: ${{ env.NEXUSMODS_API_KEY != '' }}
         id: nexus_meta
         env:
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
           FILE_ID_INPUT: ${{ secrets.NEXUSMODS_FILE_ID || vars.NEXUSMODS_FILE_ID || '' }}
           MOD_ID_INPUT: ${{ secrets.NEXUSMODS_MOD_ID || vars.NEXUSMODS_MOD_ID || '' }}
           GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          echo "version=$tag" >> "$GITHUB_OUTPUT"
-
-          MOD_ID="$MOD_ID_INPUT"
-          if [ -z "$MOD_ID" ]; then
-            mod_resp="$(curl -sS -H "apikey: $NEXUSMODS_API_KEY" -H "Accept: application/json" \
-              "https://api.nexusmods.com/v3/games/balatro/mods/927" || true)"
-            MOD_ID="$(echo "$mod_resp" | jq -r '.data.id // empty' 2>/dev/null || true)"
-          fi
-          echo "mod_id=$MOD_ID" >> "$GITHUB_OUTPUT"
-
-          FILE_ID="$FILE_ID_INPUT"
-          if [ -z "$FILE_ID" ] && [ -n "$MOD_ID" ]; then
-            files_resp="$(curl -sS -H "apikey: $NEXUSMODS_API_KEY" -H "Accept: application/json" \
-              "https://api.nexusmods.com/v3/mods/$MOD_ID/files" || true)"
-            FILE_ID="$(echo "$files_resp" | jq -r '
-              .data.mod_files[]? |
-              select(.is_active == true or (.versions[]?.category == "main")) |
-              .id' 2>/dev/null | head -n 1 || true)"
-            if [ -z "$FILE_ID" ]; then
-              FILE_ID="$(echo "$files_resp" | jq -r '.data.mod_files[0]?.id // empty' 2>/dev/null || true)"
-            fi
-          fi
-
-          if [ -z "$FILE_ID" ]; then
-            echo "::error::Could not resolve Nexus Mods file_id. Set the NEXUSMODS_FILE_ID secret or repository variable (found under Files tab -> API Info on Nexus Mods)."
-            exit 1
-          fi
-          echo "file_id=$FILE_ID" >> "$GITHUB_OUTPUT"
-
-          CHANGELOG=""
-          if [ -n "$MOD_ID" ]; then
-            BODY="$(gh release view "$GITHUB_REF_NAME" --json body -q .body 2>/dev/null || true)"
-            if [ -n "$BODY" ]; then
-              CHANGELOG="$(printf '%s\n' "$BODY" | sed -E \
-                -e '/^[[:space:]]*#{1,6}[[:space:]]/d' \
-                -e 's/\*\*//g' \
-                -e 's/`//g' \
-                -e 's/\[([^]]*)\]\(([^)]*)\)/\1 (\2)/g' | \
-                sed -e '/./,$!d')"
-            fi
-          fi
-
-          {
-            echo "changelog<<__EOF__"
-            printf '%s\n' "$CHANGELOG"
-            echo "__EOF__"
-          } >> "$GITHUB_OUTPUT"
+        run: bun run ci:nexus
 
       - name: Upload to Nexus Mods
         if: ${{ env.NEXUSMODS_API_KEY != '' }}

@@ -1,0 +1,37 @@
+{
+  "name": "balatro-agent",
+  "private": true,
+  "workspaces": [
+    "mcp"
+  ],
+  "type": "module",
+  "scripts": {
+    "help": "vpx ./scripts/help.ts",
+    "doctor": "vpx ./scripts/doctor.ts",
+    "install:mods": "vpx ./scripts/install-mods.ts",
+    "run": "vpx ./scripts/run.ts",
+    "bump": "vpx ./scripts/bump.ts",
+    "dev": "bun --cwd=mcp run dev",
+    "build": "bun --cwd=mcp run build",
+    "typecheck": "bun --bun tsc --noEmit -p . && bun --cwd=mcp run typecheck",
+    "test": "bun --cwd=mcp run test",
+    "format": "bun --bun vp fmt",
+    "build:release": "bun --cwd=mcp run build:release",
+    "ci:nexus": "vpx ./scripts/ci/nexus-metadata.ts",
+    "prepare": "vp config"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "overrides": {
+    "vite": "catalog:"
+  },
+  "packageManager": "bun@1.4.4",
+  "catalog": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
+    "vite-plus": "1.7.0"
+  }
+}

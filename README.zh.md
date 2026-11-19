@@ -39,15 +39,15 @@
 - [Nexus Mods 页面](https://www.nexusmods.com/balatro/mods/927)：手动下载，或配合[社区 Vortex 扩展](https://www.nexusmods.com/site/mods/1315)使用"Mod Manager Download"，它还能帮你自动安装 Lovely 和 Steamodded。
 - [GitHub Releases](https://github.com/Arcadi4/balatro-agent/releases/latest)：从最新发布版下载 `balatro-agent-vX.Y.Z.zip`。
 
-| 平台 | Mods 目录 |
-| --- | --- |
-| macOS | `~/Library/Application Support/Balatro/Mods/` |
-| Windows | `%AppData%\Balatro\Mods\` |
-| Linux（原生） | `~/.local/share/love/Balatro/Mods/` |
+| 平台            | Mods 目录                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| macOS           | `~/Library/Application Support/Balatro/Mods/`                                                           |
+| Windows         | `%AppData%\Balatro\Mods\`                                                                               |
+| Linux（原生）   | `~/.local/share/love/Balatro/Mods/`                                                                     |
 | Linux（Proton） | `~/.steam/steam/steamapps/compatdata/2379780/pfx/drive_c/users/steamuser/AppData/Roaming/Balatro/Mods/` |
 
 > [!TIP]
-> 在 macOS 上，也可以克隆并在仓库根目录运行 `make install-mods`，不用手动复制。
+> 在 macOS 上，也可以克隆并在仓库根目录运行 `bun run install:mods`，不用手动复制。
 
 最终路径应该是 `.../Balatro/Mods/balatro-agent/main.lua`。
 
