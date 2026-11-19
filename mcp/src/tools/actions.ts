@@ -1,8 +1,13 @@
-import type { McpServer, ToolAnnotations } from "@modelcontextprotocol/server"
+import type {
+  CallToolResult,
+  McpServer,
+  StandardSchemaWithJSON,
+  ToolAnnotations,
+} from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import type { BridgeClient } from "../bridge/socket-client.js"
-import { asRecord, asText, toolErrorSchema, type CommandResultOptions } from "../response.js"
+import { asRecord, asText, toolErrorSchema, type MarkdownFormatter } from "../response.js"
 import BUY_BOOSTER_DESCRIPTION from "./descriptions/buy-booster.txt" with { type: "text" }
 import BUY_CARD_DESCRIPTION from "./descriptions/buy-card.txt" with { type: "text" }
 import BUY_CONSUMABLE_DESCRIPTION from "./descriptions/buy-consumable.txt" with { type: "text" }
@@ -28,7 +33,7 @@ import SORT_HAND_DESCRIPTION from "./descriptions/sort-hand.txt" with { type: "t
 import USE_CONSUMABLE_DESCRIPTION from "./descriptions/use-consumable.txt" with { type: "text" }
 import { commandWithSuccessor } from "./successor.js"
 
-export const INSTANCE_INDEX_DESCRIPTION =
+const INSTANCE_INDEX_DESCRIPTION =
   "Index of the live Balatro instance to act on, as listed by balatro://instances. " +
   "Omit it when exactly one instance is running; with several running an omitted index " +
   "fails with INSTANCE_SELECTION_REQUIRED, so read balatro://instances and pass the index " +
@@ -37,7 +42,7 @@ export const INSTANCE_INDEX_DESCRIPTION =
   "demand: calling connect first is optional."
 
 const instanceIndexSchema = z.number().int().min(0).optional().describe(INSTANCE_INDEX_DESCRIPTION)
-const emptySchema = z.object({ instance_index: instanceIndexSchema }).strict()
+export const instanceIndexInputSchema = z.object({ instance_index: instanceIndexSchema }).strict()
 const cardIdSchema = z
   .union([z.string().min(1), z.number().int()])
   .describe("Card ID from game state.")
@@ -99,6 +104,11 @@ const buyConsumableSchema = z
     instance_index: instanceIndexSchema,
   })
   .strict()
+  // The mod rejects targets without use, so fail here with the field at fault.
+  .refine(({ targets, use }) => targets === undefined || use, {
+    message: "targets is only valid when use=true",
+    path: ["targets"],
+  })
 const normalRunSchema = z
   .object({
     deck: z.string().min(1).describe("Deck key (e.g. b_red, b_blue)."),
@@ -204,299 +214,310 @@ function handSelectionToMarkdown(result: Record<string, unknown>): string {
   return lines.join("\n")
 }
 
-interface ActionTool {
-  name: string
-  title: string
-  description: string
-  command: string
-  annotations: ToolAnnotations
-  options?: CommandResultOptions
+interface ActionInvocation {
+  args?: Record<string, unknown>
+  instanceIndex?: number
+  toMarkdown?: MarkdownFormatter
 }
 
-const NO_ARG_TOOLS: ActionTool[] = [
-  {
-    name: "balatro_select_blind",
+interface ActionConfig<C extends string, S extends z.ZodType> {
+  command: C
+  title: string
+  description: string
+  inputSchema: S
+  annotations: ToolAnnotations
+  toInvocation: (input: z.output<S>) => ActionInvocation
+}
+
+export interface GameAction<C extends string = string, S extends z.ZodType = z.ZodType> {
+  readonly command: C
+  readonly title: string
+  readonly description: string
+  readonly inputSchema: S
+  readonly outputSchema: typeof commandOutputSchema
+  readonly annotations: ToolAnnotations
+  /** Runs the action with no successor read, for the CLI. */
+  execute(bridge: BridgeClient, raw: unknown): Promise<CallToolResult>
+  /** Registers the MCP tool, which keeps the auto-context flag behavior. */
+  register(server: McpServer, bridge: BridgeClient): void
+}
+
+function invokeAction<C extends string, S extends z.ZodType>(
+  config: ActionConfig<C, S>,
+  input: z.output<S>,
+  bridge: BridgeClient,
+  successor: boolean,
+): Promise<CallToolResult> {
+  const invocation = config.toInvocation(input)
+  return commandWithSuccessor(bridge, config.command, invocation.args, {
+    instanceIndex: invocation.instanceIndex,
+    toMarkdown: invocation.toMarkdown,
+    ...(successor ? {} : { successor: false }),
+  })
+}
+
+// Pairs one validator and wire adapter with both entry points: MCP registration
+// keeps the successor feed, while execute runs a single action with no state read.
+function defineAction<const C extends string, S extends z.ZodType>(
+  config: ActionConfig<C, S>,
+): GameAction<C, S> {
+  return {
+    command: config.command,
+    title: config.title,
+    description: config.description,
+    inputSchema: config.inputSchema,
+    outputSchema: commandOutputSchema,
+    annotations: config.annotations,
+    execute: async (bridge, raw) =>
+      invokeAction(config, config.inputSchema.parse(raw), bridge, false),
+    register: (server, bridge) => {
+      server.registerTool(
+        `balatro_${config.command}`,
+        {
+          title: config.title,
+          description: config.description,
+          inputSchema: config.inputSchema as StandardSchemaWithJSON,
+          outputSchema: commandOutputSchema,
+          annotations: config.annotations,
+        },
+        async (input) => invokeAction(config, config.inputSchema.parse(input), bridge, true),
+      )
+    },
+  }
+}
+
+// Registration order is also catalog order: MCP lists these tools exactly as
+// before, and the CLI can iterate them without a second table.
+export const gameActions = [
+  defineAction({
+    command: "select_blind",
     title: "Select Blind",
     description: SELECT_BLIND_DESCRIPTION,
-    command: "select_blind",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_skip_blind",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "skip_blind",
     title: "Skip Blind",
     description: SKIP_BLIND_DESCRIPTION,
-    command: "skip_blind",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_play_hand",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "play_hand",
     title: "Play Hand",
     description: PLAY_HAND_DESCRIPTION,
-    command: "play_hand",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-    options: { toMarkdown: playHandToMarkdown },
-  },
-  {
-    name: "balatro_discard_hand",
+    toInvocation: ({ instance_index }) => ({
+      instanceIndex: instance_index,
+      toMarkdown: playHandToMarkdown,
+    }),
+  }),
+  defineAction({
+    command: "discard_hand",
     title: "Discard Hand",
     description: DISCARD_HAND_DESCRIPTION,
-    command: "discard_hand",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_reroll_shop",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "reroll_shop",
     title: "Reroll Shop",
     description: REROLL_SHOP_DESCRIPTION,
-    command: "reroll_shop",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_reroll_boss",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "reroll_boss",
     title: "Reroll Boss Blind",
     description: REROLL_BOSS_DESCRIPTION,
-    command: "reroll_boss",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_leave_shop",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "leave_shop",
     title: "Leave Shop",
     description: LEAVE_SHOP_DESCRIPTION,
-    command: "leave_shop",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_cash_out",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "cash_out",
     title: "Cash Out",
     description: CASH_OUT_DESCRIPTION,
-    command: "cash_out",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_skip_booster",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "skip_booster",
     title: "Skip Booster",
     description: SKIP_BOOSTER_DESCRIPTION,
-    command: "skip_booster",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_restart",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "restart",
     title: "Restart Run",
     description: RESTART_DESCRIPTION,
-    command: "restart",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_continue_game",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "continue_game",
     title: "Continue Game",
     description: CONTINUE_GAME_DESCRIPTION,
-    command: "continue_game",
+    inputSchema: instanceIndexInputSchema,
     annotations: annotations(true, false),
-  },
-]
-
-const CARD_ID_TOOLS: ActionTool[] = [
-  {
-    name: "balatro_sell_card",
+    toInvocation: ({ instance_index }) => ({ instanceIndex: instance_index }),
+  }),
+  defineAction({
+    command: "sell_card",
     title: "Sell Card",
     description: SELL_CARD_DESCRIPTION,
-    command: "sell_card",
+    inputSchema: cardIdInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_buy_card",
+    toInvocation: ({ card_id, instance_index }) => ({
+      args: { card_id: String(card_id) },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "buy_card",
     title: "Buy Card",
     description: BUY_CARD_DESCRIPTION,
-    command: "buy_card",
+    inputSchema: cardIdInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_buy_voucher",
+    toInvocation: ({ card_id, instance_index }) => ({
+      args: { card_id: String(card_id) },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "buy_voucher",
     title: "Buy Voucher",
     description: BUY_VOUCHER_DESCRIPTION,
-    command: "buy_voucher",
+    inputSchema: cardIdInputSchema,
     annotations: annotations(true, false),
-  },
-  {
-    name: "balatro_buy_booster",
+    toInvocation: ({ card_id, instance_index }) => ({
+      args: { card_id: String(card_id) },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "buy_booster",
     title: "Buy Booster",
     description: BUY_BOOSTER_DESCRIPTION,
-    command: "buy_booster",
+    inputSchema: cardIdInputSchema,
     annotations: annotations(true, false),
-  },
+    toInvocation: ({ card_id, instance_index }) => ({
+      args: { card_id: String(card_id) },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "select_hand_cards",
+    title: "Select Hand Cards",
+    description: SELECT_HAND_CARDS_DESCRIPTION,
+    inputSchema: selectHandSchema,
+    annotations: annotations(false, true),
+    toInvocation: ({ card_ids, instance_index }) => ({
+      args: { card_ids: card_ids.map(String) },
+      instanceIndex: instance_index,
+      toMarkdown: handSelectionToMarkdown,
+    }),
+  }),
+  defineAction({
+    command: "sort_hand",
+    title: "Sort Hand",
+    description: SORT_HAND_DESCRIPTION,
+    inputSchema: sortHandSchema,
+    annotations: annotations(false, true),
+    toInvocation: ({ order, instance_index }) => ({
+      args: { order },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "reorder_hand",
+    title: "Reorder Hand",
+    description: REORDER_HAND_DESCRIPTION,
+    inputSchema: reorderHandSchema,
+    annotations: annotations(false, true),
+    toInvocation: ({ order, instance_index }) => ({
+      args: { card_ids: order.map(String) },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "use_consumable",
+    title: "Use Consumable",
+    description: USE_CONSUMABLE_DESCRIPTION,
+    inputSchema: targetedCardSchema,
+    annotations: annotations(true, false),
+    toInvocation: ({ card_id, targets, instance_index }) => ({
+      args: { card_id: String(card_id), targets: targets?.map(String) },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "buy_consumable",
+    title: "Buy Consumable",
+    description: BUY_CONSUMABLE_DESCRIPTION,
+    inputSchema: buyConsumableSchema,
+    annotations: annotations(true, false),
+    toInvocation: ({ card_id, use, targets, instance_index }) => ({
+      args: { card_id: String(card_id), use, targets: targets?.map(String) },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "select_booster_card",
+    title: "Select Booster Card",
+    description: SELECT_BOOSTER_CARD_DESCRIPTION,
+    inputSchema: targetedCardSchema,
+    annotations: annotations(true, false),
+    toInvocation: ({ card_id, targets, instance_index }) => ({
+      args: { card_id: String(card_id), targets: targets?.map(String) },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "reorder_jokers",
+    title: "Reorder Jokers",
+    description: REORDER_JOKERS_DESCRIPTION,
+    inputSchema: reorderJokersSchema,
+    annotations: annotations(false, true),
+    toInvocation: ({ order, instance_index }) => ({
+      args: { card_ids: order.map(String) },
+      instanceIndex: instance_index,
+    }),
+  }),
+  defineAction({
+    command: "new_game",
+    title: "New Game",
+    description: NEW_GAME_DESCRIPTION,
+    inputSchema: newGameSchema,
+    annotations: annotations(true, false),
+    toInvocation: (input) => ({
+      args:
+        "challenge" in input
+          ? { challenge: input.challenge }
+          : { deck: input.deck, stake: input.stake, seed: input.seed },
+      instanceIndex: input.instance_index,
+    }),
+  }),
 ]
 
 export function registerActionTools(server: McpServer, bridge: BridgeClient): void {
-  for (const tool of NO_ARG_TOOLS) {
-    server.registerTool(
-      tool.name,
-      {
-        title: tool.title,
-        description: tool.description,
-        inputSchema: emptySchema,
-        outputSchema: commandOutputSchema,
-        annotations: tool.annotations,
-      },
-      ({ instance_index: instanceIndex }) =>
-        commandWithSuccessor(bridge, tool.command, undefined, {
-          ...tool.options,
-          instanceIndex,
-        }),
-    )
-  }
-
-  for (const tool of CARD_ID_TOOLS) {
-    server.registerTool(
-      tool.name,
-      {
-        title: tool.title,
-        description: tool.description,
-        inputSchema: cardIdInputSchema,
-        outputSchema: commandOutputSchema,
-        annotations: tool.annotations,
-      },
-      ({ card_id, instance_index: instanceIndex }) =>
-        commandWithSuccessor(bridge, tool.command, { card_id: String(card_id) }, { instanceIndex }),
-    )
-  }
-
-  server.registerTool(
-    "balatro_select_hand_cards",
-    {
-      title: "Select Hand Cards",
-      description: SELECT_HAND_CARDS_DESCRIPTION,
-      inputSchema: selectHandSchema,
-      outputSchema: commandOutputSchema,
-      annotations: annotations(false, true),
-    },
-    ({ card_ids, instance_index: instanceIndex }) =>
-      commandWithSuccessor(
-        bridge,
-        "select_hand_cards",
-        { card_ids: card_ids.map(String) },
-        { instanceIndex, toMarkdown: handSelectionToMarkdown },
-      ),
-  )
-
-  server.registerTool(
-    "balatro_sort_hand",
-    {
-      title: "Sort Hand",
-      description: SORT_HAND_DESCRIPTION,
-      inputSchema: sortHandSchema,
-      outputSchema: commandOutputSchema,
-      annotations: annotations(false, true),
-    },
-    ({ order, instance_index: instanceIndex }) =>
-      commandWithSuccessor(bridge, "sort_hand", { order }, { instanceIndex }),
-  )
-
-  server.registerTool(
-    "balatro_reorder_hand",
-    {
-      title: "Reorder Hand",
-      description: REORDER_HAND_DESCRIPTION,
-      inputSchema: reorderHandSchema,
-      outputSchema: commandOutputSchema,
-      annotations: annotations(false, true),
-    },
-    ({ order, instance_index: instanceIndex }) =>
-      commandWithSuccessor(
-        bridge,
-        "reorder_hand",
-        { card_ids: order.map(String) },
-        { instanceIndex },
-      ),
-  )
-
-  server.registerTool(
-    "balatro_use_consumable",
-    {
-      title: "Use Consumable",
-      description: USE_CONSUMABLE_DESCRIPTION,
-      inputSchema: targetedCardSchema,
-      outputSchema: commandOutputSchema,
-      annotations: annotations(true, false),
-    },
-    ({ card_id, targets, instance_index: instanceIndex }) =>
-      commandWithSuccessor(
-        bridge,
-        "use_consumable",
-        { card_id: String(card_id), targets: targets?.map(String) },
-        { instanceIndex },
-      ),
-  )
-
-  server.registerTool(
-    "balatro_buy_consumable",
-    {
-      title: "Buy Consumable",
-      description: BUY_CONSUMABLE_DESCRIPTION,
-      inputSchema: buyConsumableSchema,
-      outputSchema: commandOutputSchema,
-      annotations: annotations(true, false),
-    },
-    ({ card_id, use, targets, instance_index: instanceIndex }) =>
-      commandWithSuccessor(
-        bridge,
-        "buy_consumable",
-        { card_id: String(card_id), use, targets: targets?.map(String) },
-        { instanceIndex },
-      ),
-  )
-
-  server.registerTool(
-    "balatro_select_booster_card",
-    {
-      title: "Select Booster Card",
-      description: SELECT_BOOSTER_CARD_DESCRIPTION,
-      inputSchema: targetedCardSchema,
-      outputSchema: commandOutputSchema,
-      annotations: annotations(true, false),
-    },
-    ({ card_id, targets, instance_index: instanceIndex }) =>
-      commandWithSuccessor(
-        bridge,
-        "select_booster_card",
-        { card_id: String(card_id), targets: targets?.map(String) },
-        { instanceIndex },
-      ),
-  )
-
-  server.registerTool(
-    "balatro_reorder_jokers",
-    {
-      title: "Reorder Jokers",
-      description: REORDER_JOKERS_DESCRIPTION,
-      inputSchema: reorderJokersSchema,
-      outputSchema: commandOutputSchema,
-      annotations: annotations(false, true),
-    },
-    ({ order, instance_index: instanceIndex }) =>
-      commandWithSuccessor(
-        bridge,
-        "reorder_jokers",
-        { card_ids: order.map(String) },
-        { instanceIndex },
-      ),
-  )
-
-  server.registerTool(
-    "balatro_new_game",
-    {
-      title: "New Game",
-      description: NEW_GAME_DESCRIPTION,
-      inputSchema: newGameSchema,
-      outputSchema: commandOutputSchema,
-      annotations: annotations(true, false),
-    },
-    async (args) => {
-      const params =
-        "challenge" in args
-          ? { challenge: args.challenge }
-          : { deck: args.deck, stake: args.stake, seed: args.seed }
-      return commandWithSuccessor(bridge, "new_game", params, {
-        instanceIndex: args.instance_index,
-      })
-    },
-  )
+  for (const action of gameActions) action.register(server, bridge)
 }

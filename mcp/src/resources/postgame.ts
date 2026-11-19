@@ -1,7 +1,7 @@
-import type { McpServer } from "@modelcontextprotocol/server"
 import { ProtocolError, ProtocolErrorCode, ResourceTemplate } from "@modelcontextprotocol/server"
 
 import { listPostgames, POSTGAME_URI_SCHEME, readPostgame } from "../postgame.js"
+import type { ResourceDefinition } from "./catalog.js"
 
 const LIST_URI = POSTGAME_URI_SCHEME
 
@@ -20,37 +20,36 @@ function renderList(entries: Array<{ index: number; title: string; summary: stri
     "| --- | --- | --- |",
     ...rows,
     "",
-    "Read an analysis with the " + `${POSTGAME_URI_SCHEME}<index>` + " resource.",
+    `Read an analysis with the ${POSTGAME_URI_SCHEME}<index> resource.`,
     "",
   ].join("\n")
 }
 
-export function registerPostgameResource(server: McpServer): void {
-  server.registerResource(
-    "postgame_index",
-    LIST_URI,
-    {
+export const postgameResources: readonly ResourceDefinition[] = [
+  {
+    name: "postgame_index",
+    uri: LIST_URI,
+    metadata: {
       title: "Post-Game Analyses",
       description: "List of stored post-game analyses with their index, title, and summary.",
       mimeType: "text/markdown",
     },
-    async () => {
+    read: async () => {
       const { entries } = await listPostgames()
       return {
         contents: [{ uri: LIST_URI, mimeType: "text/markdown", text: renderList(entries) }],
       }
     },
-  )
-
-  server.registerResource(
-    "postgame",
-    new ResourceTemplate(`${POSTGAME_URI_SCHEME}{index}`, { list: undefined }),
-    {
+  },
+  {
+    name: "postgame",
+    uri: new ResourceTemplate(`${POSTGAME_URI_SCHEME}{index}`, { list: undefined }),
+    metadata: {
       title: "Post-Game Analysis",
       description: "Stored post-game analysis. Browse indices at postgame://.",
       mimeType: "text/markdown",
     },
-    async (uri: URL, variables: Record<string, string | string[]>) => {
+    read: async (uri: URL, variables: Record<string, string | string[]>) => {
       const indexValue = variables.index
       const raw = typeof indexValue === "string" ? indexValue : (indexValue?.[0] ?? "")
       const index = Number.parseInt(raw, 10)
@@ -71,5 +70,5 @@ export function registerPostgameResource(server: McpServer): void {
         contents: [{ uri: uri.toString(), mimeType: "text/markdown", text }],
       }
     },
-  )
-}
+  },
+]

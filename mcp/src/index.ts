@@ -14,13 +14,7 @@ import packageJson from "../package.json"
 import { BridgeClient } from "./bridge/socket-client.js"
 import { autoContextEnabled } from "./flags.js"
 import { registerHandbookPrompt } from "./prompts/handbook.js"
-import { registerCardModifiersResource } from "./resources/cardModifiers.js"
-import { registerChallengesResource } from "./resources/challenges.js"
-import { registerDecksResource } from "./resources/decks.js"
-import { registerLiveResources } from "./resources/live.js"
-import { registerPostgameResource } from "./resources/postgame.js"
-import { registerStakesResource } from "./resources/stakes.js"
-import { registerWikiResource } from "./resources/wiki.js"
+import { registerAllResources } from "./resources/index.js"
 import { registerAllTools } from "./tools/index.js"
 
 // SDK v2.0.0 skips version checks after pinning stdio; its modern version list is internal.
@@ -107,13 +101,7 @@ function createServer(bridge: BridgeClient, autoContext: boolean): McpServer {
   )
 
   registerAllTools(server, bridge)
-  registerCardModifiersResource(server)
-  registerChallengesResource(server)
-  registerDecksResource(server)
-  registerStakesResource(server)
-  registerLiveResources(server, bridge)
-  registerWikiResource(server)
-  registerPostgameResource(server)
+  registerAllResources(server, bridge)
   registerHandbookPrompt(server)
   return server
 }

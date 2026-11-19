@@ -5,7 +5,7 @@ import { toolError, toolErrorSchema, toolResult } from "../response.js"
 import { searchWiki, type WikiSearchHit } from "../wiki.js"
 import WIKI_SEARCH_DESCRIPTION from "./descriptions/wiki-search.txt" with { type: "text" }
 
-const wikiSearchInputSchema = z
+export const wikiSearchInputSchema = z
   .object({
     query: z.string().min(1).describe("Search keyword or phrase."),
     limit: z
@@ -63,7 +63,9 @@ function wikiError(err: unknown): CallToolResult {
   return toolError(detail, "The Balatro Wiki request failed.")
 }
 
-async function searchWikiTool(args: z.infer<typeof wikiSearchInputSchema>) {
+export async function runWikiSearch(
+  args: z.output<typeof wikiSearchInputSchema>,
+): Promise<CallToolResult> {
   try {
     const results = await searchWiki(args.query, args.limit)
     return toolResult({ results }, wikiSearchToMarkdown)
@@ -82,6 +84,6 @@ export function registerEntityTools(server: McpServer): void {
       outputSchema: wikiSearchOutputSchema,
       annotations: WIKI_ANNOTATIONS,
     },
-    (args) => searchWikiTool(args),
+    (args) => runWikiSearch(args),
   )
 }
