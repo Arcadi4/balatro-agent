@@ -256,6 +256,14 @@ function invokeAction<C extends string, S extends z.ZodType>(
   })
 }
 
+/**
+ * The same Zod schema viewed through the SDK's Standard Schema interface with
+ * its input and output types preserved. The SDK validates a call once with this
+ * schema before invoking the handler, so the handler's argument is already
+ * `z.output<S>` and parsing it again would only repeat that work.
+ */
+type ValidatedInputSchema<S extends z.ZodType> = StandardSchemaWithJSON<z.input<S>, z.output<S>>
+
 // Pairs one validator and wire adapter with both entry points: MCP registration
 // keeps the successor feed, while execute runs a single action with no state read.
 function defineAction<const C extends string, S extends z.ZodType>(
@@ -271,16 +279,19 @@ function defineAction<const C extends string, S extends z.ZodType>(
     execute: async (bridge, raw) =>
       invokeAction(config, config.inputSchema.parse(raw), bridge, false),
     register: (server, bridge) => {
+      // The SDK validates the call with this schema and hands the handler the
+      // parsed output, so the handler must not parse the same input again.
+      const inputSchema = config.inputSchema as ValidatedInputSchema<S>
       server.registerTool(
         `balatro_${config.command}`,
         {
           title: config.title,
           description: config.description,
-          inputSchema: config.inputSchema as StandardSchemaWithJSON,
+          inputSchema,
           outputSchema: commandOutputSchema,
           annotations: config.annotations,
         },
-        async (input) => invokeAction(config, config.inputSchema.parse(input), bridge, true),
+        async (input) => invokeAction(config, input, bridge, true),
       )
     },
   }

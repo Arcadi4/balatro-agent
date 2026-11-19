@@ -64,6 +64,7 @@ export const postgameResources: readonly ResourceDefinition[] = [
         throw new ProtocolError(
           ProtocolErrorCode.InvalidParams,
           `No post-game analysis exists at ${uri.toString()}; browse stored analyses at ${POSTGAME_URI_SCHEME}`,
+          { error_code: "RESOURCE_NOT_FOUND", uri: uri.toString() },
         )
       }
       return {

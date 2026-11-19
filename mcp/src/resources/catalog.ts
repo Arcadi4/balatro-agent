@@ -47,9 +47,11 @@ export function registerResourceDefinition(
 /**
  * Reads a resource URI without an MCP server.
  *
- * Matching follows `resources/read`: parse the URI as WHATWG, prefer an exact
- * canonical static URI, then match templates in definition order. A URI that
- * parses as neither raises the same Invalid Params failure the SDK emits.
+ * Matching follows `resources/read`: parse the URI as WHATWG, look up an exact
+ * static URI string, then match templates in definition order. Static resource
+ * URIs are registered in canonical form, so a string comparison is the same
+ * lookup the SDK performs with `uri.toString()`. A URI that parses as neither
+ * raises the same Invalid Params failure the SDK emits.
  */
 export async function readResource(
   resources: readonly ResourceDefinition[],
@@ -67,9 +69,7 @@ export async function readResource(
 
   const canonical = uri.toString()
   for (const definition of resources) {
-    if (typeof definition.uri === "string" && new URL(definition.uri).toString() === canonical) {
-      return definition.read(uri, {})
-    }
+    if (definition.uri === canonical) return definition.read(uri, {})
   }
   for (const definition of resources) {
     if (typeof definition.uri === "string") continue

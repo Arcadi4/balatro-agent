@@ -88,6 +88,7 @@ function createServer(bridge: BridgeClient, autoContext: boolean): McpServer {
         (autoContext
           ? `${AUTO_CONTEXT_GUIDANCE} The snapshot's URIs already carry the instance_index it was read from, so follow them as written. `
           : `${NO_AUTO_CONTEXT_GUIDANCE} `) +
+        "The standalone balatro CLI runs the same actions and resource reads from a shell; its full command reference is balatro://cli. " +
         "Use the balatro_play_handbook prompt for live-play strategy and balatro_wiki_search to verify rules. " +
         "When a run ends, ask the user before recording an analysis with new_postgame; stored analyses are listed at postgame://.",
       cacheHints: {
