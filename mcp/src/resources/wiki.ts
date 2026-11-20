@@ -9,9 +9,8 @@ import wikiIndexMarkdown from "../../data/wiki/index.md" with { type: "text" }
 import { fetchWikiPage, type WikiPage } from "../wiki.js"
 import type { ResourceDefinition } from "./catalog.js"
 
-const WIKI_URI = "balatro://wiki"
-const WIKI_INDEX_URI = `${WIKI_URI}/index`
-
+export const WIKI_URI = "balatro://wiki"
+export const WIKI_INDEX_URI = `${WIKI_URI}/index`
 export const wikiResources: readonly ResourceDefinition[] = [
   {
     name: "wiki_index",
